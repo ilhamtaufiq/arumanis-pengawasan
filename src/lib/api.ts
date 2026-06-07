@@ -1,0 +1,393 @@
+import type {
+  ApiEnvelope,
+  AuthUser,
+  DashboardStats,
+  ChecklistMatrixResponse,
+  PekerjaanMediaResponse,
+  PaginatedResponse,
+  Pekerjaan,
+  PekerjaanDetail,
+  Foto,
+  Penerima,
+  Pengawas,
+  PengawasStatistics,
+  ProgressReportView,
+  Tiket,
+  UnknownRecord,
+} from '@/lib/types'
+
+export class ApiError extends Error {
+  status: number
+  payload: unknown
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.payload = payload
+  }
+}
+
+const BASE = import.meta.env.BASE_URL
+const API_PREFIX = `${BASE}bff/api`
+const BFF_PREFIX = `${BASE}bff`
+
+type RequestOptions = Omit<RequestInit, 'body'> & {
+  body?: BodyInit | UnknownRecord | null
+}
+
+function toBody(body: RequestOptions['body']) {
+  if (body == null) return undefined
+  if (body instanceof FormData || body instanceof Blob || body instanceof URLSearchParams) {
+    return body
+  }
+  if (typeof body === 'string') return body
+  return JSON.stringify(body)
+}
+
+function buildHeaders(headers?: HeadersInit, body?: RequestOptions['body']) {
+  const next = new Headers(headers)
+  next.set('Accept', 'application/json')
+
+  if (body && !(body instanceof FormData) && !(body instanceof Blob) && !(body instanceof URLSearchParams)) {
+    next.set('Content-Type', 'application/json')
+  }
+
+  return next
+}
+
+export async function requestJson<T>(path: string, options: RequestOptions = {}) {
+  const { body: rawBody, ...rest } = options
+  const init: RequestInit = {
+    credentials: 'include',
+    ...rest,
+    headers: buildHeaders(rest.headers, rawBody),
+  }
+
+  const body = toBody(rawBody)
+  if (body !== undefined) {
+    init.body = body
+  }
+
+  const response = await fetch(`${API_PREFIX}${path}`, init)
+
+  const payload = await readPayload(response)
+
+  if (!response.ok) {
+    const message = extractMessage(payload) || response.statusText || 'Request failed'
+    throw new ApiError(message, response.status, payload)
+  }
+
+  return payload as T
+}
+
+async function readPayload(response: Response) {
+  const contentType = response.headers.get('content-type') || ''
+
+  if (response.status === 204) return null
+
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json()
+    } catch {
+      return null
+    }
+  }
+
+  const text = await response.text()
+  return text || null
+}
+
+function extractMessage(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return null
+
+  const record = payload as Record<string, unknown>
+
+  if (typeof record.message === 'string') return record.message
+  if (typeof record.error === 'string') return record.error
+
+  return null
+}
+
+export function unwrapEntity<T>(payload: unknown): T {
+  if (!payload || typeof payload !== 'object') return payload as T
+
+  const record = payload as Record<string, unknown>
+
+  if ('data' in record && record.data !== undefined && !Array.isArray(record.data)) {
+    return record.data as T
+  }
+
+  if ('user' in record && record.user !== undefined) {
+    return record.user as T
+  }
+
+  return payload as T
+}
+
+export function unwrapCollection<T>(payload: unknown): PaginatedResponse<T> {
+  if (!payload || typeof payload !== 'object') {
+    return { data: [] }
+  }
+
+  const record = payload as Record<string, unknown>
+  const items = Array.isArray(record.data) ? (record.data as T[]) : []
+
+  const result: PaginatedResponse<T> = { data: items }
+
+  if (typeof record.links === 'object' && record.links) {
+    result.links = record.links as UnknownRecord
+  }
+
+  if (typeof record.meta === 'object' && record.meta) {
+    result.meta = record.meta as UnknownRecord
+  }
+
+  return result
+}
+
+export function getPaginationMeta(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return null
+
+  const record = payload as Record<string, unknown>
+  const meta = record.meta
+
+  if (!meta || typeof meta !== 'object') return null
+
+  return meta as UnknownRecord
+}
+
+export async function login(input: { email: string; password: string }) {
+  const payload = await requestBffJson<ApiEnvelope<{ user: AuthUser }>>('/auth/login', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<AuthUser>(payload)
+}
+
+export async function syncAuthToken(token: string) {
+  return requestBffJson('/auth/sync-token', {
+    method: 'POST',
+    body: { token },
+  })
+}
+
+export async function logout() {
+  return requestBffJson('/auth/logout', { method: 'POST' })
+}
+
+export async function me() {
+  const payload = await requestBffJson<ApiEnvelope<AuthUser> | AuthUser>('/auth/me')
+  return unwrapEntity<AuthUser>(payload)
+}
+
+async function requestBffJson<T>(path: string, options: RequestOptions = {}) {
+  const { body: rawBody, ...rest } = options
+  const init: RequestInit = {
+    credentials: 'include',
+    ...rest,
+    headers: buildHeaders(rest.headers, rawBody),
+  }
+
+  const body = toBody(rawBody)
+  if (body !== undefined) {
+    init.body = body
+  }
+
+  const response = await fetch(`${BFF_PREFIX}${path}`, init)
+  const payload = await readPayload(response)
+
+  if (!response.ok) {
+    const message = extractMessage(payload) || response.statusText || 'Request failed'
+    throw new ApiError(message, response.status, payload)
+  }
+
+  return payload as T
+}
+
+export async function getPengawasStatistics() {
+  const payload = await requestJson<ApiEnvelope<PengawasStatistics>>('/pengawas/statistics')
+  return unwrapEntity<PengawasStatistics>(payload)
+}
+
+export async function getDashboardStats(tahun?: string) {
+  const query = new URLSearchParams()
+  if (tahun) query.set('tahun', tahun)
+  const payload = await requestJson<ApiEnvelope<DashboardStats>>(`/dashboard/stats${query.size ? `?${query}` : ''}`)
+  return unwrapEntity<DashboardStats>(payload)
+}
+
+export async function getPekerjaanList(params: Record<string, string | number | undefined | null> = {}) {
+  const query = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      query.set(key, `${value}`)
+    }
+  })
+
+  const payload = await requestJson<PaginatedResponse<Pekerjaan> | ApiEnvelope<Pekerjaan[]>>(
+    `/pekerjaan${query.size ? `?${query}` : ''}`,
+  )
+
+  return unwrapCollection<Pekerjaan>(payload)
+}
+
+export async function getPekerjaanDetail(pekerjaanId: number | string) {
+  const payload = await requestJson<ApiEnvelope<PekerjaanDetail> | PekerjaanDetail>(`/pekerjaan/${pekerjaanId}`)
+  return unwrapEntity<PekerjaanDetail>(payload)
+}
+
+export async function getPekerjaanMedia(pekerjaanId: number | string) {
+  const payload = await requestJson<ApiEnvelope<PekerjaanMediaResponse> | PekerjaanMediaResponse>(`/pekerjaan/${pekerjaanId}/media`)
+  return unwrapEntity<PekerjaanMediaResponse>(payload)
+}
+
+export async function getPenerimaByPekerjaan(pekerjaanId: number | string) {
+  const payload = await requestJson<PaginatedResponse<Penerima> | ApiEnvelope<Penerima[]>>(`/penerima/pekerjaan/${pekerjaanId}`)
+  return unwrapCollection<Penerima>(payload).data
+}
+
+export async function createPenerima(input: {
+  pekerjaan_id: number | string
+  nama: string
+  jumlah_jiwa?: number | string | undefined
+  nik?: string | undefined
+  alamat?: string | undefined
+  is_komunal?: boolean
+}) {
+  const payload = await requestJson<ApiEnvelope<Penerima>>('/penerima', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<Penerima>(payload)
+}
+
+export async function updatePenerima(
+  penerimaId: number | string,
+  input: {
+    pekerjaan_id?: number | string
+    nama?: string
+    jumlah_jiwa?: number | string | undefined
+    nik?: string | undefined
+    alamat?: string | undefined
+    is_komunal?: boolean
+  },
+) {
+  const payload = await requestJson<ApiEnvelope<Penerima>>(`/penerima/${penerimaId}`, {
+    method: 'PUT',
+    body: input,
+  })
+
+  return unwrapEntity<Penerima>(payload)
+}
+
+export async function deletePenerima(penerimaId: number | string) {
+  const payload = await requestJson<ApiEnvelope<unknown>>(`/penerima/${penerimaId}`, {
+    method: 'DELETE',
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function createFoto(input: FormData) {
+  const payload = await requestJson<ApiEnvelope<Foto>>('/foto', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<Foto>(payload)
+}
+
+export async function deleteFoto(fotoId: number | string) {
+  const payload = await requestJson<ApiEnvelope<unknown>>(`/foto/${fotoId}`, {
+    method: 'DELETE',
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function getProgressReport(pekerjaanId: number | string) {
+  const payload = await requestJson<ApiEnvelope<ProgressReportView> | ProgressReportView>(`/progress/pekerjaan/${pekerjaanId}`)
+  return unwrapEntity<ProgressReportView>(payload)
+}
+
+export async function updateProgress(pekerjaanId: number | string, input: { items: unknown[]; week_count: number }) {
+  const payload = await requestJson<ApiEnvelope<unknown>>(`/progress/pekerjaan/${pekerjaanId}`, {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function getPekerjaanChecklist(params: Record<string, string | number | undefined | null> = {}) {
+  const query = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      query.set(key, `${value}`)
+    }
+  })
+
+  const payload = await requestJson<ChecklistMatrixResponse>(`/pekerjaan-checklist${query.size ? `?${query}` : ''}`)
+  return payload as ChecklistMatrixResponse
+}
+
+export async function togglePekerjaanChecklist(input: {
+  pekerjaan_id: number | string
+  checklist_item_id: number | string
+  is_checked: boolean
+  notes?: string | undefined
+}) {
+  const payload = await requestJson<ApiEnvelope<unknown>>('/pekerjaan-checklist/toggle', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function getTiketList(params: Record<string, string | number | undefined | null> = {}) {
+  const query = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      query.set(key, `${value}`)
+    }
+  })
+
+  const payload = await requestJson<PaginatedResponse<Tiket> | ApiEnvelope<Tiket[]>>(`/tiket${query.size ? `?${query}` : ''}`)
+  return unwrapCollection<Tiket>(payload)
+}
+
+export async function addTiketComment(tiketId: number | string, message: string) {
+  const payload = await requestJson<ApiEnvelope<unknown>>(`/tiket/${tiketId}/comments`, {
+    method: 'POST',
+    body: { message },
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function createTiket(input: {
+  pekerjaan_id?: number | string | null
+  subjek: string
+  deskripsi: string
+  kategori: string
+  prioritas: string
+}) {
+  const payload = await requestJson<ApiEnvelope<unknown>>('/tiket', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
+export async function getPengawasList() {
+  const payload = await requestJson<ApiEnvelope<Pengawas[]> | PaginatedResponse<Pengawas>>('/pengawas')
+  return unwrapCollection<Pengawas>(payload).data
+}
