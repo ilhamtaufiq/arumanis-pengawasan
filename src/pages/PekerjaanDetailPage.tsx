@@ -1042,11 +1042,32 @@ export function PekerjaanDetailPage() {
                   <div className="detail-kpi-value">{formatPercent(progressView.totals?.total_bobot ?? 0)}</div>
                   <div className="detail-kpi-hint">Akumulasi bobot item</div>
                 </div>
-                <div className={`detail-kpi-card detail-kpi-card--success`}>
-                  <div className="detail-kpi-label">Realisasi akumulasi</div>
-                  <div className="detail-kpi-value">{formatPercent(progressView.totals?.total_accumulated_real ?? 0)}</div>
-                  <div className="detail-kpi-hint">Rata-rata realisasi mingguan</div>
-                </div>
+                {(() => {
+                  const deviasi = progressView.items?.reduce((acc, item) => {
+                    const bobot = Number(item.bobot || 0)
+                    const target = Number(item.target_volume || 0)
+                    if (target <= 0) return acc
+                    let itemPlan = 0
+                    let itemReal = 0
+                    Object.values(item.weekly_data || {}).forEach(d => {
+                      itemPlan += Number(d.rencana || 0)
+                      itemReal += Number(d.realisasi || 0)
+                    })
+                    const planPercent = (itemPlan / target) * bobot
+                    const realPercent = (itemReal / target) * bobot
+                    return acc + (realPercent - planPercent)
+                  }, 0) ?? 0
+
+                  return (
+                    <div className={`detail-kpi-card detail-kpi-card--${deviasi >= 0 ? 'success' : 'danger'}`}>
+                      <div className="detail-kpi-label">Deviasi</div>
+                      <div className="detail-kpi-value">
+                        {deviasi > 0 ? '+' : ''}{formatPercent(deviasi)}
+                      </div>
+                      <div className="detail-kpi-hint">Selisih realisasi dengan rencana</div>
+                    </div>
+                  )
+                })()}
                 <div className={`detail-kpi-card detail-kpi-card--${progressTone(progressView.totals?.total_weighted_progress ?? 0)}`}>
                   <div className="detail-kpi-label">Progress terhitung</div>
                   <div className="detail-kpi-value">{formatPercent(progressView.totals?.total_weighted_progress ?? 0)}</div>
