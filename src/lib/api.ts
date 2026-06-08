@@ -213,17 +213,14 @@ async function requestBffJson<T>(path: string, options: RequestOptions = {}) {
 }
 
 function logRequest(scope: 'api' | 'bff', stage: 'request', url: string, method: string) {
-  if (!import.meta.env.DEV) return
   console.log(`[pengawas ${scope}] ${stage}`, { url, method })
 }
 
 function logResponse(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
-  if (!import.meta.env.DEV) return
   console.log(`[pengawas ${scope}] response`, { url, status, payload: summarizePayload(payload) })
 }
 
 function logError(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
-  if (!import.meta.env.DEV) return
   console.error(`[pengawas ${scope}] error`, { url, status, payload: summarizePayload(payload) })
 }
 
