@@ -23,6 +23,12 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
     })
   })
 
+  app.get(`${prefix}/oauth-callback`, (c) => {
+    const url = new URL(c.req.url)
+    url.pathname = `${PUBLIC_BASE_PATH}/login`
+    return c.redirect(url.toString())
+  })
+
   app.post(`${prefix}/bff/auth/login`, async (c) => {
     try {
       const body = await safeJsonBody(c)
