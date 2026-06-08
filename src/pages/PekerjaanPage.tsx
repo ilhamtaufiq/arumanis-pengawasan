@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { getPekerjaanList } from '@/lib/api'
+import { ApiError, getPekerjaanList } from '@/lib/api'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
-import { Badge, EmptyState, SectionHeader, Surface } from '@/components/ui'
+import { Badge, Button, EmptyState, SectionHeader, Spinner, Surface } from '@/components/ui'
 import { useState } from 'react'
 
 export function PekerjaanPage() {
@@ -22,11 +22,25 @@ export function PekerjaanPage() {
         sort_by: 'created_at',
         sort_direction: 'desc',
       }),
+    retry: false,
   })
 
   const meta = pekerjaan.data?.meta as Record<string, unknown> | undefined
   const currentPage = Number(meta?.current_page || page)
   const lastPage = Number(meta?.last_page || 1)
+  const pekerjaanError = pekerjaan.error instanceof ApiError ? pekerjaan.error : null
+  const errorTitle =
+    pekerjaanError?.status === 401
+      ? 'Sesi tidak valid'
+      : pekerjaanError?.status === 403
+        ? 'Akses ditolak'
+        : 'Gagal memuat pekerjaan'
+  const errorDescription =
+    pekerjaanError?.status === 401
+      ? 'Sesi login sudah tidak terbaca oleh server. Masuk ulang untuk memuat daftar pekerjaan.'
+      : pekerjaanError?.status === 403
+        ? 'Akun ini tidak memiliki izin untuk melihat daftar pekerjaan.'
+        : pekerjaanError?.message || 'Terjadi kesalahan saat mengambil data pekerjaan dari server.'
 
   return (
     <div className="stack">
@@ -66,7 +80,30 @@ export function PekerjaanPage() {
       />
 
       <Surface className="panel">
-        {pekerjaan.data?.data?.length ? (
+        {pekerjaan.isPending ? (
+          <div className="empty-state">
+            <Spinner />
+            <div className="empty-state-title">Memuat pekerjaan...</div>
+            <div className="empty-state-description">Mengambil data paket dari server.</div>
+          </div>
+        ) : pekerjaan.isError ? (
+          <EmptyState
+            title={errorTitle}
+            description={errorDescription}
+            action={
+              <div className="pagination-actions" style={{ justifyContent: 'flex-start' }}>
+                <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaan.refetch()}>
+                  Coba lagi
+                </Button>
+                {pekerjaanError?.status === 401 ? (
+                  <Button type="button" variant="primary" size="sm" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}login`)}>
+                    Masuk ulang
+                  </Button>
+                ) : null}
+              </div>
+            }
+          />
+        ) : pekerjaan.data?.data?.length ? (
           <div className="table-wrap">
             <table className="neo-table">
               <thead>
@@ -145,4 +182,3 @@ export function PekerjaanPage() {
     </div>
   )
 }
-

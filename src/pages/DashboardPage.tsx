@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { getPekerjaanList } from '@/lib/api'
+import { ApiError, getPekerjaanList } from '@/lib/api'
 import { formatNumber, formatPercent } from '@/lib/format'
-import { AnchorButton, Badge, EmptyState, MetricCard, SectionHeader, Surface } from '@/components/ui'
+import { AnchorButton, Badge, Button, EmptyState, MetricCard, SectionHeader, Spinner, Surface } from '@/components/ui'
 
 type FotoStatus = 'belum_ada_foto' | 'belum_selesai' | 'selesai'
 
@@ -27,9 +27,11 @@ export function DashboardPage() {
         per_page: -1,
         summary: 1,
       }),
+    retry: false,
   })
 
   const pekerjaanData = pekerjaanQuery.data?.data ?? []
+  const pekerjaanError = pekerjaanQuery.error instanceof ApiError ? pekerjaanQuery.error : null
   const filteredPekerjaan = useMemo(() => {
     return pekerjaanData.filter((item) => {
       const matchesSearch = !search || `${item.nama_paket} ${item.kode_rekening || ''}`.toLowerCase().includes(search.toLowerCase())
@@ -126,30 +128,76 @@ export function DashboardPage() {
       />
 
       <div className="kpi-grid">
-        <MetricCard label="Jumlah paket pekerjaan" value={formatNumber(totalPekerjaan)} hint="Paket yang masuk filter aktif" tone="info" />
-        <MetricCard
-          label="Belum isi progress"
-          value={formatNumber(belumProgressCount)}
-          hint="Perlu update progress pekerjaan"
-          tone={belumProgressCount > 0 ? 'warning' : 'success'}
-        />
-        <MetricCard
-          label="Paket deviasi"
-          value={formatNumber(deviasiCount)}
-          hint="Ada selisih progress dan rencana"
-          tone={deviasiCount > 0 ? 'danger' : 'success'}
-        />
-        <MetricCard
-          label="Foto belum lengkap"
-          value={formatNumber(fotoBelumLengkapCount)}
-          hint={`${formatNumber(belumAdaFotoCount)} belum ada, ${formatNumber(belumSelesaiFotoCount)} belum selesai`}
-          tone={fotoBelumLengkapCount > 0 ? 'warning' : 'success'}
-        />
+        {pekerjaanQuery.isPending ? (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Surface className="metric-card">
+              <Spinner />
+              <div className="metric-label">Memuat ringkasan</div>
+              <div className="metric-hint">Mengambil data dari server.</div>
+            </Surface>
+          </div>
+        ) : pekerjaanQuery.isError ? (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <EmptyState
+              title={pekerjaanError?.status === 401 ? 'Sesi tidak valid' : 'Gagal memuat ringkasan'}
+              description={
+                pekerjaanError?.status === 401
+                  ? 'Sesi login sudah tidak terbaca oleh server.'
+                  : pekerjaanError?.message || 'Terjadi kesalahan saat mengambil data ringkasan pekerjaan.'
+              }
+              action={
+                <div className="pagination-actions" style={{ justifyContent: 'flex-start' }}>
+                  <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaanQuery.refetch()}>
+                    Coba lagi
+                  </Button>
+                  {pekerjaanError?.status === 401 ? (
+                    <Button type="button" variant="primary" size="sm" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}login`)}>
+                      Masuk ulang
+                    </Button>
+                  ) : null}
+                </div>
+              }
+            />
+          </div>
+        ) : (
+          <>
+            <MetricCard label="Jumlah paket pekerjaan" value={formatNumber(totalPekerjaan)} hint="Paket yang masuk filter aktif" tone="info" />
+            <MetricCard
+              label="Belum isi progress"
+              value={formatNumber(belumProgressCount)}
+              hint="Perlu update progress pekerjaan"
+              tone={belumProgressCount > 0 ? 'warning' : 'success'}
+            />
+            <MetricCard
+              label="Paket deviasi"
+              value={formatNumber(deviasiCount)}
+              hint="Ada selisih progress dan rencana"
+              tone={deviasiCount > 0 ? 'danger' : 'success'}
+            />
+            <MetricCard
+              label="Foto belum lengkap"
+              value={formatNumber(fotoBelumLengkapCount)}
+              hint={`${formatNumber(belumAdaFotoCount)} belum ada, ${formatNumber(belumSelesaiFotoCount)} belum selesai`}
+              tone={fotoBelumLengkapCount > 0 ? 'warning' : 'success'}
+            />
+          </>
+        )}
       </div>
 
       <Surface className="panel">
         <SectionHeader title="Pekerjaan yang diawas" description="Daftar paket dengan status progress, deviasi, dan foto." />
-        {filteredPekerjaan.length ? (
+        {pekerjaanQuery.isPending ? (
+          <div className="empty-state">
+            <Spinner />
+            <div className="empty-state-title">Memuat ringkasan pekerjaan...</div>
+            <div className="empty-state-description">Mengambil daftar paket dari server.</div>
+          </div>
+        ) : pekerjaanQuery.isError ? (
+          <EmptyState
+            title={pekerjaanError?.status === 401 ? 'Sesi tidak valid' : 'Gagal memuat pekerjaan'}
+            description={pekerjaanError?.message || 'Terjadi kesalahan saat mengambil daftar paket pekerjaan.'}
+          />
+        ) : filteredPekerjaan.length ? (
           <div className="table-wrap">
             <table className="neo-table dashboard-summary-table">
               <thead>

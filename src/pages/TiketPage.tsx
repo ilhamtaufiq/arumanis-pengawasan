@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { addTiketComment, getTiketList } from '@/lib/api'
+import { ApiError, addTiketComment, getTiketList } from '@/lib/api'
 import { formatDate, formatDateTime } from '@/lib/format'
-import { Badge, Button, EmptyState, Input, SectionHeader, Surface, Textarea } from '@/components/ui'
+import { Badge, Button, EmptyState, Input, SectionHeader, Spinner, Surface, Textarea } from '@/components/ui'
 
 export function TiketPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -26,6 +26,7 @@ export function TiketPage() {
         kategori: kategori || undefined,
         pekerjaan_id: pekerjaanId || undefined,
       }),
+    retry: false,
   })
 
   const filteredTickets = useMemo(() => {
@@ -38,6 +39,7 @@ export function TiketPage() {
   }, [search, tiketQuery.data])
 
   const selectedTicket = filteredTickets.find((ticket) => `${ticket.id}` === ticketId) || filteredTickets[0] || null
+  const tiketError = tiketQuery.error instanceof ApiError ? tiketQuery.error : null
 
   const commentMutation = useMutation({
     mutationFn: () => {
@@ -86,7 +88,18 @@ export function TiketPage() {
 
       <div className="content-grid content-grid--wide">
         <Surface className="panel">
-          {filteredTickets.length ? (
+          {tiketQuery.isPending ? (
+            <div className="empty-state">
+              <Spinner />
+              <div className="empty-state-title">Memuat tiket...</div>
+              <div className="empty-state-description">Mengambil daftar tiket dari server.</div>
+            </div>
+          ) : tiketQuery.isError ? (
+            <EmptyState
+              title={tiketError?.status === 401 ? 'Sesi tidak valid' : 'Gagal memuat tiket'}
+              description={tiketError?.message || 'Terjadi kesalahan saat mengambil data tiket.'}
+            />
+          ) : filteredTickets.length ? (
             <div className="stack stack--dense">
               {filteredTickets.map((ticket) => (
                 <button
