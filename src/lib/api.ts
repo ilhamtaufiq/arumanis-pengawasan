@@ -69,12 +69,15 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
     init.body = body
   }
 
+  logRequest('api', 'request', `${API_PREFIX}${path}`, init.method ?? 'GET')
   const response = await fetch(`${API_PREFIX}${path}`, init)
 
   const payload = await readPayload(response)
+  logResponse('api', `${API_PREFIX}${path}`, response.status, payload)
 
   if (!response.ok) {
     const message = extractMessage(payload) || response.statusText || 'Request failed'
+    logError('api', `${API_PREFIX}${path}`, response.status, payload)
     throw new ApiError(message, response.status, payload)
   }
 
@@ -195,15 +198,63 @@ async function requestBffJson<T>(path: string, options: RequestOptions = {}) {
     init.body = body
   }
 
+  logRequest('bff', 'request', `${BFF_PREFIX}${path}`, init.method ?? 'GET')
   const response = await fetch(`${BFF_PREFIX}${path}`, init)
   const payload = await readPayload(response)
+  logResponse('bff', `${BFF_PREFIX}${path}`, response.status, payload)
 
   if (!response.ok) {
     const message = extractMessage(payload) || response.statusText || 'Request failed'
+    logError('bff', `${BFF_PREFIX}${path}`, response.status, payload)
     throw new ApiError(message, response.status, payload)
   }
 
   return payload as T
+}
+
+function logRequest(scope: 'api' | 'bff', stage: 'request', url: string, method: string) {
+  if (!import.meta.env.DEV) return
+  console.log(`[pengawas ${scope}] ${stage}`, { url, method })
+}
+
+function logResponse(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
+  if (!import.meta.env.DEV) return
+  console.log(`[pengawas ${scope}] response`, { url, status, payload: summarizePayload(payload) })
+}
+
+function logError(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
+  if (!import.meta.env.DEV) return
+  console.error(`[pengawas ${scope}] error`, { url, status, payload: summarizePayload(payload) })
+}
+
+function summarizePayload(payload: unknown) {
+  if (!payload || typeof payload !== 'object') {
+    return { type: typeof payload, value: payload }
+  }
+
+  const record = payload as Record<string, unknown>
+  const summary: Record<string, unknown> = {
+    type: 'object',
+    keys: Object.keys(record),
+  }
+
+  if (Array.isArray(record.data)) {
+    summary.dataType = 'array'
+    summary.dataCount = record.data.length
+  } else if (record.data && typeof record.data === 'object') {
+    summary.dataType = 'object'
+    summary.dataKeys = Object.keys(record.data as Record<string, unknown>)
+  }
+
+  if (typeof record.message === 'string') {
+    summary.message = record.message
+  }
+
+  if (typeof record.error === 'string') {
+    summary.error = record.error
+  }
+
+  return summary
 }
 
 export async function getPengawasStatistics() {
