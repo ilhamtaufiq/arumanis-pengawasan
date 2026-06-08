@@ -1,5 +1,5 @@
 const server = Bun.spawn({
-  cmd: ['bun', '--watch', 'server/index.ts'],
+  cmd: ['bun', 'run', 'server/index.ts'],
   cwd: process.cwd(),
   env: {
     PORT: '3001',
