@@ -249,17 +249,17 @@ function extractEntity(payload: unknown) {
 }
 
 function relayResponse(response: Response) {
-  return new Response(response.body, {
+  return response.arrayBuffer().then((body) => new Response(body, {
     status: response.status,
     headers: filterResponseHeaders(response.headers),
-  })
+  }))
 }
 
 function filterResponseHeaders(headers: Headers) {
   const next = new Headers()
   for (const [key, value] of headers.entries()) {
     const lower = key.toLowerCase()
-    if (['content-length', 'transfer-encoding', 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'upgrade'].includes(lower)) {
+    if (['content-length', 'content-encoding', 'transfer-encoding', 'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailers', 'upgrade'].includes(lower)) {
       continue
     }
     next.set(key, value)
