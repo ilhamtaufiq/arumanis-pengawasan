@@ -8,13 +8,13 @@ const flowSteps = [
     icon: LayoutDashboard,
   },
   {
-    title: 'Masuk ke Detail',
-    description: 'Klik nama paket untuk membuka tab Penerima Manfaat, Foto, Progress, dan Tiket.',
+    title: 'Output & Penerima',
+    description: 'Buka detail paket, isi output (komponen & satuan) di tab Output, lalu tambah penerima manfaat di tab Penerima.',
     icon: ClipboardList,
   },
   {
-    title: 'Lengkapi Data',
-    description: 'Isi penerima, upload foto per output, update progress, lalu buat tiket bila ada isu lapangan.',
+    title: 'Upload Foto & Progress',
+    description: 'Upload foto per slot output (0%-100%) di tab Foto — membutuhkan output & penerima terisi. Update progress pekerjaan di tab Progress.',
     icon: PenLine,
   },
 ]
@@ -39,12 +39,16 @@ const statusRules = [
 
 const tabs = [
   {
+    title: 'Output',
+    description: 'Tambah, edit, atau hapus komponen output. Pilih dari dropdown komponen (Sambungan Rumah, MCK, Pipa, dll) dan satuan (Unit, Meter, Meter Persegi, Meter Kubik). Centang Komponen Komunal untuk output kelompok.',
+  },
+  {
     title: 'Penerima Manfaat',
     description: 'Tambah, edit, atau hapus penerima. Jika Komunal aktif, jumlah jiwa dan NIK tidak diisi.',
   },
   {
     title: 'Foto',
-    description: 'Upload foto per output dan per slot 0%, 25%, 50%, 75%, 100%. Output komunal memakai penerima komunal jika tersedia.',
+    description: 'Upload foto per output dan per slot 0%, 25%, 50%, 75%, 100%. Catatan: tab Foto baru bisa dipakai jika Output dan Penerima sudah terisi. Output komunal memakai penerima komunal jika tersedia.',
   },
   {
     title: 'Progress',
@@ -125,12 +129,24 @@ export function GuidePage() {
 
       <div className="guide-grid">
         <Surface className="panel">
+          <SectionHeader title="Alur kerja" description="Urutan pengisian data yang benar." />
+          <ul className="guide-list">
+            <li><strong>Tab Output</strong> — buat komponen output (Sambungan Rumah, MCK, Pipa, dll) dengan satuan dan volume.</li>
+            <li><strong>Tab Penerima</strong> — tambah penerima manfaat (Individual atau Komunal).</li>
+            <li><strong>Tab Foto</strong> — upload foto per output setelah output dan penerima terisi. Setiap output punya 5 slot: 0%, 25%, 50%, 75%, 100%.</li>
+            <li><strong>Tab Progress</strong> — isi rencana dan realisasi per minggu.</li>
+            <li><strong>Tab Tiket</strong> — buat tiket untuk isu lapangan.</li>
+          </ul>
+        </Surface>
+
+        <Surface className="panel">
           <SectionHeader title="Aturan foto" description="Ringkas aturan validasi dokumentasi." />
           <ul className="guide-list">
             <li>Jika pekerjaan belum punya foto sama sekali, statusnya <strong>Belum ada foto</strong>.</li>
             <li>Jika output individu belum memenuhi volume x 5 foto, statusnya <strong>Belum Selesai</strong>.</li>
             <li>Jika output komunal belum memenuhi minimal 5 foto per komponen, statusnya <strong>Belum Selesai</strong>.</li>
             <li>Jika semua kebutuhan sudah terpenuhi, statusnya <strong>Selesai</strong>.</li>
+            <li>Jika tab Foto menampilkan "Belum ada output", artinya output dan penerima harus diisi dulu.</li>
           </ul>
         </Surface>
 
