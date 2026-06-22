@@ -1,13 +1,29 @@
-import type {
-  ButtonHTMLAttributes,
-  ComponentProps,
-  InputHTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
+import {
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ComponentProps,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+  type TextareaHTMLAttributes,
 } from 'react'
 import { clsx } from 'clsx'
-import { Loader2 } from 'lucide-react'
+import {
+  BookOpenText,
+  Camera,
+  ClipboardList,
+  Loader2,
+  MessageSquareText,
+  RefreshCcw,
+  Shield,
+  Sparkles,
+  Upload,
+  X,
+} from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { formatDateTime } from '@/lib/format'
+import type { Foto, Output, Penerima } from '@/lib/types'
 
 type Variant = 'primary' | 'secondary' | 'neutral' | 'danger' | 'ghost' | 'success'
 
@@ -15,14 +31,40 @@ export function cn(...args: Array<string | false | null | undefined>) {
   return clsx(args)
 }
 
+type SurfaceTone = 'default' | 'highlight' | 'warning' | 'danger' | 'success' | 'info'
+
 export function Surface({
   className,
   children,
-}: {
-  className?: string
-  children: ReactNode
+  padding = 'md',
+  shadow = 'default',
+  tone = 'default',
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
+  padding?: 'none' | 'sm' | 'md' | 'lg'
+  shadow?: 'none' | 'sm' | 'default'
+  tone?: SurfaceTone
 }) {
-  return <div className={cn('neo-surface', className)}>{children}</div>
+  return (
+    <div
+      className={cn(
+        'neo-surface',
+        padding === 'none' && 'neo-surface--flush',
+        padding === 'sm' && 'neo-surface--compact',
+        padding === 'lg' && 'neo-surface--panel',
+        shadow === 'default' && 'neo-surface--shadow',
+        tone === 'highlight' && 'neo-surface--highlight',
+        tone === 'warning' && 'metric-card--warning',
+        tone === 'danger' && 'metric-card--danger',
+        tone === 'success' && 'metric-card--success',
+        tone === 'info' && 'metric-card--info',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </div>
+  )
 }
 
 export function Button({
@@ -75,13 +117,17 @@ export function Badge({
   return <span className={cn('neo-badge', `neo-badge--${tone}`, className)}>{children}</span>
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={cn('neo-input', props.className)} />
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className, ...props }, ref) {
+    return <input ref={ref} {...props} className={cn('neo-input', className)} />
+  },
+)
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cn('neo-input neo-textarea', props.className)} />
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
+  function Textarea({ className, ...props }, ref) {
+    return <textarea ref={ref} {...props} className={cn('neo-input neo-textarea', className)} />
+  },
+)
 
 export function Label({ children, className }: { children: ReactNode; className?: string }) {
   return <label className={cn('neo-label', className)}>{children}</label>
@@ -103,6 +149,222 @@ export function SectionHeader({
         {description ? <p className="section-description">{description}</p> : null}
       </div>
       {action ? <div>{action}</div> : null}
+    </div>
+  )
+}
+
+// Neobrutalism official components
+export const NeoSurface = Surface
+
+export function Panel({
+  className,
+  children,
+  ...props
+}: Omit<ComponentProps<typeof Surface>, 'padding' | 'shadow'>) {
+  return (
+    <Surface className={cn('panel', className)} padding="lg" shadow="default" {...props}>
+      {children}
+    </Surface>
+  )
+}
+
+export function FieldGroup({
+  label,
+  children,
+  error,
+  hint,
+  className,
+}: {
+  label?: ReactNode
+  children: ReactNode
+  error?: ReactNode
+  hint?: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('field-group', className)}>
+      {label ? <Label className="field-group-label">{label}</Label> : null}
+      <div className="field-group-content">{children}</div>
+      {hint ? <div className="hint-text">{hint}</div> : null}
+      {error ? <div className="field-group-error">{error}</div> : null}
+    </div>
+  )
+}
+
+export function StatusChip({
+  children,
+  className,
+  tone = 'neutral',
+}: {
+  children: ReactNode
+  className?: string
+  tone?: 'neutral' | 'warning' | 'danger' | 'success' | 'info'
+}) {
+  return <span className={cn('status-chip', `status-chip--${tone}`, className)}>{children}</span>
+}
+
+export function DetailRow({ label, value }: { label: ReactNode; value: ReactNode }) {
+  return (
+    <div className="detail-row-item">
+      <span className="detail-row-label">{label}</span>
+      <strong className="detail-row-value">{value}</strong>
+    </div>
+  )
+}
+
+export function LoadingRow({ children }: { children: ReactNode }) {
+  return (
+    <div className="loading-row">
+      <Spinner />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+export function ProgressFill({ percent, className }: { percent: number; className?: string }) {
+  const width = `${Math.max(0, Math.min(percent, 100))}%`
+  return <div className={cn('progress-fill', className)} style={{ width }} />
+}
+
+export function DetailProgressFill({ percent, className }: { percent: number; className?: string }) {
+  const width = `${Math.max(0, Math.min(percent, 100))}%`
+  return <div className={cn('detail-progress-fill', className)} style={{ width }} />
+}
+
+export type PhotoMatrixEntry = {
+  output: Output
+  slots: Array<{ slot: string; foto?: Foto | undefined }>
+  count: number
+  penerima?: Penerima | undefined
+  showPenerimaWarning?: boolean | undefined
+}
+
+export function PhotoSlotCard({
+  slot,
+  foto,
+  onClick,
+  onUpload,
+}: {
+  slot: string
+  foto?: Foto | undefined
+  onClick: () => void
+  onUpload: () => void
+}) {
+  return (
+    <div
+      className="neo-surface photo-slot"
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onClick()
+        }
+      }}
+    >
+      <div className="photo-slot-header">
+        <span>{slot}</span>
+      </div>
+      <div className="photo-slot-body">
+        {foto ? (
+          <img
+            src={foto.foto_thumb_url || foto.foto_url || ''}
+            alt={foto.keterangan || slot}
+            className="photo-slot-img"
+          />
+        ) : (
+          <div className="photo-slot-empty">
+            <Camera size={22} className="photo-slot-empty-icon" />
+          </div>
+        )}
+      </div>
+      <div className="photo-slot-footer">
+        <div className="photo-slot-text">
+          <div className="photo-slot-label">{foto?.keterangan || `Slot ${slot}`}</div>
+          <div className="photo-slot-hint">{foto ? formatDateTime(foto.created_at) : 'Klik untuk unggah'}</div>
+        </div>
+        <Button
+          type="button"
+          variant="neutral"
+          size="sm"
+          onClick={(event) => {
+            event.stopPropagation()
+            onUpload()
+          }}
+        >
+          <Upload size={12} />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function PhotoMatrix({
+  entries,
+  formatVolume,
+  onSlotClick,
+  onSlotUpload,
+  className,
+}: {
+  entries: PhotoMatrixEntry[]
+  formatVolume: (volume: Output['volume'], satuan?: string | null) => ReactNode
+  onSlotClick: (output: Output, slot: string, foto: Foto | undefined, penerima?: Penerima) => void
+  onSlotUpload: (output: Output, slot: string, penerima?: Penerima) => void
+  className?: string
+}) {
+  return (
+    <div className={cn('stack stack--compact', className)}>
+      {entries.map(({ output, slots, count, penerima, showPenerimaWarning }, idx) => (
+        <div key={`matrix-output-${output.id}-${penerima?.id || '0'}-${idx}`} className="detail-foto-matrix-output">
+          <div className="detail-foto-matrix-head">
+            <div>
+              <div className="photo-matrix-output-title">{output.komponen}</div>
+              <div className="photo-matrix-output-meta">
+                {formatVolume(output.volume, output.satuan)} • {count} foto diunggah
+              </div>
+              {penerima ? (
+                <NeoSurface tone="highlight" padding="sm" className="penerima-meta-panel">
+                  <div className="penerima-meta-grid">
+                    <span className="penerima-meta-label">Penerima</span>
+                    <span>
+                      : {penerima.nama} {penerima.is_komunal ? '(Komunal)' : ''}
+                    </span>
+                    {!penerima.is_komunal ? (
+                      <>
+                        <span className="penerima-meta-label">NIK</span>
+                        <span>: {penerima.nik || '-'}</span>
+                        <span className="penerima-meta-label">Jumlah Jiwa</span>
+                        <span>: {penerima.jumlah_jiwa || '-'}</span>
+                      </>
+                    ) : null}
+                    <span className="penerima-meta-label">Alamat</span>
+                    <span>: {penerima.alamat || '-'}</span>
+                  </div>
+                </NeoSurface>
+              ) : null}
+              {showPenerimaWarning ? (
+                <div className="penerima-warning">Belum ada penerima ditambahkan.</div>
+              ) : null}
+            </div>
+            <Badge tone={output.penerima_is_optional ? 'neutral' : 'warning'}>
+              {output.penerima_is_optional ? 'Komunal' : 'Individual'}
+            </Badge>
+          </div>
+
+          <div className="detail-foto-slots">
+            {slots.map(({ slot, foto }, sIdx) => (
+              <PhotoSlotCard
+                key={`${output.id}-${penerima?.id || '0'}-${slot}-${sIdx}`}
+                slot={slot}
+                foto={foto}
+                onClick={() => onSlotClick(output, slot, foto, penerima)}
+                onUpload={() => onSlotUpload(output, slot, penerima)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -205,22 +467,51 @@ export function ConfirmModal({
   )
 }
 
+const WELCOME_FEATURES = [
+  {
+    icon: ClipboardList,
+    label: 'Pantau pekerjaan',
+    hint: 'Paket yang Anda awasi di satu tempat',
+    tone: 'info' as const,
+  },
+  {
+    icon: Camera,
+    label: 'Upload foto',
+    hint: 'Dokumentasi progress per output',
+    tone: 'warning' as const,
+  },
+  {
+    icon: RefreshCcw,
+    label: 'Update progress',
+    hint: 'Rencana & realisasi per minggu',
+    tone: 'success' as const,
+  },
+  {
+    icon: MessageSquareText,
+    label: 'Buat tiket',
+    hint: 'Laporkan isu ke tim pusat',
+    tone: 'danger' as const,
+  },
+] as const
+
+const arumanisLogoSrc = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/arumanis.png`
+
 export function WelcomeModal({
   open,
-  title,
+  userName,
   description,
   guideLabel = 'Baca Panduan',
-  dismissLabel = 'Tutup',
+  startLabel = 'Mulai bekerja',
   hideLabel = 'Jangan tampilkan lagi',
   guideTo,
   onClose,
   onHideForever,
 }: {
   open: boolean
-  title: ReactNode
+  userName: string
   description?: ReactNode
   guideLabel?: ReactNode
-  dismissLabel?: ReactNode
+  startLabel?: ReactNode
   hideLabel?: ReactNode
   guideTo: string
   onClose: () => void
@@ -229,7 +520,7 @@ export function WelcomeModal({
   if (!open) return null
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className="modal-backdrop welcome-modal-backdrop" role="presentation" onClick={onClose}>
       <div
         className="modal-shell welcome-modal"
         role="dialog"
@@ -238,26 +529,87 @@ export function WelcomeModal({
         aria-describedby={description ? 'welcome-modal-description' : undefined}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-header">
-          <div className="stack stack--dense">
-            <strong id="welcome-modal-title">{title}</strong>
-            {description ? (
-              <span id="welcome-modal-description" className="modal-subtitle">
-                {description}
-              </span>
-            ) : null}
+        <div className="welcome-modal-hero">
+          <button
+            type="button"
+            className="welcome-modal-close"
+            aria-label="Tutup"
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+
+          <div className="welcome-modal-brand">
+            <div className="brand-logo-wrapper welcome-modal-logo-wrap">
+              <img
+                src={arumanisLogoSrc}
+                alt="Arumanis"
+                className="brand-logo welcome-modal-logo"
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none'
+                }}
+              />
+            </div>
+            <div className="welcome-modal-intro">
+              <div className="welcome-modal-eyebrow">Arumanis • Air Minum &amp; Sanitasi</div>
+              <h2 id="welcome-modal-title" className="welcome-modal-title">
+                Selamat datang,
+                <span className="welcome-modal-name">{userName}</span>
+              </h2>
+            </div>
           </div>
         </div>
-        <div className="modal-actions modal-actions--welcome">
-          <AnchorButton variant="neutral" to={guideTo} onClick={onClose}>
-            {guideLabel}
-          </AnchorButton>
-          <Button type="button" variant="neutral" onClick={onClose}>
-            {dismissLabel}
+
+        <div className="welcome-modal-body">
+          {description ? (
+            <p id="welcome-modal-description" className="welcome-modal-description">
+              {description}
+            </p>
+          ) : null}
+
+          <div className="welcome-modal-features" role="list" aria-label="Fitur utama">
+            {WELCOME_FEATURES.map((feature) => {
+              const Icon = feature.icon
+              return (
+                <div
+                  key={feature.label}
+                  className={cn('welcome-modal-feature', `welcome-modal-feature--${feature.tone}`)}
+                  role="listitem"
+                >
+                  <span className="welcome-modal-feature-icon" aria-hidden="true">
+                    <Icon size={18} />
+                  </span>
+                  <span className="welcome-modal-feature-copy">
+                    <strong>{feature.label}</strong>
+                    <span>{feature.hint}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="welcome-modal-tip">
+            <Shield size={16} className="welcome-modal-tip-icon" aria-hidden="true" />
+            <span>
+              Baru pertama kali? Buka <strong>Panduan</strong> untuk memahami alur kerja harian.
+            </span>
+          </div>
+        </div>
+
+        <div className="welcome-modal-footer">
+          <Button type="button" variant="primary" className="welcome-modal-cta" onClick={onClose}>
+            <Sparkles size={16} />
+            <span>{startLabel}</span>
           </Button>
-          <Button type="button" variant="success" onClick={onHideForever}>
-            {hideLabel}
-          </Button>
+          <div className="welcome-modal-secondary-actions">
+            <AnchorButton variant="neutral" to={guideTo} onClick={onClose}>
+              <BookOpenText size={16} />
+              <span>{guideLabel}</span>
+            </AnchorButton>
+            <Button type="button" variant="ghost" onClick={onHideForever}>
+              {hideLabel}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

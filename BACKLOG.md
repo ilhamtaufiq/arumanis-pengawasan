@@ -163,3 +163,11 @@ Yang masih perlu dikerjakan:
 1. Selesaikan sisa fitur P4 (Bulk update tiket, SLA) dan P5 (Preferensi ringan).
 2. Mulai rancang agregasi backend (P6) di `apiamis` jika performa list pekerjaan mulai terasa berat, guna menghindari N+1 problem.
 3. Tutup P7 dengan *smoke test* e2e menggunakan Playwright dan *hardening* ke arah *production-ready*.
+
+
+
+
+
+
+
+

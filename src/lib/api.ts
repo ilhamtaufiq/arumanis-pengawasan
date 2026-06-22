@@ -8,6 +8,7 @@ import type {
   Pekerjaan,
   PekerjaanDetail,
   Foto,
+  Output,
   Penerima,
   Pengawas,
   PengawasStatistics,
@@ -340,6 +341,46 @@ export async function deletePenerima(penerimaId: number | string) {
   return unwrapEntity<unknown>(payload)
 }
 
+export async function createOutput(input: {
+  pekerjaan_id: number | string
+  komponen: string
+  satuan?: string
+  volume?: number | string | null
+  penerima_is_optional?: boolean
+}) {
+  const payload = await requestJson<ApiEnvelope<Output>>('/output', {
+    method: 'POST',
+    body: input,
+  })
+
+  return unwrapEntity<Output>(payload)
+}
+
+export async function updateOutput(
+  outputId: number | string,
+  input: {
+    komponen?: string
+    satuan?: string
+    volume?: number | string | null
+    penerima_is_optional?: boolean
+  },
+) {
+  const payload = await requestJson<ApiEnvelope<Output>>(`/output/${outputId}`, {
+    method: 'PUT',
+    body: input,
+  })
+
+  return unwrapEntity<Output>(payload)
+}
+
+export async function deleteOutput(outputId: number | string) {
+  const payload = await requestJson<ApiEnvelope<unknown>>(`/output/${outputId}`, {
+    method: 'DELETE',
+  })
+
+  return unwrapEntity<unknown>(payload)
+}
+
 export async function createFoto(input: FormData) {
   const payload = await requestJson<ApiEnvelope<Foto>>('/foto', {
     method: 'POST',
@@ -426,10 +467,33 @@ export async function createTiket(input: {
   deskripsi: string
   kategori: string
   prioritas: string
+  attachment?: File | null | undefined
 }) {
+  const body =
+    input.attachment instanceof File
+      ? (() => {
+          const formData = new FormData()
+          if (input.pekerjaan_id !== undefined && input.pekerjaan_id !== null && `${input.pekerjaan_id}`.trim() !== '') {
+            formData.append('pekerjaan_id', String(input.pekerjaan_id))
+          }
+          formData.append('subjek', input.subjek)
+          formData.append('deskripsi', input.deskripsi)
+          formData.append('kategori', input.kategori)
+          formData.append('prioritas', input.prioritas)
+          formData.append('attachment', input.attachment)
+          return formData
+        })()
+      : {
+          pekerjaan_id: input.pekerjaan_id,
+          subjek: input.subjek,
+          deskripsi: input.deskripsi,
+          kategori: input.kategori,
+          prioritas: input.prioritas,
+        }
+
   const payload = await requestJson<ApiEnvelope<unknown>>('/tiket', {
     method: 'POST',
-    body: input,
+    body,
   })
 
   return unwrapEntity<unknown>(payload)

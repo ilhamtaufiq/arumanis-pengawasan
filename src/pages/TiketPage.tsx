@@ -1,15 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { ApiError, addTiketComment, getTiketList } from '@/lib/api'
 import { formatDate, formatDateTime } from '@/lib/format'
 import { Badge, Button, EmptyState, Input, SectionHeader, Spinner, Surface, Textarea } from '@/components/ui'
 
 export function TiketPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [message, setMessage] = useState('')
-  const [comment, setComment] = useState('')
   const queryClient = useQueryClient()
+
+  const commentSchema = z.object({
+    message: z.string().min(1, 'Komentar wajib diisi'),
+  })
+
+  const {
+    register,
+    handleSubmit,
+    reset: resetCommentForm,
+    formState: { errors: commentErrors },
+  } = useForm({
+    resolver: zodResolver(commentSchema),
+    defaultValues: { message: '' },
+  })
 
   const status = searchParams.get('status') || ''
   const kategori = searchParams.get('kategori') || ''
@@ -42,13 +57,12 @@ export function TiketPage() {
   const tiketError = tiketQuery.error instanceof ApiError ? tiketQuery.error : null
 
   const commentMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (data: { message: string }) => {
       if (!selectedTicket) throw new Error('Pilih tiket terlebih dahulu')
-      return addTiketComment(selectedTicket.id, comment || message)
+      return addTiketComment(selectedTicket.id, data.message)
     },
     onSuccess: async () => {
-      setComment('')
-      setMessage('')
+      resetCommentForm()
       await queryClient.invalidateQueries({ queryKey: ['tiket'] })
     },
   })
@@ -162,24 +176,14 @@ export function TiketPage() {
 
               <form
                 className="stack stack--dense"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  commentMutation.mutate()
-                }}
+                onSubmit={handleSubmit((data) => commentMutation.mutate(data))}
               >
                 <Textarea
                   rows={4}
-                  value={comment}
-                  onChange={(event) => setComment(event.target.value)}
+                  {...register('message')}
                   placeholder="Tambahkan komentar"
-                  required
                 />
-                <Input
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="Atau ketik komentar singkat"
-                />
-                {commentMutation.error ? <div className="form-error">{commentMutation.error.message}</div> : null}
+                {commentErrors.message && <div className="form-error">{commentErrors.message.message}</div>}
                 <Button type="submit" isLoading={commentMutation.isPending}>
                   Simpan komentar
                 </Button>

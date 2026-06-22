@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, getPekerjaanList } from '@/lib/api'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
-import { Badge, Button, EmptyState, SectionHeader, Spinner, Surface } from '@/components/ui'
+import { Badge, Button, EmptyState, ProgressFill, SectionHeader, Spinner, Surface } from '@/components/ui'
 import { useState } from 'react'
 
 export function PekerjaanPage() {
@@ -91,7 +91,7 @@ export function PekerjaanPage() {
             title={errorTitle}
             description={errorDescription}
             action={
-              <div className="pagination-actions" style={{ justifyContent: 'flex-start' }}>
+              <div className="pagination-actions pagination-actions--start">
                 <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaan.refetch()}>
                   Coba lagi
                 </Button>
@@ -129,10 +129,7 @@ export function PekerjaanPage() {
                     <td>
                       <div className="progress-inline">
                         <div className="progress-track">
-                          <div
-                            className="progress-fill"
-                            style={{ width: `${Math.max(0, Math.min(Number(item.progress_total ?? 0), 100))}%` }}
-                          />
+                          <ProgressFill percent={Number(item.progress_total ?? 0)} />
                         </div>
                         <span>{formatPercent(item.progress_total ?? 0)}</span>
                       </div>

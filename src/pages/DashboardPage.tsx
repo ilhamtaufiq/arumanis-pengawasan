@@ -129,7 +129,7 @@ export function DashboardPage() {
 
       <div className="kpi-grid">
         {pekerjaanQuery.isPending ? (
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div className="grid-span-full">
             <Surface className="metric-card">
               <Spinner />
               <div className="metric-label">Memuat ringkasan</div>
@@ -137,7 +137,7 @@ export function DashboardPage() {
             </Surface>
           </div>
         ) : pekerjaanQuery.isError ? (
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div className="grid-span-full">
             <EmptyState
               title={pekerjaanError?.status === 401 ? 'Sesi tidak valid' : 'Gagal memuat ringkasan'}
               description={
@@ -146,7 +146,7 @@ export function DashboardPage() {
                   : pekerjaanError?.message || 'Terjadi kesalahan saat mengambil data ringkasan pekerjaan.'
               }
               action={
-                <div className="pagination-actions" style={{ justifyContent: 'flex-start' }}>
+                <div className="pagination-actions pagination-actions--start">
                   <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaanQuery.refetch()}>
                     Coba lagi
                   </Button>

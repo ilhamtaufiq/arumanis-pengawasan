@@ -1,8 +1,16 @@
 import { useMutation } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { login, ApiError, syncAuthToken } from '@/lib/api'
 import { Button, Input, Label, Surface } from '@/components/ui'
+
+const loginSchema = z.object({
+  email: z.string().min(1, 'Email wajib diisi').email('Format email tidak valid'),
+  password: z.string().min(1, 'Password wajib diisi'),
+})
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -13,8 +21,15 @@ export function LoginPage() {
     (location.state as { from?: string } | null)?.from || searchParams.get('redirect') || searchParams.get('next') || '/',
   )
   const lastSyncedTokenRef = useRef<string | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(loginSchema),
+    defaultValues: { email: '', password: '' },
+  })
 
   const syncMutation = useMutation({
     mutationFn: () => {
@@ -30,7 +45,7 @@ export function LoginPage() {
   })
 
   const mutation = useMutation({
-    mutationFn: () => login({ email, password }),
+    mutationFn: (data: { email: string; password: string }) => login(data),
     onSuccess: () => {
       navigate(from, { replace: true })
     },
@@ -76,35 +91,28 @@ export function LoginPage() {
 
         <form
           className="auth-form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            mutation.mutate()
-          }}
+          onSubmit={handleSubmit((data) => mutation.mutate(data))}
         >
           <div className="field">
             <Label>Email</Label>
             <Input
               type="email"
-              name="email"
               autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
               placeholder="nama@contoh.id"
-              required
+              {...register('email')}
             />
+            {errors.email && <div className="form-error">{errors.email.message}</div>}
           </div>
 
           <div className="field">
             <Label>Password</Label>
             <Input
               type="password"
-              name="password"
               autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
               placeholder="••••••••"
-              required
+              {...register('password')}
             />
+            {errors.password && <div className="form-error">{errors.password.message}</div>}
           </div>
 
           {error ? <div className="form-error">{error}</div> : null}

@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { ArrowLeft, Camera, Check, ChevronDown, Edit3, FileText, MapPin, MessageSquareText, Printer, RefreshCcw, Save, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
   createFoto,
   createPenerima,
+  createTiket,
   deleteFoto,
   deletePenerima,
   getPekerjaanDetail,
@@ -19,11 +23,18 @@ import {
   AnchorButton,
   Badge,
   Button,
+  cn,
   ConfirmModal,
+  DetailProgressFill,
+  DetailRow,
   EmptyState,
+  FieldGroup,
   Input,
   Label,
+  LoadingRow,
+  PhotoMatrix,
   Spinner,
+  StatusChip,
   Textarea,
 } from '@/components/ui'
 import type { Foto, Output, PekerjaanDetail, Penerima, ProgressItem, ProgressReportView, Tiket } from '@/lib/types'
@@ -37,6 +48,22 @@ type PenerimaFormState = {
   alamat: string
   is_komunal: boolean
 }
+
+const penerimaSchema = z.object({
+  nama: z.string().min(1, "Nama wajib diisi"),
+  jumlah_jiwa: z.string().optional(),
+  nik: z.string().optional(),
+  alamat: z.string().optional(),
+  is_komunal: z.boolean(),
+}).refine((data) => {
+  if (!data.is_komunal) {
+    return data.jumlah_jiwa && data.nik && data.jumlah_jiwa.trim() !== '' && data.nik.trim() !== ''
+  }
+  return true
+}, {
+  message: "Jumlah jiwa dan NIK wajib diisi untuk penerima individu",
+  path: ["jumlah_jiwa"],
+})
 
 type UploadTarget = {
   output: Output
@@ -64,15 +91,56 @@ const EMPTY_PENERIMA_FORM: PenerimaFormState = {
   is_komunal: false,
 }
 
+const TIKET_KATEGORI_OPTIONS = [
+  { value: 'other', label: 'Umum' },
+  { value: 'bug', label: 'Bug' },
+  { value: 'request', label: 'Request' },
+  { value: 'lapangan', label: 'Lapangan' },
+  { value: 'document', label: 'Dokumen' },
+] as const
+
+const TIKET_PRIORITAS_OPTIONS = [
+  { value: 'low', label: 'Rendah' },
+  { value: 'medium', label: 'Sedang' },
+  { value: 'high', label: 'Tinggi' },
+] as const
+
+const TIKET_KATEGORI_PRIORITAS: Record<(typeof TIKET_KATEGORI_OPTIONS)[number]['value'], (typeof TIKET_PRIORITAS_OPTIONS)[number]['value']> = {
+  other: 'low',
+  bug: 'high',
+  request: 'medium',
+  lapangan: 'high',
+  document: 'medium',
+}
+
+const tiketSchema = z.object({
+  subjek: z.string().min(1, 'Subjek wajib diisi'),
+  deskripsi: z.string().min(1, 'Deskripsi wajib diisi'),
+  kategori: z.enum(['bug', 'request', 'lapangan', 'document', 'other']),
+  prioritas: z.enum(['low', 'medium', 'high']),
+})
+
+type TiketFormValues = z.infer<typeof tiketSchema>
+
+const EMPTY_TIKET_FORM: TiketFormValues = {
+  subjek: '',
+  deskripsi: '',
+  kategori: 'other',
+  prioritas: 'low',
+}
+
 export function PekerjaanDetailPage() {
   const { pekerjaanId: rawPekerjaanId } = useParams()
   const pekerjaanId = Number(rawPekerjaanId)
   const queryClient = useQueryClient()
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const tiketFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<DetailTab>('ringkasan')
   const [activeWeek, setActiveWeek] = useState(1)
-  const [previewFoto, setPreviewFoto] = useState<Foto | null>(null)
+  const [previewPhotos, setPreviewPhotos] = useState<Foto[]>([])
+  const [previewIndex, setPreviewIndex] = useState(0)
+  const currentPreviewFoto = previewPhotos[previewIndex] || null
   const [deleteFotoTarget, setDeleteFotoTarget] = useState<Foto | null>(null)
   const [deletePenerimaTarget, setDeletePenerimaTarget] = useState<Penerima | null>(null)
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null)
@@ -80,10 +148,98 @@ export function PekerjaanDetailPage() {
   const [uploadKoordinat, setUploadKoordinat] = useState('')
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
   const [editingPenerimaId, setEditingPenerimaId] = useState<number | null>(null)
-  const [penerimaForm, setPenerimaForm] = useState<PenerimaFormState>(EMPTY_PENERIMA_FORM)
   const [penerimaFormOpen, setPenerimaFormOpen] = useState(false)
+  const [tiketFormOpen, setTiketFormOpen] = useState(false)
+  const [tiketAttachment, setTiketAttachment] = useState<File | null>(null)
+
+  const penerimaForm = useForm({
+    resolver: zodResolver(penerimaSchema),
+    defaultValues: EMPTY_PENERIMA_FORM,
+  })
+
+  const tiketForm = useForm({
+    resolver: zodResolver(tiketSchema),
+    defaultValues: EMPTY_TIKET_FORM,
+  })
+
+  const { register, handleSubmit, watch, reset: resetPenerimaFormHook, setValue, formState: { errors } } = penerimaForm
+  const {
+    register: registerTiket,
+    handleSubmit: handleSubmitTiket,
+    watch: watchTiket,
+    reset: resetTiketFormHook,
+    setValue: setTiketValue,
+    formState: { errors: tiketErrors },
+  } = tiketForm
+  const isKomunal = watch('is_komunal') as boolean
+  const tiketKategori = watchTiket('kategori')
+  const showTiketAttachment = tiketKategori === 'lapangan' || tiketKategori === 'document'
   const [editedProgress, setEditedProgress] = useState<Record<string, { rencana?: string; realisasi?: string }>>({})
   const [progressSaved, setProgressSaved] = useState(false)
+
+  function closePhotoPreview() {
+    setPreviewPhotos([])
+    setPreviewIndex(0)
+  }
+
+  function openPhotoPreview(photos: Foto[], startIndex: number = 0) {
+    if (!photos.length) return
+    setPreviewPhotos(photos)
+    setPreviewIndex(Math.max(0, Math.min(startIndex, photos.length - 1)))
+  }
+
+  // Keyboard support for photo preview (ESC + arrows for next/prev when multiple photos in slot)
+  useEffect(() => {
+    if (!currentPreviewFoto) return
+
+    const handleKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closePhotoPreview()
+      }
+      if (previewPhotos.length > 1) {
+        if (e.key === 'ArrowLeft') {
+          setPreviewIndex((i) => (i - 1 + previewPhotos.length) % previewPhotos.length)
+        }
+        if (e.key === 'ArrowRight') {
+          setPreviewIndex((i) => (i + 1) % previewPhotos.length)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [currentPreviewFoto, previewPhotos.length])
+
+  // Auto extract coordinates when a file is selected for upload
+  useEffect(() => {
+    if (!uploadFile || !uploadTarget) return
+
+    setExtractionStatus('Mencoba mengekstrak koordinat dari foto...')
+
+    extractCoordinates(uploadFile)
+      .then((coords) => {
+        if (coords) {
+          setUploadKoordinat(coords)
+          setExtractionStatus('Koordinat berhasil diekstrak.')
+        } else {
+          setExtractionStatus('Tidak ada koordinat yang ditemukan pada foto.')
+        }
+      })
+      .catch((err) => {
+        console.error('Extraction error:', err)
+        setExtractionStatus('Gagal mengekstrak koordinat.')
+      })
+  }, [uploadFile, uploadTarget])
+
+  useEffect(() => {
+    if (!tiketKategori) return
+    setTiketValue('prioritas', TIKET_KATEGORI_PRIORITAS[tiketKategori], { shouldDirty: true })
+    if (tiketKategori !== 'lapangan' && tiketKategori !== 'document') {
+      setTiketAttachment(null)
+      if (tiketFileRef.current) {
+        tiketFileRef.current.value = ''
+      }
+    }
+  }, [tiketKategori, setTiketValue])
 
   const pekerjaanQuery = useQuery({
     queryKey: ['pekerjaan', 'detail', pekerjaanId],
@@ -154,14 +310,11 @@ export function PekerjaanDetailPage() {
   }, [activeWeek, maxWeek])
 
   useEffect(() => {
-    if (penerimaForm.is_komunal) {
-      setPenerimaForm((current) => ({
-        ...current,
-        jumlah_jiwa: '',
-        nik: '',
-      }))
+    if (isKomunal) {
+      setValue('jumlah_jiwa', '')
+      setValue('nik', '')
     }
-  }, [penerimaForm.is_komunal])
+  }, [isKomunal, setValue])
 
   const outputPhotoMatrix = useMemo(() => {
     const matrix: { output: Output; slots: { slot: string; foto: Foto | undefined }[]; count: number; penerima?: Penerima | undefined }[] = []
@@ -218,12 +371,31 @@ export function PekerjaanDetailPage() {
 
   function resetPenerimaForm() {
     setEditingPenerimaId(null)
-    setPenerimaForm(EMPTY_PENERIMA_FORM)
+    resetPenerimaFormHook(EMPTY_PENERIMA_FORM)
+  }
+
+  function resetTiketForm() {
+    resetTiketFormHook(EMPTY_TIKET_FORM)
+    setTiketAttachment(null)
+    if (tiketFileRef.current) {
+      tiketFileRef.current.value = ''
+    }
+  }
+
+  function handleTiketSubmit(values: TiketFormValues) {
+    createTiketMutation.mutate({
+      pekerjaan_id: pekerjaanId,
+      subjek: values.subjek.trim(),
+      deskripsi: values.deskripsi.trim(),
+      kategori: values.kategori,
+      prioritas: values.prioritas,
+      attachment: tiketAttachment,
+    })
   }
 
   function handleEditPenerima(penerima: Penerima) {
     setEditingPenerimaId(penerima.id)
-    setPenerimaForm({
+    resetPenerimaFormHook({
       nama: penerima.nama || '',
       jumlah_jiwa: stringValue(penerima.jumlah_jiwa),
       nik: penerima.nik || '',
@@ -269,30 +441,29 @@ export function PekerjaanDetailPage() {
     }
   }
 
-  function handlePenerimaSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
-    const nama = penerimaForm.nama.trim()
+  function handlePenerimaSubmit(data: any) {
+    const typed: PenerimaFormState = data
+    const nama = typed.nama.trim()
     if (!nama) return
 
     const payload: PenerimaPayload = {
       pekerjaan_id: pekerjaanId,
       nama,
-      is_komunal: penerimaForm.is_komunal,
+      is_komunal: typed.is_komunal,
     }
 
-    const alamat = penerimaForm.alamat.trim()
+    const alamat = typed.alamat.trim()
     if (alamat) {
       payload.alamat = alamat
     }
 
-    if (!penerimaForm.is_komunal) {
-      const jumlahJiwa = normalizeOptionalNumber(penerimaForm.jumlah_jiwa)
+    if (!typed.is_komunal) {
+      const jumlahJiwa = normalizeOptionalNumber(typed.jumlah_jiwa)
       if (jumlahJiwa !== undefined) {
         payload.jumlah_jiwa = jumlahJiwa
       }
 
-      const nik = penerimaForm.nik.trim()
+      const nik = typed.nik.trim()
       if (nik) {
         payload.nik = nik
       }
@@ -329,6 +500,22 @@ export function PekerjaanDetailPage() {
     },
   })
 
+  const createTiketMutation = useMutation({
+    mutationFn: (input: {
+      pekerjaan_id: number
+      subjek: string
+      deskripsi: string
+      kategori: string
+      prioritas: string
+      attachment?: File | null | undefined
+    }) => createTiket(input),
+    onSuccess: async () => {
+      resetTiketForm()
+      setTiketFormOpen(false)
+      await queryClient.invalidateQueries({ queryKey: ['tiket', 'list', { pekerjaanId }] })
+    },
+  })
+
   const uploadFotoMutation = useMutation({
     mutationFn: async (input: { file: File; output: Output; slot: string; penerima?: Penerima | undefined; koordinat: string }) => {
       const formData = new FormData()
@@ -353,7 +540,7 @@ export function PekerjaanDetailPage() {
     mutationFn: (fotoId: number) => deleteFoto(fotoId),
     onSuccess: async () => {
       setDeleteFotoTarget(null)
-      setPreviewFoto(null)
+      closePhotoPreview()
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
   })
@@ -607,7 +794,7 @@ export function PekerjaanDetailPage() {
   if (pekerjaanQuery.isPending) {
     return (
       <div className="auth-page">
-        <div className="auth-card auth-card--loading" style={{ border: '2px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)' }}>
+        <div className="neo-surface auth-card auth-card--loading">
           <Spinner />
           <div>Memuat detail pekerjaan...</div>
         </div>
@@ -629,11 +816,11 @@ export function PekerjaanDetailPage() {
   const weekOptions = Array.from({ length: maxWeek }, (_, index) => index + 1)
 
   return (
-    <div className="stack" style={{ gap: '14px', paddingBottom: '2rem' }}>
+    <div className="stack stack--page-detail">
       {/* ─── Compact Hero ─── */}
       <div className="detail-hero">
         <div className="detail-hero-top">
-          <AnchorButton variant="neutral" to="/pekerjaan" className="neo-button--sm" style={{ flexShrink: 0 }}>
+          <AnchorButton variant="neutral" to="/pekerjaan" className="neo-button--sm neo-shrink-0">
             <ArrowLeft size={16} />
             <span>Kembali</span>
           </AnchorButton>
@@ -658,7 +845,7 @@ export function PekerjaanDetailPage() {
           <div className="detail-progress-inline">
             <span>Progress</span>
             <div className="detail-progress-track">
-              <div className="detail-progress-fill" style={{ width: `${Math.min(100, progressValue)}%` }} />
+              <DetailProgressFill percent={progressValue} />
             </div>
             <strong>{formatPercent(progressValue)}</strong>
           </div>
@@ -692,7 +879,7 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Ringkasan ─── */}
       {activeTab === 'ringkasan' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           <div className="detail-section-full">
             <div className="detail-tab-header">
               <div className="detail-tab-header-left">
@@ -700,13 +887,13 @@ export function PekerjaanDetailPage() {
                 <p>Informasi utama, kontrak, dan hubungan data</p>
               </div>
               <div className="detail-status-bar">
-                <div className="detail-status-chip">Foto: <strong>{formatNumber(totalFoto)}</strong></div>
-                <div className="detail-status-chip">Penerima: <strong>{formatNumber(totalPenerima)}</strong></div>
-                <div className="detail-status-chip">Output: <strong>{formatNumber(outputList.length)}</strong></div>
+                <StatusChip>Foto: <strong>{formatNumber(totalFoto)}</strong></StatusChip>
+                <StatusChip>Penerima: <strong>{formatNumber(totalPenerima)}</strong></StatusChip>
+                <StatusChip>Output: <strong>{formatNumber(outputList.length)}</strong></StatusChip>
               </div>
             </div>
 
-            <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+            <div className="detail-grid detail-grid--auto">
               <DetailRow label="Kegiatan" value={kegiatanLabel} />
               <DetailRow label="Tahun anggaran" value={tahunLabel} />
               <DetailRow label="Lokasi" value={lokasiLabel} />
@@ -737,14 +924,14 @@ export function PekerjaanDetailPage() {
                     <div key={`output-${output.id}-${idx}`} className="detail-output-card">
                       <div className="detail-output-card-head">
                         <div>
-                          <div style={{ fontWeight: 900 }}>{output.komponen}</div>
-                          <div style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>
+                          <div className="output-title">{output.komponen}</div>
+                          <div className="output-meta">
                             {stringValue(output.volume)} {output.satuan || ''}
                           </div>
                         </div>
                         {output.penerima_is_optional ? <Badge tone="info">Opsional</Badge> : <Badge tone="neutral">Wajib</Badge>}
                       </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <div className="badge-row-inline">
                         <Badge tone="neutral">{formatNumber(outputPhotos.length)} foto</Badge>
                       </div>
                     </div>
@@ -758,7 +945,7 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Penerima ─── */}
       {activeTab === 'penerima' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           <div className="detail-section-full">
             <div className="detail-tab-header">
               <div className="detail-tab-header-left">
@@ -785,65 +972,47 @@ export function PekerjaanDetailPage() {
             </div>
 
             {(penerimaFormOpen || editingPenerimaId) ? (
-              <form className="space-y-5" style={{ display: 'grid', gap: '16px' }} onSubmit={handlePenerimaSubmit}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
-                  <Field label="Nama">
-                    <Input
-                      value={penerimaForm.nama}
-                      onChange={(event) => setPenerimaForm((current) => ({ ...current, nama: event.target.value }))}
-                      placeholder="Nama penerima"
-                      required
-                    />
-                  </Field>
-                  <Field label="Jumlah jiwa">
+              <form className="neo-form" onSubmit={handleSubmit(handlePenerimaSubmit)}>
+                <div className="neo-form-grid">
+                  <FieldGroup label="Nama" error={errors.nama?.message}>
+                    <Input {...register('nama')} placeholder="Nama penerima" />
+                  </FieldGroup>
+                  <FieldGroup label="Jumlah jiwa">
                     <Input
                       type="number"
                       min="0"
-                      value={penerimaForm.jumlah_jiwa}
-                      onChange={(event) => setPenerimaForm((current) => ({ ...current, jumlah_jiwa: event.target.value }))}
-                      disabled={penerimaForm.is_komunal}
+                      {...register('jumlah_jiwa')}
+                      disabled={isKomunal}
                       placeholder="0"
                     />
-                  </Field>
-                  <Field label="NIK">
+                  </FieldGroup>
+                  <FieldGroup label="NIK">
                     <Input
-                      value={penerimaForm.nik}
-                      onChange={(event) => setPenerimaForm((current) => ({ ...current, nik: event.target.value }))}
-                      disabled={penerimaForm.is_komunal}
+                      {...register('nik')}
+                      disabled={isKomunal}
                       placeholder="NIK atau nomor identitas"
                     />
-                  </Field>
+                  </FieldGroup>
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 800, border: '2px solid var(--border)', borderRadius: '999px', background: '#fff', padding: '6px 12px' }}>
-                    <input
-                      type="checkbox"
-                      checked={penerimaForm.is_komunal}
-                      onChange={(event) =>
-                        setPenerimaForm((current) => ({
-                          ...current,
-                          is_komunal: event.target.checked,
-                        }))
-                      }
-                    />
+                <div className="neo-form-row">
+                  <label className="neo-chip chip-toggle">
+                    <input type="checkbox" {...register('is_komunal')} />
                     <span>Komunal</span>
                   </label>
-                  <span style={{ fontSize: '12px', color: 'var(--muted-foreground)' }}>
-                    Saat komunal aktif, jumlah jiwa dan NIK tidak perlu diisi.
-                  </span>
+                  <span className="hint-text">Saat komunal aktif, jumlah jiwa dan NIK tidak perlu diisi.</span>
+                  {errors.is_komunal ? <span className="field-error">{errors.is_komunal.message}</span> : null}
                 </div>
 
-                <Field label="Alamat">
+                <FieldGroup label="Alamat">
                   <Textarea
                     rows={2}
-                    value={penerimaForm.alamat}
-                    onChange={(event) => setPenerimaForm((current) => ({ ...current, alamat: event.target.value }))}
+                    {...register('alamat')}
                     placeholder="Alamat singkat atau catatan lokasi"
                   />
-                </Field>
+                </FieldGroup>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <div className="neo-form-actions">
                   <Button type="submit" isLoading={createPenerimaMutation.isPending || updatePenerimaMutation.isPending}>
                     {editingPenerimaId ? 'Simpan perubahan' : 'Tambah penerima'}
                   </Button>
@@ -897,7 +1066,7 @@ export function PekerjaanDetailPage() {
                         <td>{penerima.alamat || '-'}</td>
                         <td>{formatDateTime(penerima.created_at)}</td>
                         <td>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          <div className="badge-row-inline">
                             <Button type="button" variant="neutral" size="sm" onClick={() => handleEditPenerima(penerima)}>
                               <Edit3 size={14} />
                               <span>Edit</span>
@@ -922,14 +1091,14 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Foto ─── */}
       {activeTab === 'foto' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           <div className="detail-status-bar">
-            <div className="detail-status-chip">
+            <StatusChip>
               Status: <strong><Badge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</Badge></strong>
-            </div>
-            <div className="detail-status-chip">Total foto: <strong>{formatNumber(totalFoto)}</strong></div>
-            <div className="detail-status-chip">Output: <strong>{formatNumber(outputList.length)}</strong></div>
-            <div className="detail-status-chip">Foto wajib: <strong>{stringValue(pekerjaan.foto_required_count)}</strong></div>
+            </StatusChip>
+            <StatusChip>Total foto: <strong>{formatNumber(totalFoto)}</strong></StatusChip>
+            <StatusChip>Output: <strong>{formatNumber(outputList.length)}</strong></StatusChip>
+            <StatusChip>Foto wajib: <strong>{stringValue(pekerjaan.foto_required_count)}</strong></StatusChip>
           </div>
 
           <div className="detail-section-full">
@@ -947,74 +1116,60 @@ export function PekerjaanDetailPage() {
             </div>
 
             {outputPhotoMatrix.length ? (
-              <div className="stack" style={{ gap: '14px' }}>
-                {outputPhotoMatrix.map(({ output, slots, count, penerima }, idx) => (
-                  <div key={`matrix-output-${output.id}-${penerima?.id || '0'}-${idx}`} className="detail-foto-matrix-output">
-                    <div className="detail-foto-matrix-head">
-                      <div>
-                        <div style={{ fontWeight: 900, fontSize: '15px' }}>{output.komponen}</div>
-                        <div style={{ color: 'var(--text-muted)' }}>
-                          {formatNumber(output.volume)} {output.satuan} • {count} foto diunggah
-                        </div>
-                        {penerima && (
-                          <div style={{ marginTop: '8px', fontSize: '12px', background: 'var(--bg-subtle)', padding: '8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '4px 12px' }}>
-                              <span style={{ fontWeight: 600 }}>Penerima</span><span>: {penerima.nama} {penerima.is_komunal ? '(Komunal)' : ''}</span>
-                              {!penerima.is_komunal && (
-                                <>
-                                  <span style={{ fontWeight: 600 }}>NIK</span><span>: {penerima.nik || '-'}</span>
-                                  <span style={{ fontWeight: 600 }}>Jumlah Jiwa</span><span>: {penerima.jumlah_jiwa || '-'}</span>
-                                </>
-                              )}
-                              <span style={{ fontWeight: 600 }}>Alamat</span><span>: {penerima.alamat || '-'}</span>
-                            </div>
-                          </div>
-                        )}
-                        {!penerima && !output.penerima_is_optional && penerimaList.length === 0 && (
-                          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--danger)' }}>
-                            Belum ada penerima ditambahkan.
-                          </div>
-                        )}
-                      </div>
-                      <Badge tone={output.penerima_is_optional ? 'neutral' : 'warning'}>
-                        {output.penerima_is_optional ? 'Komunal' : 'Individual'}
-                      </Badge>
-                    </div>
-
-                    <div className="detail-foto-slots">
-                      {slots.map(({ slot, foto }, sIdx) => (
-                        <PhotoSlotCard
-                          key={`${output.id}-${penerima?.id || '0'}-${slot}-${sIdx}`}
-                          slot={slot}
-                          foto={foto}
-                          onClick={() => {
-                            if (foto) setPreviewFoto(foto)
-                            else openUploadTarget(output, slot, penerima)
-                          }}
-                          onUpload={() => openUploadTarget(output, slot, penerima)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <PhotoMatrix
+                entries={outputPhotoMatrix.map((entry) => ({
+                  ...entry,
+                  showPenerimaWarning:
+                    !entry.penerima && !entry.output.penerima_is_optional && penerimaList.length === 0,
+                }))}
+                formatVolume={(volume, satuan) => (
+                  <>
+                    {formatNumber(volume)} {satuan}
+                  </>
+                )}
+                onSlotClick={(output, slot, foto, penerima) => {
+                  if (foto) {
+                    const slotPhotos = fotoList.filter(
+                      (f) =>
+                        f.komponen_id === output.id &&
+                        normalizeSlotLabel(f.keterangan) === slot &&
+                        (penerima ? f.penerima_id === penerima.id : !f.penerima_id),
+                    )
+                    const startIdx = slotPhotos.findIndex((f) => f.id === foto.id)
+                    openPhotoPreview(slotPhotos.length ? slotPhotos : [foto], Math.max(0, startIdx))
+                  } else {
+                    openUploadTarget(output, slot, penerima)
+                  }
+                }}
+                onSlotUpload={(output, slot, penerima) => openUploadTarget(output, slot, penerima)}
+              />
             ) : fotoList.length ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
+              <div className="foto-fallback-grid">
                 {fotoList.map((foto, idx) => (
                   <button
                     key={`foto-${foto.id}-${idx}`}
                     type="button"
-                    style={{ overflow: 'hidden', border: '2px solid var(--border)', borderRadius: 'var(--radius)', background: '#fff', textAlign: 'left', boxShadow: 'var(--shadow-sm)', cursor: 'pointer' }}
-                    onClick={() => setPreviewFoto(foto)}
+                    className="neo-surface foto-card"
+                    onClick={() => {
+                      const slot = normalizeSlotLabel(foto.keterangan)
+                      const matching = fotoList.filter(
+                        (f) =>
+                          f.komponen_id === foto.komponen_id &&
+                          normalizeSlotLabel(f.keterangan) === slot &&
+                          f.penerima_id === foto.penerima_id,
+                      )
+                      const matchIdx = matching.findIndex((f) => f.id === foto.id)
+                      openPhotoPreview(matching.length ? matching : [foto], Math.max(0, matchIdx))
+                    }}
                   >
                     <img
                       src={foto.foto_thumb_url || foto.foto_url || ''}
                       alt={foto.keterangan || 'Foto pekerjaan'}
-                      style={{ height: '120px', width: '100%', objectFit: 'cover' }}
+                      className="foto-card-img"
                     />
-                    <div style={{ padding: '10px 12px' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 900 }}>{foto.keterangan || 'Foto pekerjaan'}</div>
-                      <div style={{ fontSize: '11px', color: 'var(--muted-foreground)' }}>{formatDateTime(foto.created_at)}</div>
+                    <div className="foto-card-body">
+                      <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
+                      <div className="foto-card-meta">{formatDateTime(foto.created_at)}</div>
                     </div>
                   </button>
                 ))}
@@ -1028,9 +1183,9 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Progress ─── */}
       {activeTab === 'progress' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           {progressQuery.isPending ? (
-            <div className="detail-section-full" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--muted-foreground)' }}>
+            <div className="detail-section-full detail-section-loading">
               <Spinner />
               <span>Memuat progress...</span>
             </div>
@@ -1089,8 +1244,7 @@ export function PekerjaanDetailPage() {
                   <div className="detail-inline-controls">
                     <Label>Minggu aktif</Label>
                     <select
-                      className="neo-input"
-                      style={{ minWidth: '130px', padding: '8px 10px', fontSize: '13px' }}
+                      className="neo-input neo-input--week"
                       value={activeWeek}
                       onChange={(event) => {
                         setActiveWeek(Number(event.target.value))
@@ -1149,8 +1303,7 @@ export function PekerjaanDetailPage() {
                                 <input
                                   type="number"
                                   step="any"
-                                  className="neo-input"
-                                  style={{ width: '100%', minWidth: '90px', padding: '6px 8px', fontSize: '13px' }}
+                                  className="neo-input neo-input--cell"
                                   placeholder="0"
                                   value={getProgressCellValue(itemIndex, 'rencana', weekData)}
                                   onChange={(e) => setProgressCell(itemIndex, 'rencana', e.target.value)}
@@ -1160,8 +1313,7 @@ export function PekerjaanDetailPage() {
                                 <input
                                   type="number"
                                   step="any"
-                                  className="neo-input"
-                                  style={{ width: '100%', minWidth: '90px', padding: '6px 8px', fontSize: '13px' }}
+                                  className="neo-input neo-input--cell"
                                   placeholder="0"
                                   value={getProgressCellValue(itemIndex, 'realisasi', weekData)}
                                   onChange={(e) => setProgressCell(itemIndex, 'realisasi', e.target.value)}
@@ -1191,18 +1343,120 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Tiket ─── */}
       {activeTab === 'tiket' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           <div className="detail-status-bar">
-            <div className="detail-status-chip">Jumlah: <strong>{formatNumber(tiketList.length)}</strong></div>
-            <div className="detail-status-chip">
+            <StatusChip>Jumlah: <strong>{formatNumber(tiketList.length)}</strong></StatusChip>
+            <StatusChip>
               Terbuka: <strong>{formatNumber(tiketList.filter((item) => `${item.status || 'open'}` !== 'closed').length)}</strong>
-            </div>
-            <div className="detail-status-chip">
+            </StatusChip>
+            <StatusChip>
               Tertutup: <strong>{formatNumber(tiketList.filter((item) => `${item.status || ''}` === 'closed').length)}</strong>
-            </div>
-            <AnchorButton variant="neutral" to="/tiket" className="neo-button--sm" style={{ marginLeft: 'auto' }}>
+            </StatusChip>
+            <AnchorButton variant="neutral" to="/tiket" className="neo-button--sm status-bar-end">
               Buka halaman tiket
             </AnchorButton>
+          </div>
+
+          <div className="detail-section-full">
+            <div className="detail-tab-header">
+              <div className="detail-tab-header-left">
+                <h2>Tambah tiket</h2>
+                <p>{tiketList.length > 0 ? 'Buat tiket baru untuk pekerjaan ini' : 'Mulai dengan menambahkan tiket pertama'}</p>
+              </div>
+              <div className="detail-inline-controls">
+                <button
+                  type="button"
+                  className="detail-penerima-form-toggle"
+                  aria-expanded={tiketFormOpen}
+                  onClick={() => setTiketFormOpen((open) => !open)}
+                >
+                  <ChevronDown size={16} />
+                  <span>{tiketFormOpen ? 'Tutup form' : 'Buka form'}</span>
+                </button>
+              </div>
+            </div>
+
+            {tiketFormOpen ? (
+              <form className="neo-form" onSubmit={handleSubmitTiket(handleTiketSubmit)}>
+                <div className="neo-form-grid">
+                  <FieldGroup label="Subjek" error={tiketErrors.subjek?.message}>
+                    <Input {...registerTiket('subjek')} placeholder="Masukkan subjek tiket" />
+                  </FieldGroup>
+                  <FieldGroup label="Kategori" error={tiketErrors.kategori?.message}>
+                    <select className="neo-input" {...registerTiket('kategori')}>
+                      {TIKET_KATEGORI_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FieldGroup>
+                  <FieldGroup
+                    label="Prioritas"
+                    error={tiketErrors.prioritas?.message}
+                    hint={
+                      tiketKategori === 'lapangan' || tiketKategori === 'bug'
+                        ? 'Prioritas disarankan tinggi untuk isu lapangan/bug.'
+                        : undefined
+                    }
+                  >
+                    <select className="neo-input" {...registerTiket('prioritas')}>
+                      {TIKET_PRIORITAS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FieldGroup>
+                </div>
+
+                <FieldGroup label="Deskripsi" error={tiketErrors.deskripsi?.message}>
+                  <Textarea
+                    rows={3}
+                    {...registerTiket('deskripsi')}
+                    placeholder="Jelaskan isu, lokasi kejadian, atau tindakan yang dibutuhkan"
+                  />
+                </FieldGroup>
+
+                {showTiketAttachment ? (
+                  <FieldGroup
+                    label={tiketKategori === 'document' ? 'Lampiran dokumen' : 'Foto lapangan'}
+                    hint={
+                      tiketKategori === 'document'
+                        ? 'Unggah bukti dokumen terkait (opsional, maks. 2 MB).'
+                        : 'Unggah foto kondisi lapangan (opsional, maks. 2 MB).'
+                    }
+                  >
+                    <input
+                      ref={tiketFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="neo-input neo-input--file"
+                      onChange={(event) => setTiketAttachment(event.target.files?.[0] ?? null)}
+                    />
+                    {tiketAttachment ? (
+                      <span className="hint-text">File dipilih: {tiketAttachment.name}</span>
+                    ) : null}
+                  </FieldGroup>
+                ) : null}
+
+                <div className="neo-form-actions">
+                  <Button type="submit" isLoading={createTiketMutation.isPending}>
+                    Buat tiket
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="neutral"
+                    onClick={() => {
+                      resetTiketForm()
+                      setTiketFormOpen(false)
+                    }}
+                  >
+                    Batal
+                  </Button>
+                </div>
+              </form>
+            ) : null}
           </div>
 
           <div className="detail-section-full">
@@ -1214,10 +1468,7 @@ export function PekerjaanDetailPage() {
             </div>
 
             {tiketQuery.isPending ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--muted-foreground)' }}>
-                <Spinner />
-                <span>Memuat tiket...</span>
-              </div>
+              <LoadingRow>Memuat tiket...</LoadingRow>
             ) : tiketList.length ? (
               <div className="table-wrap">
                 <table className="neo-table">
@@ -1237,10 +1488,10 @@ export function PekerjaanDetailPage() {
                           <div className="table-title">{tiket.subjek}</div>
                           <div className="table-subtitle">{tiket.deskripsi || '-'}</div>
                         </td>
-                        <td>{tiket.kategori || '-'}</td>
+                        <td>{tiketKategoriLabel(tiket.kategori)}</td>
                         <td>
-                          <Badge tone={tiket.prioritas === 'tinggi' ? 'danger' : tiket.prioritas === 'sedang' ? 'warning' : 'neutral'}>
-                            {tiket.prioritas || '-'}
+                          <Badge tone={tiketPrioritasTone(tiket.prioritas)}>
+                            {tiketPrioritasLabel(tiket.prioritas)}
                           </Badge>
                         </td>
                         <td>
@@ -1290,63 +1541,106 @@ export function PekerjaanDetailPage() {
         }}
       />
 
-      {previewFoto ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }} onClick={() => setPreviewFoto(null)}>
-          <div onClick={(event) => event.stopPropagation()}>
-            <div style={{ width: 'min(100%, 900px)', border: '3px solid var(--border)', borderRadius: 'var(--radius)', background: '#fff', boxShadow: 'var(--shadow)', padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', borderBottom: '2px solid var(--border)', paddingBottom: '12px' }}>
+      {currentPreviewFoto ? (
+        <div className="upload-modal-backdrop" onClick={closePhotoPreview}>
+          <div className="preview-modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="neo-surface neo-surface--shadow preview-modal-inner">
+              <div className="modal-header-row">
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--muted-foreground)' }}>Preview foto</div>
-                  <div style={{ fontSize: '20px', fontWeight: 900 }}>{previewFoto.keterangan || 'Foto pekerjaan'}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '2px' }}>{formatDateTime(previewFoto.created_at)}</div>
+                  <div className="modal-eyebrow">
+                    PREVIEW FOTO {previewPhotos.length > 1 ? `(${previewIndex + 1} / ${previewPhotos.length})` : ''}
+                  </div>
+                  <div className="modal-title">{currentPreviewFoto.keterangan || 'Foto pekerjaan'}</div>
+                  <div className="modal-subcopy">{formatDateTime(currentPreviewFoto.created_at)}</div>
                 </div>
-                <Button type="button" variant="neutral" onClick={() => setPreviewFoto(null)}>
-                  <X size={16} />
-                </Button>
+
+                <div className="modal-header-actions">
+                  {previewPhotos.length > 1 && (
+                    <>
+                      <Button type="button" variant="neutral" size="sm" onClick={() => setPreviewIndex((i) => (i - 1 + previewPhotos.length) % previewPhotos.length)}>
+                        ←
+                      </Button>
+                      <Button type="button" variant="neutral" size="sm" onClick={() => setPreviewIndex((i) => (i + 1) % previewPhotos.length)}>
+                        →
+                      </Button>
+                    </>
+                  )}
+                  <Button type="button" variant="neutral" onClick={closePhotoPreview}>
+                    <X size={16} />
+                    <span>Tutup</span>
+                  </Button>
+                </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.6fr) 280px', gap: '14px', marginTop: '14px' }}>
-                <div style={{ overflow: 'hidden', borderRadius: 'var(--radius)', border: '2px solid var(--border)', background: '#000' }}>
+              <div className="preview-modal-body">
+                <div className="preview-modal-image-wrap">
                   <img
-                    src={previewFoto.foto_url || previewFoto.foto_thumb_url || ''}
-                    alt={previewFoto.keterangan || 'Preview foto'}
-                    style={{ width: '100%', maxHeight: '65vh', objectFit: 'contain', background: '#000', display: 'block' }}
+                    src={currentPreviewFoto.foto_url || currentPreviewFoto.foto_thumb_url || ''}
+                    alt={currentPreviewFoto.keterangan || 'Preview foto'}
+                    className="preview-modal-image"
                   />
                 </div>
 
-                <div style={{ display: 'grid', gap: '10px', alignContent: 'start' }}>
-                  <div style={{ border: '2px solid var(--border)', borderRadius: 'var(--radius)', background: '#fffdf6', padding: '12px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--muted-foreground)' }}>Detail</div>
-                    <div style={{ display: 'grid', gap: '8px', marginTop: '8px' }}>
-                      <DetailRow label="Output" value={previewFoto.komponen?.komponen || stringValue(previewFoto.komponen_id)} />
-                      <DetailRow label="Slot" value={previewFoto.keterangan || '-'} />
-                      <DetailRow label="Koordinat" value={previewFoto.koordinat || '-'} />
-                      <DetailRow label="Validasi" value={previewFoto.validasi_koordinat ? 'Valid' : 'Belum valid'} />
+                <div className="preview-modal-sidebar">
+                  <div className="preview-detail-card">
+                    <div className="preview-detail-label">Detail</div>
+                    <div className="preview-detail-rows">
+                      <div>
+                        <span className="preview-detail-muted">Output:</span>{' '}
+                        <strong>{currentPreviewFoto.komponen?.komponen || stringValue(currentPreviewFoto.komponen_id)}</strong>
+                      </div>
+                      <div>
+                        <span className="preview-detail-muted">Slot:</span> <strong>{currentPreviewFoto.keterangan || '-'}</strong>
+                      </div>
+                      <div>
+                        <span className="preview-detail-muted">Koordinat:</span> <strong>{currentPreviewFoto.koordinat || '-'}</strong>
+                      </div>
+                      <div>
+                        <span className="preview-detail-muted">Validasi:</span>{' '}
+                        <span
+                          className={cn(
+                            'preview-detail-valid',
+                            currentPreviewFoto.validasi_koordinat ? 'preview-detail-valid--ok' : 'preview-detail-valid--bad',
+                          )}
+                        >
+                          {currentPreviewFoto.validasi_koordinat ? 'Valid' : 'Belum valid'}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <Button
-                    type="button"
-                    variant="neutral"
-                    onClick={() => {
-                      const relatedOutput = outputList.find((output) => output.id === previewFoto.komponen_id)
-                      if (relatedOutput) {
-                        setUploadTarget({
-                          output: relatedOutput,
-                          slot: previewFoto.keterangan || '0%',
-                        })
-                        setUploadFile(null)
-                        setPreviewFoto(null)
-                      }
-                    }}
-                  >
-                    <Upload size={16} />
-                    <span>Ganti foto</span>
-                  </Button>
-                  <Button type="button" variant="danger" onClick={() => setDeleteFotoTarget(previewFoto)}>
-                    <Trash2 size={16} />
-                    <span>Hapus foto</span>
-                  </Button>
+                  <div className="preview-actions">
+                    <Button
+                      type="button"
+                      variant="neutral"
+                      onClick={() => {
+                        const relatedOutput = outputList.find((output) => output.id === currentPreviewFoto.komponen_id)
+                        if (relatedOutput) {
+                          setUploadTarget({
+                            output: relatedOutput,
+                            slot: currentPreviewFoto.keterangan || '0%',
+                          })
+                          setUploadFile(null)
+                          closePhotoPreview()
+                        }
+                      }}
+                    >
+                      <Upload size={16} />
+                      <span>Ganti foto</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="danger"
+                      onClick={() => {
+                        setDeleteFotoTarget(currentPreviewFoto)
+                        closePhotoPreview()
+                      }}
+                    >
+                      <Trash2 size={16} />
+                      <span>Hapus foto</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1355,14 +1649,14 @@ export function PekerjaanDetailPage() {
       ) : null}
 
       {uploadTarget ? (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', padding: '16px' }} onClick={() => setUploadTarget(null)}>
+        <div className="upload-modal-backdrop" onClick={() => setUploadTarget(null)}>
           <div onClick={(event) => event.stopPropagation()}>
-            <div style={{ width: 'min(100%, 560px)', border: '3px solid var(--border)', borderRadius: 'var(--radius)', background: '#fff', boxShadow: 'var(--shadow)', padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', borderBottom: '2px solid var(--border)', paddingBottom: '12px' }}>
+            <div className="neo-surface neo-surface--shadow upload-modal-shell">
+              <div className="modal-header-row">
                 <div>
-                  <div style={{ fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: 'var(--muted-foreground)' }}>Upload foto</div>
-                  <div style={{ fontSize: '20px', fontWeight: 900 }}>{uploadTarget.output.komponen}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '2px' }}>
+                  <div className="modal-eyebrow modal-eyebrow--upload">Upload foto</div>
+                  <div className="modal-title">{uploadTarget.output.komponen}</div>
+                  <div className="modal-subcopy">
                     Slot {uploadTarget.slot} — {stringValue(uploadTarget.output.volume)} {uploadTarget.output.satuan || ''}
                   </div>
                 </div>
@@ -1371,66 +1665,46 @@ export function PekerjaanDetailPage() {
                 </Button>
               </div>
 
-              <div style={{ display: 'grid', gap: '14px', marginTop: '14px' }}>
-                <div style={{ border: '2px solid var(--border)', borderRadius: 'var(--radius)', background: '#fffdf6', padding: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 800 }}>Koordinat GPS</div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <div className="upload-modal-content">
+                <div className="neo-surface neo-surface--highlight">
+                  <div className="upload-section-title">Koordinat GPS</div>
+                  <div className="upload-gps-row">
                     <input
                       type="text"
-                      className="neo-input"
-                      style={{ flex: 1, padding: '8px' }}
+                      className="neo-input neo-input--flex"
                       placeholder="-6.123456, 106.123456"
                       value={uploadKoordinat}
                       onChange={(e) => setUploadKoordinat(e.target.value)}
                     />
                     <Button type="button" variant="neutral" onClick={handleGetLocation}>
-                      <MapPin size={16} style={{ marginRight: '4px' }} />
+                      <MapPin size={16} className="map-pin-icon" />
                       GPS
                     </Button>
                   </div>
-                  {extractionStatus && (
-                    <div style={{ fontSize: '12px', color: 'var(--primary)', marginTop: '6px', fontWeight: 600 }}>
-                      {extractionStatus}
-                    </div>
-                  )}
+                  {extractionStatus ? <div className="upload-status">{extractionStatus}</div> : null}
                 </div>
 
-                <div style={{ border: '2px solid var(--border)', borderRadius: 'var(--radius)', background: '#fffdf6', padding: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 800 }}>Pilih file foto</div>
+                <div className="neo-surface neo-surface--highlight">
+                  <div className="upload-section-title">Pilih file foto</div>
                   <input
                     ref={uploadInputRef}
                     type="file"
                     accept="image/*"
-                    className="neo-input"
-                    style={{ width: '100%', marginTop: '8px' }}
-                    onChange={async (event) => {
+                    className="neo-input neo-input--file"
+                    onChange={(event) => {
                       const file = event.target.files?.[0] ?? null
                       setUploadFile(file)
-                      if (file) {
-                        setExtractionStatus('Mencoba mengekstrak koordinat dari foto...')
-                        try {
-                          const coords = await extractCoordinates(file)
-                          if (coords) {
-                            setUploadKoordinat(coords)
-                            setExtractionStatus('Koordinat berhasil diekstrak.')
-                          } else {
-                            setExtractionStatus('Tidak ada koordinat yang ditemukan pada foto.')
-                          }
-                        } catch (err) {
-                          console.error('Extraction error:', err)
-                          setExtractionStatus('Gagal mengekstrak koordinat.')
-                        }
-                      } else {
+                      if (!file) {
                         setExtractionStatus(null)
                       }
                     }}
                   />
-                  <div style={{ fontSize: '12px', color: 'var(--muted-foreground)', marginTop: '6px' }}>
+                  <div className="upload-hint">
                     Foto akan dikirim ke backend dengan konteks output dan slot yang dipilih.
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                <div className="neo-form-actions">
                   <Button
                     type="button"
                     isLoading={uploadFotoMutation.isPending}
@@ -1490,6 +1764,35 @@ function statusFotoText(status: ReturnType<typeof resolveFotoStatus>) {
   return 'Lengkap'
 }
 
+function tiketPrioritasTone(prioritas?: string | null): MetricTone {
+  if (prioritas === 'high' || prioritas === 'tinggi') return 'danger'
+  if (prioritas === 'medium' || prioritas === 'sedang') return 'warning'
+  return 'neutral'
+}
+
+function tiketPrioritasLabel(prioritas?: string | null) {
+  const labels: Record<string, string> = {
+    low: 'Rendah',
+    medium: 'Sedang',
+    high: 'Tinggi',
+    rendah: 'Rendah',
+    sedang: 'Sedang',
+    tinggi: 'Tinggi',
+  }
+  return labels[prioritas || ''] || prioritas || '-'
+}
+
+function tiketKategoriLabel(kategori?: string | null) {
+  const labels: Record<string, string> = {
+    bug: 'Bug',
+    request: 'Request',
+    lapangan: 'Lapangan',
+    document: 'Dokumen',
+    other: 'Umum',
+  }
+  return labels[kategori || ''] || kategori || '-'
+}
+
 function statusFotoTone(status: ReturnType<typeof resolveFotoStatus>) {
   if (status === 'belum_ada_foto') return 'warning' as const
   if (status === 'belum_selesai') return 'danger' as const
@@ -1539,102 +1842,6 @@ type PenerimaPayload = {
   nik?: string
   alamat?: string
   is_komunal?: boolean
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: ReactNode
-}) {
-  return (
-    <div style={{ display: 'grid', gap: '6px' }}>
-      <Label>{label}</Label>
-      {children}
-    </div>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', borderBottom: '1px dashed rgba(17,17,17,0.15)', paddingBottom: '8px' }}>
-      <span style={{ fontSize: '13px', color: 'var(--muted-foreground)' }}>{label}</span>
-      <strong style={{ textAlign: 'right', fontSize: '13px' }}>{value}</strong>
-    </div>
-  )
-}
-
-function PhotoSlotCard({
-  slot,
-  foto,
-  onClick,
-  onUpload,
-}: {
-  slot: string
-  foto: Foto | undefined
-  onClick: () => void
-  onUpload: () => void
-}) {
-  return (
-    <div
-      style={{
-        overflow: 'hidden',
-        borderRadius: 'var(--radius)',
-        border: '2px solid var(--border)',
-        background: '#fffdf8',
-        boxShadow: 'var(--shadow-sm)',
-        textAlign: 'left',
-        cursor: 'pointer',
-        transition: 'transform 0.1s ease',
-      }}
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onClick()
-        }
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid var(--border)', background: 'var(--foreground)', padding: '4px 8px', fontSize: '11px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#fff' }}>
-        <span>{slot}</span>
-        {foto ? <Badge tone="success">Ada</Badge> : <Badge tone="warning">Kosong</Badge>}
-      </div>
-      <div style={{ aspectRatio: '4/3', background: 'rgba(0,0,0,0.04)' }}>
-        {foto ? (
-          <img
-            src={foto.foto_thumb_url || foto.foto_url || ''}
-            alt={foto.keterangan || slot}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: '4px', padding: '8px' }}>
-            <Camera size={22} style={{ color: 'rgba(0,0,0,0.3)' }} />
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(0,0,0,0.4)' }}>Kosong</div>
-          </div>
-        )}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', padding: '6px 8px' }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '12px', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{foto?.keterangan || `Slot ${slot}`}</div>
-          <div style={{ fontSize: '10px', color: 'var(--muted-foreground)' }}>{foto ? formatDateTime(foto.created_at) : 'Klik untuk unggah'}</div>
-        </div>
-        <Button
-          type="button"
-          variant="neutral"
-          size="sm"
-          onClick={(event) => {
-            event.stopPropagation()
-            onUpload()
-          }}
-        >
-          <Upload size={12} />
-        </Button>
-      </div>
-    </div>
-  )
 }
 
 export {}

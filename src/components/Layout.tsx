@@ -10,8 +10,8 @@ import {
   PanelLeftOpen,
   UserCircle2,
 } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { useEffect, useState, type ReactNode } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -20,6 +20,22 @@ const navItems = [
   { to: '/panduan', label: 'Panduan', icon: BookOpenText },
   { to: '/profile', label: 'Profil', icon: UserCircle2 },
 ]
+
+const pageTitles: Record<string, string> = {
+  '/': 'Dashboard',
+  '/pekerjaan': 'Daftar Pekerjaan',
+  '/tiket': 'Tiket & Isu Lapangan',
+  '/panduan': 'Panduan Pengguna',
+  '/profile': 'Profil Pengguna',
+}
+
+function getPageTitle(pathname: string) {
+  // exact match
+  if (pageTitles[pathname]) return pageTitles[pathname]
+  // detail pekerjaan
+  if (pathname.startsWith('/pekerjaan/')) return 'Detail Pekerjaan'
+  return 'Pengawasan'
+}
 
 export function AppLayout({
   user,
@@ -30,6 +46,8 @@ export function AppLayout({
   onLogout: () => void
   children?: ReactNode
 }) {
+  const location = useLocation()
+
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true
 
@@ -42,6 +60,8 @@ export function AppLayout({
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('arumanis.welcome-hidden') !== 'true'
   })
+
+  const currentTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname])
 
   useEffect(() => {
     window.localStorage.setItem('arumanis.sidebar-open', String(sidebarOpen))
@@ -58,10 +78,16 @@ export function AppLayout({
       {sidebarOpen ? <button type="button" className="sidebar-backdrop" aria-label="Tutup sidebar" onClick={() => setSidebarOpen(false)} /> : null}
       <aside className="sidebar" aria-label="Navigasi utama">
         <div className="brand-block">
-          <div className="brand-mark">A</div>
+          <div className="brand-logo-wrapper">
+            <img
+              src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/arumanis.png`}
+              alt="Arumanis"
+              className="brand-logo"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          </div>
           <div>
             <div className="brand-title">Arumanis</div>
-            <div className="brand-subtitle">Dashboard pengawasan</div>
           </div>
         </div>
 
@@ -88,9 +114,9 @@ export function AppLayout({
             <div className="sidebar-user-name">{user.name}</div>
             <div className="sidebar-user-email">{user.email}</div>
           </div>
-          <Button variant="ghost" className="logout-button" onClick={onLogout}>
+          <Button variant="ghost" className="logout-button" onClick={onLogout} aria-label="Keluar">
             <LogOut size={16} />
-            <span>Keluar</span>
+            <span className="logout-label">Keluar</span>
           </Button>
         </div>
       </aside>
@@ -109,8 +135,8 @@ export function AppLayout({
               {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
             </Button>
             <div className="topbar-brand">
-              <div className="topbar-kicker">Arumanis</div>
-              <h1 className="topbar-title">Dashboard pengawasan</h1>
+              <div className="topbar-kicker">Arumanis • Air Minum &amp; Sanitasi</div>
+              <h1 className="topbar-title">{currentTitle}</h1>
             </div>
           </div>
           <div className="topbar-user">
@@ -129,8 +155,8 @@ export function AppLayout({
 
       <WelcomeModal
         open={welcomeOpen}
-        title={`Selamat datang, ${user.name}`}
-        description="Gunakan Arumanis untuk memantau pekerjaan yang diawasi, update progress, upload foto, dan membuat tiket. Baca Panduan terlebih dahulu sebelum mulai bekerja."
+        userName={user.name}
+        description="Panel ini menampilkan pekerjaan yang benar-benar Anda awasi. Mulai dari dashboard, lalu masuk ke detail paket untuk update progress, foto, dan tiket."
         guideTo="/panduan"
         onClose={() => setWelcomeOpen(false)}
         onHideForever={() => {

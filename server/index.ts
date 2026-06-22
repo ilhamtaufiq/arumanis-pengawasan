@@ -13,6 +13,10 @@ const DIST_DIR = resolve(process.cwd(), 'dist')
 
 const app = new Hono()
 
+app.get('/', (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+
+app.get(`${PUBLIC_BASE_PATH}`, (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+
 for (const prefix of ['', PUBLIC_BASE_PATH]) {
   app.get(`${prefix}/health`, (c) => {
     return c.json({

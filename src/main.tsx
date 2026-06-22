@@ -9,7 +9,7 @@ import '@/styles/globals.css'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename="/pengawasan">
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/pengawasan'}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>
