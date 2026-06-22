@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -75,6 +75,22 @@ type UploadTarget = {
 }
 
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success' | 'info'
+
+const OUTPUT_KOMPONEN_OPTIONS = [
+  'Sambungan Rumah',
+  'MCK',
+  'MCK Individu',
+  'MCK Komunal',
+  'Pipa',
+  'Broncaptering',
+  'Reservoir',
+  'Tangki Septik Individu',
+  'Tangki Septik Komunal',
+  'Sumur Bor',
+  'Pompa',
+] as const
+
+const OUTPUT_SATUAN_OPTIONS = ['Unit', 'Meter', 'Meter Persegi', 'Meter Kubik'] as const
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string; icon: ReactNode }> = [
   { id: 'ringkasan', label: 'Ringkasan', icon: <Shield size={14} /> },
@@ -181,19 +197,13 @@ export function PekerjaanDetailPage() {
   const [editedProgress, setEditedProgress] = useState<Record<string, { rencana?: string; realisasi?: string }>>({})
   const [progressSaved, setProgressSaved] = useState(false)
   const [editingOutputId, setEditingOutputId] = useState<number | null>(null)
-  const [outputForm, setOutputForm] = useState<{ komponen: string; satuan: string; volume: string; penerima_is_optional: boolean }>({
+  const [outputForm, setOutputForm] = useState({
     komponen: '',
     satuan: '',
     volume: '',
     penerima_is_optional: false,
   })
   const [deleteOutputTarget, setDeleteOutputTarget] = useState<Output | null>(null)
-  const [tiketForm, setTiketForm] = useState<{ subjek: string; deskripsi: string; kategori: string; prioritas: string }>({
-    subjek: '',
-    deskripsi: '',
-    kategori: 'other',
-    prioritas: 'medium',
-  })
 
   function closePhotoPreview() {
     setPreviewPhotos([])
@@ -413,7 +423,12 @@ export function PekerjaanDetailPage() {
 
   function resetOutputForm() {
     setEditingOutputId(null)
-    setOutputForm({ komponen: '', satuan: '', volume: '', penerima_is_optional: false })
+    setOutputForm({
+      komponen: '',
+      satuan: '',
+      volume: '',
+      penerima_is_optional: false,
+    })
   }
 
   function handleEditOutput(output: Output) {
@@ -424,22 +439,28 @@ export function PekerjaanDetailPage() {
       volume: String(output.volume || ''),
       penerima_is_optional: Boolean(output.penerima_is_optional),
     })
-    setOutputFormOpen(true)
     setActiveTab('output')
   }
 
   function handleOutputSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-
     const komponen = outputForm.komponen.trim()
     if (!komponen) return
 
     const payload: OutputPayload = {
       pekerjaan_id: pekerjaanId,
       komponen,
-      satuan: outputForm.satuan.trim() || undefined,
-      volume: outputForm.volume.trim() || undefined,
       penerima_is_optional: outputForm.penerima_is_optional,
+    }
+
+    const satuan = outputForm.satuan.trim()
+    if (satuan) {
+      payload.satuan = satuan
+    }
+
+    const volume = outputForm.volume.trim()
+    if (volume) {
+      payload.volume = volume
     }
 
     if (editingOutputId) {
@@ -447,11 +468,6 @@ export function PekerjaanDetailPage() {
     } else {
       createOutputMutation.mutate(payload)
     }
-  }
-
-  function resetPenerimaForm() {
-    setEditingPenerimaId(null)
-    setPenerimaForm(EMPTY_PENERIMA_FORM)
   }
 
   function handleEditPenerima(penerima: Penerima) {
@@ -463,6 +479,7 @@ export function PekerjaanDetailPage() {
       alamat: penerima.alamat || '',
       is_komunal: Boolean(penerima.is_komunal),
     })
+    setPenerimaFormOpen(true)
     setActiveTab('penerima')
   }
 
@@ -536,38 +553,6 @@ export function PekerjaanDetailPage() {
     }
   }
 
-  const createOutputMutation = useMutation({
-    mutationFn: (input: OutputPayload) => createOutput(input),
-    onSuccess: async () => {
-      resetOutputForm()
-      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
-    },
-  })
-
-  const updateOutputMutation = useMutation({
-    mutationFn: ({ id, input }: { id: number; input: OutputPayload }) => updateOutput(id, input),
-    onSuccess: async () => {
-      resetOutputForm()
-      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
-    },
-  })
-
-  const deleteOutputMutation = useMutation({
-    mutationFn: (outputId: number) => deleteOutput(outputId),
-    onSuccess: async () => {
-      setDeleteOutputTarget(null)
-      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
-    },
-  })
-
-  const createTiketMutation = useMutation({
-    mutationFn: (input: { pekerjaan_id: number; subjek: string; deskripsi: string; kategori: string; prioritas: string }) => createTiket(input),
-    onSuccess: async () => {
-      setTiketForm({ subjek: '', deskripsi: '', kategori: 'other', prioritas: 'medium' })
-      await queryClient.invalidateQueries({ queryKey: ['tiket', 'list', { pekerjaanId }] })
-    },
-  })
-
   const createPenerimaMutation = useMutation({
     mutationFn: (input: PenerimaPayload) => createPenerima(input),
     onSuccess: async () => {
@@ -588,6 +573,30 @@ export function PekerjaanDetailPage() {
     mutationFn: (penerimaId: number) => deletePenerima(penerimaId),
     onSuccess: async () => {
       setDeletePenerimaTarget(null)
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+  })
+
+  const createOutputMutation = useMutation({
+    mutationFn: (input: OutputPayload) => createOutput(input),
+    onSuccess: async () => {
+      resetOutputForm()
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+  })
+
+  const updateOutputMutation = useMutation({
+    mutationFn: ({ id, input }: { id: number; input: OutputPayload }) => updateOutput(id, input),
+    onSuccess: async () => {
+      resetOutputForm()
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+  })
+
+  const deleteOutputMutation = useMutation({
+    mutationFn: (outputId: number) => deleteOutput(outputId),
+    onSuccess: async () => {
+      setDeleteOutputTarget(null)
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
   })
@@ -1037,93 +1046,88 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Output ─── */}
       {activeTab === 'output' ? (
-        <div className="stack" style={{ gap: '14px' }}>
+        <div className="stack stack--compact">
           <div className="detail-section-full">
             <div className="detail-tab-header">
               <div className="detail-tab-header-left">
                 <h2>{editingOutputId ? 'Edit output' : 'Tambah output'}</h2>
-                <p>Daftar komponen output pekerjaan</p>
+                <p>Komponen pekerjaan menjadi dasar matriks foto dan progress</p>
               </div>
               <div className="detail-inline-controls">
                 {editingOutputId ? (
-                  <Button type="button" variant="neutral" size="sm" onClick={resetOutputForm}>Reset form</Button>
+                  <Button type="button" variant="neutral" size="sm" onClick={resetOutputForm}>
+                    Reset form
+                  </Button>
                 ) : null}
               </div>
             </div>
 
-            <form className="space-y-5" style={{ display: 'grid', gap: '16px' }} onSubmit={handleOutputSubmit}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
-                  <Field label="Komponen">
-                    <select
-                      className="neo-input"
-                      value={outputForm.komponen}
-                      onChange={(event) => setOutputForm((current) => ({ ...current, komponen: event.target.value }))}
-                      required
-                    >
-                      <option value="">Pilih komponen</option>
-                      <option value="Sambungan Rumah">Sambungan Rumah</option>
-                      <option value="MCK">MCK</option>
-                      <option value="MCK Individu">MCK Individu</option>
-                      <option value="MCK Komunal">MCK Komunal</option>
-                      <option value="Pipa">Pipa</option>
-                      <option value="Broncaptering">Broncaptering</option>
-                      <option value="Reservoir">Reservoir</option>
-                      <option value="Tangki Septik Individu">Tangki Septik Individu</option>
-                      <option value="Tangki Septik Komunal">Tangki Septik Komunal</option>
-                      <option value="Sumur Bor">Sumur Bor</option>
-                      <option value="Pompa">Pompa</option>
-                    </select>
-                  </Field>
-                  <Field label="Satuan">
-                    <select
-                      className="neo-input"
-                      value={outputForm.satuan}
-                      onChange={(event) => setOutputForm((current) => ({ ...current, satuan: event.target.value }))}
-                    >
-                      <option value="">Pilih satuan</option>
-                      <option value="Unit">Unit</option>
-                      <option value="Meter">Meter</option>
-                      <option value="Meter Persegi">Meter Persegi</option>
-                      <option value="Meter Kubik">Meter Kubik</option>
-                    </select>
-                  </Field>
-                  <Field label="Volume">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={outputForm.volume}
-                      onChange={(event) => setOutputForm((current) => ({ ...current, volume: event.target.value }))}
-                      placeholder="Volume"
-                    />
-                  </Field>
-                </div>
+            <form className="neo-form" onSubmit={handleOutputSubmit}>
+              <div className="neo-form-grid">
+                <FieldGroup label="Komponen">
+                  <select
+                    className="neo-input"
+                    value={outputForm.komponen}
+                    onChange={(event) => setOutputForm((current) => ({ ...current, komponen: event.target.value }))}
+                    required
+                  >
+                    <option value="">Pilih komponen</option>
+                    {OUTPUT_KOMPONEN_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </FieldGroup>
+                <FieldGroup label="Satuan">
+                  <select
+                    className="neo-input"
+                    value={outputForm.satuan}
+                    onChange={(event) => setOutputForm((current) => ({ ...current, satuan: event.target.value }))}
+                  >
+                    <option value="">Pilih satuan</option>
+                    {OUTPUT_SATUAN_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </FieldGroup>
+                <FieldGroup label="Volume">
+                  <Input
+                    value={outputForm.volume}
+                    onChange={(event) => setOutputForm((current) => ({ ...current, volume: event.target.value }))}
+                    placeholder="Volume"
+                  />
+                </FieldGroup>
+              </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px' }}>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 800, border: '2px solid var(--border)', borderRadius: '999px', background: '#fff', padding: '6px 12px' }}>
-                    <input
-                      type="checkbox"
-                      checked={outputForm.penerima_is_optional}
-                      onChange={(event) =>
-                        setOutputForm((current) => ({
-                          ...current,
-                          penerima_is_optional: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>Komponen Komunal</span>
-                  </label>
-                </div>
+              <div className="neo-form-row">
+                <label className="neo-chip chip-toggle">
+                  <input
+                    type="checkbox"
+                    checked={outputForm.penerima_is_optional}
+                    onChange={(event) =>
+                      setOutputForm((current) => ({
+                        ...current,
+                        penerima_is_optional: event.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Komponen komunal</span>
+                </label>
+                <span className="hint-text">Aktifkan untuk output kelompok tanpa penerima individu.</span>
+              </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  <Button type="submit" isLoading={createOutputMutation.isPending || updateOutputMutation.isPending}>
-                    {editingOutputId ? 'Simpan perubahan' : 'Tambah output'}
-                  </Button>
-                  <Button type="button" variant="neutral" onClick={resetOutputForm}>
-                    Batal
-                  </Button>
-                </div>
-              </form>
+              <div className="neo-form-actions">
+                <Button type="submit" isLoading={createOutputMutation.isPending || updateOutputMutation.isPending}>
+                  {editingOutputId ? 'Simpan perubahan' : 'Tambah output'}
+                </Button>
+                <Button type="button" variant="neutral" onClick={resetOutputForm}>
+                  Batal
+                </Button>
+              </div>
+            </form>
           </div>
 
           <div className="detail-section-full">
@@ -1143,7 +1147,6 @@ export function PekerjaanDetailPage() {
                       <th>Satuan</th>
                       <th>Volume</th>
                       <th>Tipe</th>
-                      <th>Dibuat</th>
                       <th>Aksi</th>
                     </tr>
                   </thead>
@@ -1157,12 +1160,11 @@ export function PekerjaanDetailPage() {
                         <td>{stringValue(output.volume)}</td>
                         <td>
                           <Badge tone={output.penerima_is_optional ? 'info' : 'neutral'}>
-                            {output.penerima_is_optional ? 'Komunal' : 'Individual'}
+                            {output.penerima_is_optional ? 'Komunal' : 'Individu'}
                           </Badge>
                         </td>
-                        <td>{formatDateTime(output.created_at)}</td>
                         <td>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          <div className="badge-row-inline">
                             <Button type="button" variant="neutral" size="sm" onClick={() => handleEditOutput(output)}>
                               <Edit3 size={14} />
                               <span>Edit</span>
@@ -1179,7 +1181,7 @@ export function PekerjaanDetailPage() {
                 </table>
               </div>
             ) : (
-              <EmptyState title="Belum ada output" description="Tambahkan komponen output pertama untuk pekerjaan ini." />
+              <EmptyState title="Belum ada output" description="Tambahkan komponen output pertama sebelum mengisi penerima dan foto." />
             )}
           </div>
         </div>
@@ -1198,6 +1200,18 @@ export function PekerjaanDetailPage() {
                 {editingPenerimaId ? (
                   <Button type="button" variant="neutral" size="sm" onClick={resetPenerimaForm}>Reset form</Button>
                 ) : null}
+                <button
+                  type="button"
+                  className="detail-penerima-form-toggle"
+                  aria-expanded={penerimaFormOpen || Boolean(editingPenerimaId)}
+                  onClick={() => {
+                    if (editingPenerimaId) return
+                    setPenerimaFormOpen((v) => !v)
+                  }}
+                >
+                  <ChevronDown size={16} />
+                  <span>{penerimaFormOpen || editingPenerimaId ? 'Tutup form' : 'Buka form'}</span>
+                </button>
               </div>
             </div>
 
@@ -1246,11 +1260,12 @@ export function PekerjaanDetailPage() {
                   <Button type="submit" isLoading={createPenerimaMutation.isPending || updatePenerimaMutation.isPending}>
                     {editingPenerimaId ? 'Simpan perubahan' : 'Tambah penerima'}
                   </Button>
-                  <Button type="button" variant="neutral" onClick={() => { resetPenerimaForm() }}>
+                  <Button type="button" variant="neutral" onClick={() => { resetPenerimaForm(); setPenerimaFormOpen(false) }}>
                     Batal
                   </Button>
                 </div>
               </form>
+            ) : null}
           </div>
 
           <div className="detail-section-full">
@@ -1330,33 +1345,19 @@ export function PekerjaanDetailPage() {
             <StatusChip>Foto wajib: <strong>{stringValue(pekerjaan.foto_required_count)}</strong></StatusChip>
           </div>
 
-          {outputList.length === 0 ? (
-            <div className="detail-section-full">
-              <div className="detail-tab-header">
-                <div className="detail-tab-header-left">
-                  <h2>Matriks foto</h2>
-                  <p>Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%</p>
-                </div>
+          <div className="detail-section-full">
+            <div className="detail-tab-header">
+              <div className="detail-tab-header-left">
+                <h2>Matriks foto</h2>
+                <p>Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%</p>
               </div>
-              <EmptyState
-                title="Belum ada output"
-                description="Tambahkan output terlebih dahulu melalui tab Output sebelum bisa mengupload foto."
-              />
+              <div className="detail-inline-controls">
+                <Button variant="secondary" size="sm" onClick={handlePrintPDF} disabled={fotoList.length === 0}>
+                  <Printer size={14} />
+                  <span>Cetak Foto</span>
+                </Button>
+              </div>
             </div>
-          ) : (
-            <div className="detail-section-full">
-              <div className="detail-tab-header">
-                <div className="detail-tab-header-left">
-                  <h2>Matriks foto</h2>
-                  <p>Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%</p>
-                </div>
-                <div className="detail-inline-controls">
-                  <Button variant="secondary" size="sm" onClick={handlePrintPDF} disabled={fotoList.length === 0}>
-                    <Printer size={14} />
-                    <span>Cetak Foto</span>
-                  </Button>
-                </div>
-              </div>
 
             {outputPhotoMatrix.length ? (
               <PhotoMatrix
@@ -1417,11 +1418,10 @@ export function PekerjaanDetailPage() {
                   </button>
                 ))}
               </div>
-              ) : (
-                <EmptyState title="Belum ada foto" description="Belum ada dokumentasi yang tersimpan untuk pekerjaan ini." />
-              )}
-            </div>
-          )}
+            ) : (
+              <EmptyState title="Belum ada foto" description="Belum ada dokumentasi yang tersimpan untuk pekerjaan ini." />
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -1756,6 +1756,21 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Modals ─── */}
       <ConfirmModal
+        open={Boolean(deleteOutputTarget)}
+        title="Hapus output?"
+        description={deleteOutputTarget ? `Output "${deleteOutputTarget.komponen}" akan dihapus dari pekerjaan ini.` : undefined}
+        confirmLabel="Hapus"
+        confirmTone="danger"
+        isLoading={deleteOutputMutation.isPending}
+        onCancel={() => setDeleteOutputTarget(null)}
+        onConfirm={() => {
+          if (deleteOutputTarget) {
+            deleteOutputMutation.mutate(deleteOutputTarget.id)
+          }
+        }}
+      />
+
+      <ConfirmModal
         open={Boolean(deletePenerimaTarget)}
         title="Hapus penerima?"
         description={deletePenerimaTarget ? `Penerima "${deletePenerimaTarget.nama}" akan dihapus dari pekerjaan ini.` : undefined}
@@ -2086,6 +2101,14 @@ type PenerimaPayload = {
   nik?: string
   alamat?: string
   is_komunal?: boolean
+}
+
+type OutputPayload = {
+  pekerjaan_id: number
+  komponen: string
+  satuan?: string
+  volume?: number | string | null
+  penerima_is_optional?: boolean
 }
 
 export {}

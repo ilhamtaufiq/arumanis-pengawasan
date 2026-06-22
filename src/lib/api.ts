@@ -10,7 +10,6 @@ import type {
   Foto,
   Output,
   Penerima,
-  Output,
   Pengawas,
   PengawasStatistics,
   ProgressReportView,
@@ -393,46 +392,6 @@ export async function createFoto(input: FormData) {
 
 export async function deleteFoto(fotoId: number | string) {
   const payload = await requestJson<ApiEnvelope<unknown>>(`/foto/${fotoId}`, {
-    method: 'DELETE',
-  })
-
-  return unwrapEntity<unknown>(payload)
-}
-
-export async function createOutput(input: {
-  pekerjaan_id: number | string
-  komponen: string
-  satuan?: string
-  volume?: number | string | null
-  penerima_is_optional?: boolean
-}) {
-  const payload = await requestJson<ApiEnvelope<Output>>('/output', {
-    method: 'POST',
-    body: input,
-  })
-
-  return unwrapEntity<Output>(payload)
-}
-
-export async function updateOutput(
-  outputId: number | string,
-  input: {
-    komponen?: string
-    satuan?: string
-    volume?: number | string | null
-    penerima_is_optional?: boolean
-  },
-) {
-  const payload = await requestJson<ApiEnvelope<Output>>(`/output/${outputId}`, {
-    method: 'PUT',
-    body: input,
-  })
-
-  return unwrapEntity<Output>(payload)
-}
-
-export async function deleteOutput(outputId: number | string) {
-  const payload = await requestJson<ApiEnvelope<unknown>>(`/output/${outputId}`, {
     method: 'DELETE',
   })
 
