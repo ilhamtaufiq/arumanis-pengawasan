@@ -432,6 +432,26 @@ export async function createFoto(input: FormData) {
   return unwrapEntity<Foto>(payload)
 }
 
+export type KoordinatValidationResult = {
+  validasi_koordinat: boolean
+  validasi_koordinat_message: string
+}
+
+export async function validateKoordinat(pekerjaanId: number | string, koordinat: string) {
+  const payload = await requestJson<ApiEnvelope<KoordinatValidationResult> | KoordinatValidationResult>(
+    '/koordinat/validate',
+    {
+      method: 'POST',
+      body: {
+        pekerjaan_id: Number(pekerjaanId),
+        koordinat,
+      },
+    },
+  )
+
+  return unwrapEntity<KoordinatValidationResult>(payload)
+}
+
 export async function deleteFoto(fotoId: number | string) {
   const payload = await requestJson<ApiEnvelope<unknown>>(`/foto/${fotoId}`, {
     method: 'DELETE',

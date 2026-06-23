@@ -2942,6 +2942,14 @@ button {
   font-weight: 600;
 }
 
+.upload-status--ok {
+  color: var(--success, #15803d);
+}
+
+.upload-status--warn {
+  color: var(--warning, #b45309);
+}
+
 .upload-section-title {
   font-size: 13px;
   font-weight: 800;

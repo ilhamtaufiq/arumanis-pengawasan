@@ -20,6 +20,7 @@ import {
   updateOutput,
   updatePenerima,
   updateProgress,
+  validateKoordinat,
 } from '@/lib/api'
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, progressTone } from '@/lib/format'
 import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
@@ -222,6 +223,11 @@ export function PekerjaanDetailPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadKoordinat, setUploadKoordinat] = useState('')
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
+  const [koordinatValidation, setKoordinatValidation] = useState<{
+    valid: boolean
+    message: string
+    loading: boolean
+  } | null>(null)
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null)
   const [editingPenerimaId, setEditingPenerimaId] = useState<number | null>(null)
   const [penerimaFormOpen, setPenerimaFormOpen] = useState(false)
@@ -315,6 +321,41 @@ export function PekerjaanDetailPage() {
         setExtractionStatus('Gagal mengekstrak koordinat.')
       })
   }, [uploadFile, uploadTarget])
+
+  useEffect(() => {
+    if (!uploadTarget || !uploadKoordinat.trim()) {
+      setKoordinatValidation(null)
+      return
+    }
+
+    let cancelled = false
+    setKoordinatValidation({ valid: false, message: 'Memvalidasi koordinat...', loading: true })
+
+    const timer = window.setTimeout(() => {
+      validateKoordinat(pekerjaanId, uploadKoordinat)
+        .then((result) => {
+          if (cancelled) return
+          setKoordinatValidation({
+            valid: Boolean(result.validasi_koordinat),
+            message: result.validasi_koordinat_message || 'Validasi selesai.',
+            loading: false,
+          })
+        })
+        .catch(() => {
+          if (cancelled) return
+          setKoordinatValidation({
+            valid: false,
+            message: 'Gagal memvalidasi koordinat.',
+            loading: false,
+          })
+        })
+    }, 400)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [uploadKoordinat, uploadTarget, pekerjaanId])
 
   useEffect(() => {
     if (!tiketKategori) return
@@ -550,6 +591,7 @@ export function PekerjaanDetailPage() {
     setUploadFile(null)
     setUploadKoordinat('')
     setExtractionStatus(null)
+    setKoordinatValidation(null)
     if (uploadInputRef.current) {
       uploadInputRef.current.value = ''
     }
@@ -2046,6 +2088,11 @@ export function PekerjaanDetailPage() {
                         >
                           {currentPreviewFoto.validasi_koordinat ? 'Valid' : 'Belum valid'}
                         </span>
+                        {currentPreviewFoto.validasi_koordinat_message ? (
+                          <div className="preview-detail-muted" style={{ marginTop: 4 }}>
+                            {currentPreviewFoto.validasi_koordinat_message}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -2115,6 +2162,20 @@ export function PekerjaanDetailPage() {
                     onStatusChange={setExtractionStatus}
                   />
                   {extractionStatus ? <div className="upload-status">{extractionStatus}</div> : null}
+                  {koordinatValidation ? (
+                    <div
+                      className={cn(
+                        'upload-status',
+                        koordinatValidation.loading
+                          ? ''
+                          : koordinatValidation.valid
+                            ? 'upload-status--ok'
+                            : 'upload-status--warn',
+                      )}
+                    >
+                      {koordinatValidation.message}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="neo-surface neo-surface--highlight">
