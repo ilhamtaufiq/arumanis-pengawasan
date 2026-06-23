@@ -1396,6 +1396,14 @@ button {
   line-height: 1.45;
 }
 
+.modal-subtitle--prewrap {
+  white-space: pre-wrap;
+}
+
+.modal-shell--danger {
+  border-color: var(--danger);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;

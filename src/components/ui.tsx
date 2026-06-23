@@ -467,6 +467,53 @@ export function ConfirmModal({
   )
 }
 
+export function AlertModal({
+  open,
+  title,
+  description,
+  closeLabel = 'Tutup',
+  tone = 'danger',
+  onClose,
+}: {
+  open: boolean
+  title: ReactNode
+  description?: ReactNode
+  closeLabel?: ReactNode
+  tone?: Variant
+  onClose: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className={cn('modal-shell', tone === 'danger' && 'modal-shell--danger')}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="alert-modal-title"
+        aria-describedby={description ? 'alert-modal-description' : undefined}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div className="stack stack--dense">
+            <strong id="alert-modal-title">{title}</strong>
+            {description ? (
+              <span id="alert-modal-description" className="modal-subtitle modal-subtitle--prewrap">
+                {description}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="modal-actions">
+          <Button type="button" variant={tone} onClick={onClose}>
+            {closeLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const WELCOME_FEATURES = [
   {
     icon: ClipboardList,

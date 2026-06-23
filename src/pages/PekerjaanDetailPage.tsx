@@ -13,6 +13,7 @@ import {
   deleteFoto,
   deleteOutput,
   deletePenerima,
+  formatApiError,
   getPekerjaanDetail,
   getProgressReport,
   getTiketList,
@@ -28,6 +29,7 @@ import {
   Badge,
   Button,
   cn,
+  AlertModal,
   ConfirmModal,
   DetailProgressFill,
   DetailRow,
@@ -168,6 +170,7 @@ export function PekerjaanDetailPage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadKoordinat, setUploadKoordinat] = useState('')
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null)
   const [editingPenerimaId, setEditingPenerimaId] = useState<number | null>(null)
   const [penerimaFormOpen, setPenerimaFormOpen] = useState(false)
   const [tiketFormOpen, setTiketFormOpen] = useState(false)
@@ -611,9 +614,13 @@ export function PekerjaanDetailPage() {
       return createFoto(formData)
     },
     onSuccess: async () => {
+      setUploadErrorMessage(null)
       setUploadTarget(null)
       setUploadFile(null)
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+    onError: (error) => {
+      setUploadErrorMessage(formatApiError(error, 'Gagal mengunggah foto. Periksa file, koordinat, dan koneksi internet.'))
     },
   })
 
@@ -1735,6 +1742,13 @@ export function PekerjaanDetailPage() {
       ) : null}
 
       {/* ─── Modals ─── */}
+      <AlertModal
+        open={Boolean(uploadErrorMessage)}
+        title="Upload foto gagal"
+        description={uploadErrorMessage ?? undefined}
+        onClose={() => setUploadErrorMessage(null)}
+      />
+
       <ConfirmModal
         open={Boolean(deleteOutputTarget)}
         title="Hapus output?"

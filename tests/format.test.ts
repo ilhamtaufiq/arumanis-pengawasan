@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { unwrapCollection, unwrapEntity } from '@/lib/api'
+import { ApiError, formatApiError, unwrapCollection, unwrapEntity } from '@/lib/api'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
 
 describe('format helpers', () => {
@@ -13,6 +13,20 @@ describe('format helpers', () => {
 
   test('formats date', () => {
     expect(formatDate('2026-06-01T00:00:00.000Z')).toMatch(/2026/)
+  })
+})
+
+describe('formatApiError', () => {
+  test('combines base message and validation errors', () => {
+    const error = new ApiError('The given data was invalid.', 422, {
+      message: 'The file field is required.',
+      errors: {
+        file: ['The file field is required.'],
+        koordinat: ['The koordinat field is required.'],
+      },
+    })
+
+    expect(formatApiError(error)).toBe('The file field is required.\nThe koordinat field is required.')
   })
 })
 

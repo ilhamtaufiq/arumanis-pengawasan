@@ -113,6 +113,48 @@ function extractMessage(payload: unknown) {
   return null
 }
 
+function extractValidationMessages(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') {
+    return []
+  }
+
+  const errors = (payload as Record<string, unknown>).errors
+  if (!errors || typeof errors !== 'object') {
+    return []
+  }
+
+  return Object.values(errors as Record<string, unknown>).flatMap((value) => {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '')
+  })
+}
+
+export function formatApiError(error: unknown, fallback = 'Terjadi kesalahan.'): string {
+  if (error instanceof ApiError) {
+    const validationMessages = extractValidationMessages(error.payload)
+    const baseMessage = extractMessage(error.payload) || error.message
+
+    if (validationMessages.length > 0) {
+      const unique = [...new Set(validationMessages)]
+      if (baseMessage && !unique.includes(baseMessage)) {
+        return [baseMessage, ...unique].join('\n')
+      }
+      return unique.join('\n')
+    }
+
+    return baseMessage || fallback
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return fallback
+}
+
 export function unwrapEntity<T>(payload: unknown): T {
   if (!payload || typeof payload !== 'object') return payload as T
 
