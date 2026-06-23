@@ -153,6 +153,7 @@ app.get('*', async (c) => {
     return new Response(Bun.file(filePath), {
       headers: {
         'content-type': contentTypeFor(filePath),
+        ...cacheHeadersFor(requestPath),
       },
     })
   }
@@ -162,6 +163,7 @@ app.get('*', async (c) => {
     return new Response(Bun.file(indexPath), {
       headers: {
         'content-type': 'text/html; charset=utf-8',
+        ...cacheHeadersFor('/index.html'),
       },
     })
   }
@@ -281,6 +283,35 @@ function filterResponseHeaders(headers: Headers) {
     next.set(key, value)
   }
   return next
+}
+
+function cacheHeadersFor(requestPath: string): Record<string, string> {
+  const normalized = requestPath.toLowerCase()
+
+  if (
+    normalized === '/'
+    || normalized.endsWith('.html')
+    || normalized.endsWith('/index.html')
+    || normalized.endsWith('version.json')
+  ) {
+    return {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+    }
+  }
+
+  if (extname(normalized)) {
+    return {
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    }
+  }
+
+  return {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  }
 }
 
 function contentTypeFor(filePath: string) {

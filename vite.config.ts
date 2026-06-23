@@ -1,8 +1,12 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const PUBLIC_BASE = '/pengawasan'
+const appVersion = process.env.npm_package_version || '1.0.0'
+const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const builtAt = new Date().toISOString()
 
 function redirectRootToBase(): Plugin {
   return {
@@ -33,7 +37,31 @@ function redirectRootToBase(): Plugin {
 
 export default defineConfig({
   base: `${PUBLIC_BASE}/`,
-  plugins: [react(), redirectRootToBase()],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __APP_BUILD_ID__: JSON.stringify(buildId),
+  },
+  plugins: [
+    react(),
+    redirectRootToBase(),
+    {
+      name: 'generate-version-json',
+      transformIndexHtml(html) {
+        const metaTags = `
+    <meta name="app-version" content="${appVersion}" />
+    <meta name="app-build-id" content="${buildId}" />
+    <meta name="app-built-at" content="${builtAt}" />`
+
+        return html.replace('</head>', `${metaTags}\n</head>`)
+      },
+      closeBundle() {
+        writeFileSync(
+          resolve(process.cwd(), 'dist/version.json'),
+          JSON.stringify({ version: appVersion, buildId, builtAt }, null, 2),
+        )
+      },
+    },
+  ],
   resolve: {
     alias: {
       '@': resolve(process.cwd(), 'src'),

@@ -5,6 +5,48 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arumanis • Air Minum &amp; Sanitasi</title>
     <meta name="description" content="Arumanis dashboard pengawasan berbasis Bun untuk backend apiamis" />
+    <script>
+      (function () {
+        try {
+          var servedMeta = document.querySelector('meta[name="app-build-id"]');
+          var servedId = servedMeta && servedMeta.content;
+          if (!servedId) return;
+
+          var storageKey = 'pengawas-app-build-id';
+          var lastKnown = localStorage.getItem(storageKey);
+
+          function hardReload() {
+            var url = new URL(window.location.href);
+            url.searchParams.set('_cb', Date.now().toString(36));
+            window.location.replace(url.toString());
+          }
+
+          function clearClientCaches() {
+            if ('caches' in window) {
+              caches.keys().then(function (names) {
+                return Promise.all(names.map(function (name) { return caches.delete(name); }));
+              }).catch(function () {});
+            }
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
+              }).catch(function () {});
+            }
+          }
+
+          if (lastKnown && lastKnown !== servedId) {
+            localStorage.setItem(storageKey, servedId);
+            clearClientCaches();
+            hardReload();
+            return;
+          }
+
+          if (servedId) {
+            localStorage.setItem(storageKey, servedId);
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

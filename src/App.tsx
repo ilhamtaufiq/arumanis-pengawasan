@@ -8,6 +8,8 @@ import { logout, me } from '@/lib/api'
 const DashboardPage = lazy(async () => ({ default: (await import('@/pages/DashboardPage')).DashboardPage }))
 const LoginPage = lazy(async () => ({ default: (await import('@/pages/LoginPage')).LoginPage }))
 const NotFoundPage = lazy(async () => ({ default: (await import('@/pages/NotFoundPage')).NotFoundPage }))
+const ForbiddenPage = lazy(async () => ({ default: (await import('@/pages/ForbiddenPage')).ForbiddenPage }))
+const ErrorPage = lazy(async () => ({ default: (await import('@/pages/ErrorPage')).ErrorPage }))
 const GuidePage = lazy(async () => ({ default: (await import('@/pages/GuidePage')).GuidePage }))
 const PekerjaanDetailPage = lazy(
   async () => ({ default: (await import('@/pages/PekerjaanDetailPage')).PekerjaanDetailPage }),
@@ -31,6 +33,8 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/sign-in" element={<LoginPage />} />
+        <Route path="/forbidden" element={<ForbiddenPage />} />
+        <Route path="/error" element={<ErrorPage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/pekerjaan" element={<PekerjaanPage />} />
@@ -38,8 +42,8 @@ export function App() {
           <Route path="/tiket" element={<TiketPage />} />
           <Route path="/panduan" element={<GuidePage />} />
           <Route path="/profile" element={<ProfilePage />} />
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Suspense>
   )
