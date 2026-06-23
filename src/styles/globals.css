@@ -273,6 +273,37 @@ button {
   flex-direction: column;
 }
 
+.impersonate-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--border);
+  background: #fbbf24;
+  color: #111111;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.impersonate-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.impersonate-banner__icon {
+  flex-shrink: 0;
+}
+
+.impersonate-banner__action {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .topbar {
   border-bottom: 2px solid var(--border);
   background: var(--background);

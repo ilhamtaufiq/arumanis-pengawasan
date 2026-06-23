@@ -7,15 +7,26 @@ const API_BASE = (Bun.env.APIAMIS_BASE_URL || 'http://apiamis.test/api').replace
 const PORT = Number(Bun.env.PORT || '3000')
 const COOKIE_NAME = Bun.env.SESSION_COOKIE_NAME || 'pengawas_session'
 const COOKIE_SECURE = `${Bun.env.SESSION_COOKIE_SECURE || 'false'}` === 'true'
-const COOKIE_PATH = Bun.env.SESSION_COOKIE_PATH || '/pengawasan'
-const PUBLIC_BASE_PATH = (Bun.env.APP_PUBLIC_BASE_PATH || '/pengawasan').replace(/\/$/, '') || '/pengawasan'
+const rawCookiePath = Bun.env.SESSION_COOKIE_PATH
+const COOKIE_PATH = (rawCookiePath != null && rawCookiePath !== '' ? rawCookiePath : '/pengawasan').replace(/\/$/, '') || '/'
+const rawBase = Bun.env.APP_PUBLIC_BASE_PATH
+const PUBLIC_BASE_PATH = (rawBase != null && rawBase !== '' ? rawBase : '/pengawasan').replace(/\/$/, '')
 const DIST_DIR = resolve(process.cwd(), 'dist')
 
 const app = new Hono()
 
-app.get('/', (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+const isProd = Bun.env.BUN_ENV === 'production' || Bun.env.NODE_ENV === 'production'
 
-app.get(`${PUBLIC_BASE_PATH}`, (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+// Avoid root->base redirect in production. In stripping-proxy deploys (common for subpath),
+// the server sees '/' for the mounted app entrypoint; redirecting to PUBLIC_BASE_PATH
+// causes ERR_TOO_MANY_REDIRECTS. Dev still gets the convenience redirect.
+if (!isProd) {
+  const redirectTarget = PUBLIC_BASE_PATH ? `${PUBLIC_BASE_PATH}/` : '/'
+  app.get('/', (c) => c.redirect(redirectTarget))
+  if (PUBLIC_BASE_PATH && PUBLIC_BASE_PATH !== '/') {
+    app.get(`${PUBLIC_BASE_PATH}`, (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+  }
+}
 
 for (const prefix of ['', PUBLIC_BASE_PATH]) {
   app.get(`${prefix}/health`, (c) => {
@@ -29,7 +40,8 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
 
   app.get(`${prefix}/oauth-callback`, (c) => {
     const url = new URL(c.req.url)
-    url.pathname = `${PUBLIC_BASE_PATH}/login`
+    const loginPath = PUBLIC_BASE_PATH ? `${PUBLIC_BASE_PATH}/login` : '/login'
+    url.pathname = loginPath
     return c.redirect(url.toString())
   })
 
@@ -187,7 +199,7 @@ async function safeParseResponse(response: Response) {
 }
 
 function normalizeRequestPath(pathname: string) {
-  if (!pathname.startsWith(PUBLIC_BASE_PATH)) {
+  if (!PUBLIC_BASE_PATH || !pathname.startsWith(PUBLIC_BASE_PATH)) {
     return pathname
   }
 

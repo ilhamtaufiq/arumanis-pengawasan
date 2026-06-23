@@ -1,5 +1,6 @@
 import type { AuthUser } from '@/lib/types'
 import { AnchorButton, Button, cn, WelcomeModal } from '@/components/ui'
+import { ImpersonateBanner } from '@/components/ImpersonateBanner'
 import {
   ClipboardList,
   LayoutDashboard,
@@ -122,6 +123,7 @@ export function AppLayout({
       </aside>
 
       <div className="main-panel">
+        <ImpersonateBanner />
         <header className="topbar">
           <div className="topbar-left">
             <Button
