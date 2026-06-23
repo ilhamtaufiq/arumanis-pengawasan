@@ -627,7 +627,7 @@ export function PekerjaanDetailPage() {
       if (input.penerima) {
         formData.append('penerima_id', String(input.penerima.id))
       }
-      formData.append('image', input.file)
+      formData.append('file', input.file)
       return createFoto(formData)
     },
     onSuccess: async () => {
