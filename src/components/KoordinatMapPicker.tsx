@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, Map as MapIcon } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { L } from '@/lib/leaflet-icon'
-import { DEFAULT_MAP_CENTER, formatKoordinat, parseKoordinatString } from '@/lib/koordinat-utils'
+import { DEFAULT_MAP_CENTER, formatKoordinat, parseKoordinatLoose } from '@/lib/koordinat-utils'
 import { Button } from '@/components/ui'
 
 type KoordinatMapPickerProps = {
@@ -35,7 +35,7 @@ export function KoordinatMapPicker({
       markerRef.current = null
     }
 
-    const parsed = parseKoordinatString(value)
+    const parsed = parseKoordinatLoose(value)
     const center = parsed ?? defaultCenter
     const zoom = parsed ? 16 : 12
 
@@ -81,7 +81,7 @@ export function KoordinatMapPicker({
       return
     }
 
-    const parsed = parseKoordinatString(value)
+    const parsed = parseKoordinatLoose(value)
     if (!parsed) {
       markerRef.current?.remove()
       markerRef.current = null

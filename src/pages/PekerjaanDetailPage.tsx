@@ -24,6 +24,7 @@ import {
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, progressTone } from '@/lib/format'
 import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
 import { extractCoordinates } from '@/lib/image-gps-utils'
+import { formatKoordinatDisplay } from '@/lib/koordinat-utils'
 import {
   AnchorButton,
   Badge,
@@ -782,7 +783,7 @@ export function PekerjaanDetailPage() {
         if (foto) {
           allPhotos.push({
             foto,
-            koordinat: foto.koordinat || '',
+            koordinat: formatKoordinatDisplay(foto.koordinat),
             penerima: output.penerima_is_optional ? 'Komunal' : 'Individual',
             komponen: output.komponen,
             level: slot,
@@ -796,7 +797,7 @@ export function PekerjaanDetailPage() {
       if (!matrixFotoIds.has(foto.id)) {
         allPhotos.push({
           foto,
-          koordinat: foto.koordinat || '',
+          koordinat: formatKoordinatDisplay(foto.koordinat),
           penerima: '-',
           komponen: foto.komponen?.komponen || 'Lainnya',
           level: foto.keterangan || '-',
@@ -884,7 +885,7 @@ export function PekerjaanDetailPage() {
               <td style="border: 1px solid #000; padding: 4px; text-align: center; vertical-align: top;">
                 <div style="margin-bottom: 4px; border-bottom: 1px solid #eee; padding-bottom: 4px;">
                   <img src="${foto.foto_url}" style="width: 70px; height: 70px; object-fit: cover;" onerror="this.style.display='none'" />
-                  <div style="font-size: 7px; color: #666; margin-top: 2px; word-break: break-all; max-width: 80px;">${foto.koordinat || ''}</div>
+                  <div style="font-size: 7px; color: #666; margin-top: 2px; word-break: break-all; max-width: 80px;">${formatKoordinatDisplay(foto.koordinat)}</div>
                 </div>
               </td>
             `
@@ -2032,7 +2033,8 @@ export function PekerjaanDetailPage() {
                         <span className="preview-detail-muted">Slot:</span> <strong>{currentPreviewFoto.keterangan || '-'}</strong>
                       </div>
                       <div>
-                        <span className="preview-detail-muted">Koordinat:</span> <strong>{currentPreviewFoto.koordinat || '-'}</strong>
+                        <span className="preview-detail-muted">Koordinat:</span>{' '}
+                        <strong>{formatKoordinatDisplay(currentPreviewFoto.koordinat)}</strong>
                       </div>
                       <div>
                         <span className="preview-detail-muted">Validasi:</span>{' '}
