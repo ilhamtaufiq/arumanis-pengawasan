@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, Check, ChevronDown, Edit3, FileText, MapPin, MessageSquareText, Printer, RefreshCcw, Save, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, Check, ChevronDown, Edit3, FileText, MessageSquareText, Printer, RefreshCcw, Save, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
   createFoto,
   createOutput,
@@ -21,6 +21,7 @@ import {
   updateProgress,
 } from '@/lib/api'
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, progressTone } from '@/lib/format'
+import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
 import { extractCoordinates } from '@/lib/image-gps-utils'
 import {
   AnchorButton,
@@ -494,27 +495,6 @@ export function PekerjaanDetailPage() {
     setExtractionStatus(null)
     if (uploadInputRef.current) {
       uploadInputRef.current.value = ''
-    }
-  }
-
-  function handleGetLocation() {
-    setExtractionStatus('Mendapatkan lokasi dari GPS...')
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          setUploadKoordinat(`${latitude}, ${longitude}`)
-          setExtractionStatus('Lokasi berhasil didapatkan dari GPS.')
-        },
-        (error) => {
-          console.error('Error getting location:', error)
-          setExtractionStatus('Gagal mendapatkan lokasi dari GPS.')
-          alert('Gagal mendapatkan lokasi. Pastikan GPS aktif.')
-        }
-      )
-    } else {
-      setExtractionStatus('Browser tidak mendukung geolocation.')
-      alert('Browser tidak mendukung geolocation')
     }
   }
 
@@ -1927,19 +1907,11 @@ export function PekerjaanDetailPage() {
               <div className="upload-modal-content">
                 <div className="neo-surface neo-surface--highlight">
                   <div className="upload-section-title">Koordinat GPS</div>
-                  <div className="upload-gps-row">
-                    <input
-                      type="text"
-                      className="neo-input neo-input--flex"
-                      placeholder="-6.123456, 106.123456"
-                      value={uploadKoordinat}
-                      onChange={(e) => setUploadKoordinat(e.target.value)}
-                    />
-                    <Button type="button" variant="neutral" onClick={handleGetLocation}>
-                      <MapPin size={16} className="map-pin-icon" />
-                      GPS
-                    </Button>
-                  </div>
+                  <KoordinatMapPicker
+                    value={uploadKoordinat}
+                    onChange={setUploadKoordinat}
+                    onStatusChange={setExtractionStatus}
+                  />
                   {extractionStatus ? <div className="upload-status">{extractionStatus}</div> : null}
                 </div>
 
