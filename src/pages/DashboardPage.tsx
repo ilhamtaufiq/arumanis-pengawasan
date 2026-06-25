@@ -2,18 +2,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ApiError, getPekerjaanList } from '@/lib/api'
+import { getPengawasPublicPath, redirectToMainAppSignIn } from '@/lib/sso-token'
 import { formatNumber, formatPercent } from '@/lib/format'
 import { AnchorButton, Badge, Button, EmptyState, MetricCard, SectionHeader, Spinner, Surface } from '@/components/ui'
-
-type FotoStatus = 'belum_ada_foto' | 'belum_selesai' | 'selesai'
-
-function resolveFotoStatus(item: { foto_status?: FotoStatus | null; foto_count?: number | null }) {
-  if (item.foto_status === 'belum_ada_foto' || item.foto_status === 'belum_selesai' || item.foto_status === 'selesai') {
-    return item.foto_status
-  }
-
-  return Number(item.foto_count ?? 0) <= 0 ? 'belum_ada_foto' : 'belum_selesai'
-}
+import { resolveFotoCount, resolveFotoStatus } from '@/lib/foto-status'
+import { getEstimasiFisik, getEstimasiFisikDeviasi, getEstimasiKeuangan } from '@/lib/progress-estimasi-metrics'
 
 export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -51,18 +44,18 @@ export function DashboardPage() {
   }, [pekerjaanData])
 
   const totalPekerjaan = filteredPekerjaan.length
-  const belumProgressCount = filteredPekerjaan.filter((item) => Number(item.progress_total ?? 0) <= 0).length
+  const belumProgressCount = filteredPekerjaan.filter((item) => getEstimasiFisik(item) <= 0).length
   const belumAdaFotoCount = filteredPekerjaan.filter((item) => resolveFotoStatus(item) === 'belum_ada_foto').length
   const belumSelesaiFotoCount = filteredPekerjaan.filter((item) => resolveFotoStatus(item) === 'belum_selesai').length
   const fotoBelumLengkapCount = belumAdaFotoCount + belumSelesaiFotoCount
-  const deviasiCount = filteredPekerjaan.filter((item) => Math.abs(Number(item.deviasi ?? 0)) > 0.01).length
+  const deviasiCount = filteredPekerjaan.filter((item) => Math.abs(getEstimasiFisikDeviasi(item)) > 0.01).length
 
   const perhatianList = useMemo(
     () =>
       filteredPekerjaan
         .map((item) => {
-          const progress = Number(item.progress_total ?? 0)
-          const deviasi = Number(item.deviasi ?? 0)
+          const progress = getEstimasiFisik(item)
+          const deviasi = getEstimasiFisikDeviasi(item)
           const fotoStatus = resolveFotoStatus(item)
 
           return {
@@ -86,7 +79,7 @@ export function DashboardPage() {
     <div className="stack">
       <SectionHeader
         title="Ringkasan pekerjaan diawasi"
-        description="Ikhtisar paket yang diawasi akun ini, dengan indikator progress, deviasi, dan foto."
+        description="Ikhtisar paket yang diawasi akun ini, dengan progress estimasi fisik & keuangan, deviasi, dan foto."
         action={
           <div className="toolbar">
             <form
@@ -151,7 +144,16 @@ export function DashboardPage() {
                     Coba lagi
                   </Button>
                   {pekerjaanError?.status === 401 ? (
-                    <Button type="button" variant="primary" size="sm" onClick={() => window.location.assign(`${import.meta.env.BASE_URL}login`)}>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() =>
+                        redirectToMainAppSignIn(
+                          getPengawasPublicPath(window.location.pathname, window.location.search),
+                        )
+                      }
+                    >
                       Masuk ulang
                     </Button>
                   ) : null}
@@ -165,7 +167,7 @@ export function DashboardPage() {
             <MetricCard
               label="Belum isi progress"
               value={formatNumber(belumProgressCount)}
-              hint="Perlu update progress pekerjaan"
+              hint="Belum ada realisasi fisik estimasi"
               tone={belumProgressCount > 0 ? 'warning' : 'success'}
             />
             <MetricCard
@@ -185,7 +187,10 @@ export function DashboardPage() {
       </div>
 
       <Surface className="panel">
-        <SectionHeader title="Pekerjaan yang diawas" description="Daftar paket dengan status progress, deviasi, dan foto." />
+        <SectionHeader
+          title="Pekerjaan yang diawas"
+          description="Progress fisik & keuangan dari estimasi (bukan laporan mingguan RAB)."
+        />
         {pekerjaanQuery.isPending ? (
           <div className="empty-state">
             <Spinner />
@@ -203,7 +208,8 @@ export function DashboardPage() {
               <thead>
                 <tr>
                   <th>Paket</th>
-                  <th>Progress</th>
+                  <th>Fisik</th>
+                  <th>Keuangan</th>
                   <th>Deviasi</th>
                   <th>Foto</th>
                   <th>Catatan</th>
@@ -212,13 +218,15 @@ export function DashboardPage() {
               </thead>
               <tbody>
                 {filteredPekerjaan.map((item) => {
-                  const progress = Number(item.progress_total ?? 0)
-                  const deviasi = Number(item.deviasi ?? 0)
+                  const progressFisik = getEstimasiFisik(item)
+                  const progressKeuangan = getEstimasiKeuangan(item)
+                  const deviasi = getEstimasiFisikDeviasi(item)
                   const fotoStatus = resolveFotoStatus(item)
-                  const fotoCount = Number(item.foto_count ?? 0)
+                  const fotoCount = resolveFotoCount(item)
                   const fotoRequiredCount = Number(item.foto_required_count ?? 0)
                   const issues = [
-                    progress <= 0 ? 'Progress' : null,
+                    progressFisik <= 0 ? 'Fisik' : null,
+                    progressKeuangan <= 0 ? 'Keuangan' : null,
                     Math.abs(deviasi) > 0.01 ? 'Deviasi' : null,
                     fotoStatus === 'belum_ada_foto' ? 'Belum ada foto' : null,
                     fotoStatus === 'belum_selesai' ? 'Belum Selesai' : null,
@@ -226,7 +234,7 @@ export function DashboardPage() {
 
                   return (
                     <tr key={item.id}>
-                      <td>
+                      <td data-label="Paket">
                         <div className="table-title">
                           <Link to={`/pekerjaan/${item.id}`}>{item.nama_paket}</Link>
                           <div className="table-subtitle">
@@ -234,21 +242,28 @@ export function DashboardPage() {
                           </div>
                         </div>
                       </td>
-                      <td>
-                        {progress > 0 ? (
-                          <Badge tone="success">{formatPercent(progress)}</Badge>
+                      <td data-label="Fisik">
+                        {progressFisik > 0 ? (
+                          <Badge tone="success">{formatPercent(progressFisik)}</Badge>
                         ) : (
                           <Badge tone="warning">Belum diisi</Badge>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Keuangan">
+                        {progressKeuangan > 0 ? (
+                          <Badge tone="success">{formatPercent(progressKeuangan)}</Badge>
+                        ) : (
+                          <Badge tone="warning">Belum diisi</Badge>
+                        )}
+                      </td>
+                      <td data-label="Deviasi">
                         {Math.abs(deviasi) > 0.01 ? (
                           <Badge tone={deviasi < 0 ? 'danger' : 'success'}>{formatPercent(deviasi)}</Badge>
                         ) : (
                           <Badge tone="neutral">0%</Badge>
                         )}
                       </td>
-                      <td>
+                      <td data-label="Foto">
                         {fotoStatus === 'selesai' ? (
                           <Badge tone="success">
                             {formatNumber(fotoCount)} foto
@@ -266,7 +281,7 @@ export function DashboardPage() {
                           </div>
                         ) : null}
                       </td>
-                      <td>
+                      <td data-label="Catatan">
                         <div className="dashboard-issues">
                           {issues.map((issue) => (
                             <Badge key={issue} tone="warning">
@@ -276,7 +291,7 @@ export function DashboardPage() {
                           {!issues.length ? <Badge tone="success">Aman</Badge> : null}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Aksi">
                         <AnchorButton variant="neutral" to={`/pekerjaan/${item.id}`} className="neo-button--sm">
                           Detail
                         </AnchorButton>
@@ -303,7 +318,8 @@ export function DashboardPage() {
                   <span>{entry.item.kecamatan?.nama_kecamatan || entry.item.desa?.nama_desa || '-'}</span>
                 </div>
                   <div className="dashboard-issues">
-                    {entry.progress <= 0 ? <Badge tone="warning">Progress</Badge> : null}
+                    {getEstimasiFisik(entry.item) <= 0 ? <Badge tone="warning">Fisik</Badge> : null}
+                    {getEstimasiKeuangan(entry.item) <= 0 ? <Badge tone="warning">Keuangan</Badge> : null}
                     {Math.abs(entry.deviasi) > 0.01 ? (
                       <Badge tone={entry.deviasi < 0 ? 'danger' : 'success'}>Deviasi {formatPercent(entry.deviasi)}</Badge>
                     ) : null}

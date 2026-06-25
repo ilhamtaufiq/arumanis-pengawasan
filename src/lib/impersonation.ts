@@ -1,13 +1,14 @@
+import { syncAuthToken } from '@/lib/api'
+import { getMainAppDashboardUrl, normalizeBearerToken } from '@/lib/sso-token'
+
 const ACCESS_TOKEN_COOKIE = 'thisisjustarandomstring'
 const USER_DATA_COOKIE = 'auth_user_data'
 const IMPERSONATOR_COOKIE = 'auth_impersonator_data'
 const DEFAULT_MAX_AGE = 60 * 60 * 24 * 7
 
-// Cookie path should preferably match the app mount point so it works correctly
-// both at root and under /pengawasan (or whatever APP_PUBLIC_BASE_PATH).
 const COOKIE_PATH = (() => {
   try {
-    const base = (import.meta as any).env?.BASE_URL || '/'
+    const base = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL || '/'
     const normalized = base.replace(/\/$/, '') || ''
     return normalized || '/'
   } catch {
@@ -76,19 +77,22 @@ export function isImpersonating(): boolean {
   return getImpersonatorState() !== null
 }
 
-export function stopImpersonating(redirectTo = '/') {
+export async function stopImpersonating(): Promise<boolean> {
   const impersonator = getImpersonatorState()
   if (!impersonator) return false
 
+  const adminToken = normalizeBearerToken(impersonator.token)
+
+  try {
+    await syncAuthToken(adminToken)
+  } catch {
+    // Continue restoring client cookies even if BFF sync fails.
+  }
+
   setCookie(USER_DATA_COOKIE, JSON.stringify(impersonator.user))
-  setCookie(ACCESS_TOKEN_COOKIE, JSON.stringify(impersonator.token))
+  setCookie(ACCESS_TOKEN_COOKIE, JSON.stringify(adminToken))
   removeCookie(IMPERSONATOR_COOKIE)
 
-  // Use full path so it works with subpath deployments (basename).
-  // Hard navigation because we changed auth-related cookies.
-  const base = (import.meta as any).env?.BASE_URL || '/'
-  const target = redirectTo.startsWith('/') ? redirectTo : `/${redirectTo}`
-  const finalUrl = `${base.replace(/\/$/, '')}${target}`.replace(/\/$/, '') || '/'
-  window.location.assign(finalUrl)
+  window.location.replace(getMainAppDashboardUrl())
   return true
 }

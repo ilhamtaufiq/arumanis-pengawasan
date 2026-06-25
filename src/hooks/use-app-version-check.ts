@@ -5,7 +5,6 @@ import {
   getServedBuildInfoFromDOM,
   hardReloadApp,
   hasNewBuildAvailable,
-  rememberBuildId,
   type AppBuildInfo,
 } from '@/lib/app-cache'
 
@@ -47,7 +46,6 @@ export function useAppVersionCheck() {
       const servedFromHtml = getServedBuildInfoFromDOM()
 
       if (servedFromHtml && servedFromHtml.buildId !== embedded.buildId) {
-        rememberBuildId(servedFromHtml.buildId)
         setState((current) => ({
           ...current,
           embedded,
@@ -69,8 +67,6 @@ export function useAppVersionCheck() {
         }))
         return
       }
-
-      rememberBuildId(remote.buildId)
 
       if (hasNewBuildAvailable(embedded, remote)) {
         setState({

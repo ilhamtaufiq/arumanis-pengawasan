@@ -27,18 +27,18 @@ const toc = [
 const loginInfo = [
   {
     icon: LogIn,
-    title: 'Login Manual',
-    desc: 'Buka /pengawasan/login. Masukkan email & password akun apiamis. Setelah sukses, redirect ke halaman sebelumnya.',
+    title: 'Masuk via Arumanis',
+    desc: 'Panel pengawasan tidak punya form login sendiri. Masuk lewat Arumanis (/sign-in), lalu otomatis dialihkan ke /pengawasan.',
   },
   {
     icon: Shield,
-    title: 'Login SSO',
-    desc: 'Jika URL berisi ?token=... atau ?access_token=..., sistem otomatis sinkron. Tampil layar "Menyinkronkan sesi SSO...".',
+    title: 'SSO Token',
+    desc: 'Saat masuk dari Arumanis, URL berisi ?token=... dan sistem otomatis sinkron. Tampil layar "Menyinkronkan sesi SSO...".',
   },
   {
     icon: Users,
     title: 'Sesi & Logout',
-    desc: 'Sesi via httpOnly cookie (pengawas_session). Logout lewat tombol Keluar di sidebar footer. Redirect ke login.',
+    desc: 'Sesi via httpOnly cookie (pengawas_session). Logout lewat tombol Keluar di sidebar — kembali ke login Arumanis.',
   },
 ]
 
@@ -205,7 +205,7 @@ const errorScenarios = [
 const faqs = [
   {
     q: 'Bagaimana cara login?',
-    a: 'Gunakan /pengawasan/login dengan email & password apiamis. Atau pakai SSO via parameter token di URL.',
+    a: 'Masuk lewat Arumanis (/sign-in). Setelah login, pengguna pengawas otomatis dialihkan ke panel pengawasan via SSO.',
   },
   {
     q: 'Apa bedanya Komunal dan Individu?',
@@ -286,9 +286,9 @@ export function GuidePage() {
             })}
           </div>
           <div className="guide-actions guide-actions--spaced">
-            <AnchorButton to="/login" variant="neutral">
-              Buka Halaman Login
-            </AnchorButton>
+            <a className="neo-button neo-button--neutral" href="/sign-in">
+              Masuk via Arumanis
+            </a>
           </div>
         </Surface>
       </div>
@@ -456,7 +456,7 @@ export function GuidePage() {
             ))}
           </div>
           <p className="section-description guide-note-spaced">
-            Untuk error 401, aplikasi otomatis mengarahkan ke login. Selalu pastikan koneksi stabil saat upload.
+            Untuk error 401, gunakan "Masuk ulang" untuk kembali ke Arumanis. Selalu pastikan koneksi stabil saat upload.
           </p>
         </Surface>
       </div>

@@ -1,8 +1,11 @@
 import type { AuthUser } from '@/lib/types'
 import { AnchorButton, Button, cn, WelcomeModal } from '@/components/ui'
+import { BannerNotification } from '@/components/BannerNotification'
 import { ImpersonateBanner } from '@/components/ImpersonateBanner'
+import { NotificationBell } from '@/components/NotificationBell'
 import {
   ClipboardList,
+  FileSpreadsheet,
   LayoutDashboard,
   LogOut,
   MessageSquareText,
@@ -17,6 +20,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/pekerjaan', label: 'Pekerjaan', icon: ClipboardList },
+  { to: '/buat-laporan', label: 'Buat Laporan', icon: FileSpreadsheet },
   { to: '/tiket', label: 'Tiket', icon: MessageSquareText },
   { to: '/panduan', label: 'Panduan', icon: BookOpenText },
   { to: '/profile', label: 'Profil', icon: UserCircle2 },
@@ -25,9 +29,11 @@ const navItems = [
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/pekerjaan': 'Daftar Pekerjaan',
+  '/buat-laporan': 'Buat Laporan Mingguan',
   '/tiket': 'Tiket & Isu Lapangan',
   '/panduan': 'Panduan Pengguna',
   '/profile': 'Profil Pengguna',
+  '/notifikasi': 'Notifikasi',
 }
 
 function getPageTitle(pathname: string) {
@@ -35,6 +41,7 @@ function getPageTitle(pathname: string) {
   if (pageTitles[pathname]) return pageTitles[pathname]
   // detail pekerjaan
   if (pathname.startsWith('/pekerjaan/')) return 'Detail Pekerjaan'
+  if (pathname.startsWith('/buat-laporan/')) return 'Form Laporan Mingguan'
   return 'Pengawasan'
 }
 
@@ -141,6 +148,9 @@ export function AppLayout({
               <h1 className="topbar-title">{currentTitle}</h1>
             </div>
           </div>
+          <div className="topbar-actions">
+            <NotificationBell />
+          </div>
           <div className="topbar-user">
             <div className="topbar-user-name">{user.name}</div>
             <div className="topbar-user-role">
@@ -154,6 +164,8 @@ export function AppLayout({
 
         <main className="page-content">{children ?? <Outlet />}</main>
       </div>
+
+      <BannerNotification />
 
       <WelcomeModal
         open={welcomeOpen}

@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { existsSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
+import { resolveRootRedirectLocation } from '../src/lib/sso-token'
 
 const API_BASE = (Bun.env.APIAMIS_BASE_URL || 'http://apiamis.test/api').replace(/\/$/, '')
 const PORT = Number(Bun.env.PORT || '3000')
@@ -21,21 +22,35 @@ const isProd = Bun.env.BUN_ENV === 'production' || Bun.env.NODE_ENV === 'product
 // the server sees '/' for the mounted app entrypoint; redirecting to PUBLIC_BASE_PATH
 // causes ERR_TOO_MANY_REDIRECTS. Dev still gets the convenience redirect.
 if (!isProd) {
-  const redirectTarget = PUBLIC_BASE_PATH ? `${PUBLIC_BASE_PATH}/` : '/'
-  app.get('/', (c) => c.redirect(redirectTarget))
+  const redirectRoot = (c: Context) => {
+    const url = new URL(c.req.url)
+    const location = resolveRootRedirectLocation(
+      PUBLIC_BASE_PATH || '/',
+      url.pathname,
+      url.search.slice(1),
+    )
+    return c.redirect(location)
+  }
+
+  app.get('/', redirectRoot)
   if (PUBLIC_BASE_PATH && PUBLIC_BASE_PATH !== '/') {
-    app.get(`${PUBLIC_BASE_PATH}`, (c) => c.redirect(`${PUBLIC_BASE_PATH}/`))
+    app.get(`${PUBLIC_BASE_PATH}`, redirectRoot)
   }
 }
 
 for (const prefix of ['', PUBLIC_BASE_PATH]) {
   app.get(`${prefix}/health`, (c) => {
-    return c.json({
+    const payload: Record<string, string | boolean> = {
       ok: true,
       env: Bun.env.BUN_ENV || 'development',
-      apiBase: API_BASE,
       now: new Date().toISOString(),
-    })
+    }
+
+    if (!isProd) {
+      payload.apiBase = API_BASE
+    }
+
+    return c.json(payload)
   })
 
   app.get(`${prefix}/oauth-callback`, (c) => {
@@ -46,6 +61,10 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
   })
 
   app.post(`${prefix}/bff/auth/login`, async (c) => {
+    if (isProd) {
+      return c.json({ message: 'Login lokal dinonaktifkan. Gunakan SSO Arumanis.' }, 403)
+    }
+
     try {
       const body = await safeJsonBody(c)
       const response = await fetch(`${API_BASE}/auth/login`, {
@@ -68,7 +87,7 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
         setCookie(c, COOKIE_NAME, token, {
           httpOnly: true,
           secure: COOKIE_SECURE,
-          sameSite: 'Lax',
+          sameSite: 'Strict',
           path: COOKIE_PATH,
         })
       }
@@ -76,23 +95,76 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
       return c.json({
         user: extractEntity(payload?.user ?? payload?.data?.user ?? payload?.data ?? payload),
       })
-    } catch (error: any) {
-      return c.json({ message: 'Login exception in BFF', error: error.message, api: `${API_BASE}/auth/login` }, 500)
+    } catch {
+      return c.json({ message: 'Login gagal' }, 500)
     }
   })
 
   app.post(`${prefix}/bff/auth/sync-token`, async (c) => {
     const body = await safeJsonBody(c)
-    if (body?.token) {
-      setCookie(c, COOKIE_NAME, body.token, {
+    const token = typeof body?.token === 'string' ? body.token.trim() : ''
+
+    if (!token) {
+      return c.json({ message: 'Token tidak valid' }, 400)
+    }
+
+    const verified = await verifyToken(token)
+    if (!verified.ok) {
+      return c.json({ message: 'Token tidak valid atau kedaluwarsa' }, 401)
+    }
+
+    setCookie(c, COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'Strict',
+      path: COOKIE_PATH,
+    })
+
+    return c.json({ message: 'Sesi disinkronkan', user: verified.user })
+  })
+
+  app.post(`${prefix}/bff/auth/exchange-handoff`, async (c) => {
+    const body = await safeJsonBody(c)
+    const code = typeof body?.code === 'string' ? body.code.trim() : ''
+
+    if (!code) {
+      return c.json({ message: 'Kode handoff tidak valid' }, 400)
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/auth/handoff/exchange`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      })
+
+      const payload = await safeParseResponse(response)
+      if (!response.ok) {
+        return c.json(payload ?? { message: 'Handoff gagal' }, response.status as any)
+      }
+
+      const token = extractToken(payload)
+      if (!token) {
+        return c.json({ message: 'Token handoff tidak ditemukan' }, 500)
+      }
+
+      setCookie(c, COOKIE_NAME, token, {
         httpOnly: true,
         secure: COOKIE_SECURE,
-        sameSite: 'Lax',
+        sameSite: 'Strict',
         path: COOKIE_PATH,
       })
-      return c.json({ message: 'Sesi disinkronkan' })
+
+      return c.json({
+        user: extractEntity((payload as any)?.user ?? payload),
+        message: 'Sesi SSO berhasil disinkronkan',
+      })
+    } catch {
+      return c.json({ message: 'Handoff service unavailable' }, 502)
     }
-    return c.json({ message: 'Token tidak valid' }, 400)
   })
 
   app.get(`${prefix}/bff/auth/me`, async (c) => {
@@ -139,8 +211,8 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
     try {
       const response = await fetch(target, init)
       return relayResponse(response)
-    } catch (error: any) {
-      return c.json({ message: 'Exception in BFF proxy', error: error.message, target: target.toString() }, 500)
+    } catch {
+      return c.json({ message: 'Upstream API tidak tersedia' }, 502)
     }
   })
 }
@@ -148,14 +220,20 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
 app.get('*', async (c) => {
   const requestPath = normalizeRequestPath(c.req.path)
   const filePath = requestPath === '/' ? resolve(DIST_DIR, 'index.html') : resolve(DIST_DIR, `.${requestPath}`)
+  const extension = extname(requestPath).toLowerCase()
 
-  if (requestPath !== '/' && extname(requestPath) && existsSync(filePath)) {
+  if (requestPath !== '/' && extension && existsSync(filePath)) {
     return new Response(Bun.file(filePath), {
       headers: {
         'content-type': contentTypeFor(filePath),
         ...cacheHeadersFor(requestPath),
       },
     })
+  }
+
+  // Missing hashed chunks must 404 — never fall back to index.html (causes MIME type errors).
+  if (extension && isStaticAssetExtension(extension)) {
+    return c.text('Not Found', 404)
   }
 
   const indexPath = resolve(DIST_DIR, 'index.html')
@@ -243,8 +321,32 @@ async function forwardAuthRequest(c: Context, target: string, method: string) {
       user: extractEntity(body?.data ?? body),
       message: body?.message,
     })
-  } catch (error: any) {
-    return c.json({ message: 'Exception in forwardAuthRequest', error: error.message, target }, 500)
+  } catch {
+    return c.json({ message: 'Auth service unavailable' }, 502)
+  }
+}
+
+async function verifyToken(token: string) {
+  try {
+    const response = await fetch(`${API_BASE}/auth/me`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+
+    const payload = await safeParseResponse(response)
+    if (!response.ok) {
+      return { ok: false as const, user: null }
+    }
+
+    return {
+      ok: true as const,
+      user: extractEntity(payload),
+    }
+  } catch {
+    return { ok: false as const, user: null }
   }
 }
 
@@ -312,6 +414,10 @@ function cacheHeadersFor(requestPath: string): Record<string, string> {
     Pragma: 'no-cache',
     Expires: '0',
   }
+}
+
+function isStaticAssetExtension(extension: string) {
+  return ['.js', '.mjs', '.css', '.map', '.json', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.woff', '.woff2', '.ttf', '.eot'].includes(extension)
 }
 
 function contentTypeFor(filePath: string) {

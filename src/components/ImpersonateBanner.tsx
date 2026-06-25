@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { AlertTriangle, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { getImpersonatedUser, getImpersonatorState, stopImpersonating } from '@/lib/impersonation'
@@ -5,6 +6,7 @@ import { getImpersonatedUser, getImpersonatorState, stopImpersonating } from '@/
 export function ImpersonateBanner() {
   const impersonator = getImpersonatorState()
   const impersonatedUser = getImpersonatedUser()
+  const [isStopping, setIsStopping] = useState(false)
 
   if (!impersonator || !impersonatedUser) {
     return null
@@ -25,7 +27,11 @@ export function ImpersonateBanner() {
         variant="neutral"
         size="sm"
         className="impersonate-banner__action"
-        onClick={() => stopImpersonating()}
+        isLoading={isStopping}
+        onClick={() => {
+          setIsStopping(true)
+          void stopImpersonating().finally(() => setIsStopping(false))
+        }}
       >
         <LogOut size={16} />
         Berhenti Impersonasi

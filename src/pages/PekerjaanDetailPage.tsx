@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, Check, ChevronDown, Edit3, FileText, MessageSquareText, Printer, RefreshCcw, Save, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
   createFoto,
   createOutput,
@@ -15,17 +15,18 @@ import {
   deletePenerima,
   formatApiError,
   getPekerjaanDetail,
-  getProgressReport,
+  getPekerjaanProgressEstimasi,
   getTiketList,
   updateOutput,
   updatePenerima,
-  updateProgress,
   validateKoordinat,
 } from '@/lib/api'
-import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, progressTone } from '@/lib/format'
+import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
+import { PekerjaanProgressEstimasiTab } from '@/components/PekerjaanProgressEstimasiTab'
 import { extractCoordinates } from '@/lib/image-gps-utils'
 import { formatKoordinatDisplay } from '@/lib/koordinat-utils'
+import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@/lib/foto-status'
 import {
   AnchorButton,
   Badge,
@@ -38,14 +39,13 @@ import {
   EmptyState,
   FieldGroup,
   Input,
-  Label,
   LoadingRow,
   PhotoMatrix,
   Spinner,
   StatusChip,
   Textarea,
 } from '@/components/ui'
-import type { Foto, Output, PekerjaanDetail, Penerima, ProgressItem, ProgressReportView, Tiket } from '@/lib/types'
+import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
 
 type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'tiket'
 
@@ -116,57 +116,6 @@ const EMPTY_PENERIMA_FORM: PenerimaFormState = {
   is_komunal: false,
 }
 
-type ProgressItemFormState = {
-  nama_item: string
-  rincian_item: string
-  satuan: string
-  target_volume: string
-  harga_satuan: string
-  bobot: string
-}
-
-const EMPTY_PROGRESS_ITEM_FORM: ProgressItemFormState = {
-  nama_item: '',
-  rincian_item: '',
-  satuan: '',
-  target_volume: '',
-  harga_satuan: '',
-  bobot: '',
-}
-
-function buildProgressItemPayload(
-  item: ProgressItem,
-  index: number,
-  editedProgress: Record<string, { rencana?: string; realisasi?: string }>,
-  activeWeek: number,
-) {
-  const edits = editedProgress[`${index}`]
-  const weekData = { ...(item.weekly_data ?? {}) }
-  const weekKey = String(activeWeek)
-  const existing = weekData[weekKey] ?? {}
-  weekData[weekKey] = {
-    rencana: edits?.rencana !== undefined ? parseFloat(edits.rencana) || null : existing.rencana ?? null,
-    realisasi: edits?.realisasi !== undefined ? parseFloat(edits.realisasi) || null : existing.realisasi ?? null,
-  }
-  return {
-    nama_item: item.nama_item,
-    rincian_item: item.rincian_item,
-    satuan: item.satuan,
-    harga_satuan: item.harga_satuan,
-    bobot: item.bobot,
-    target_volume: item.target_volume,
-    weekly_data: weekData,
-  }
-}
-
-function buildProgressItemsPayload(
-  items: ProgressItem[],
-  editedProgress: Record<string, { rencana?: string; realisasi?: string }>,
-  activeWeek: number,
-) {
-  return items.map((item, index) => buildProgressItemPayload(item, index, editedProgress, activeWeek))
-}
-
 const TIKET_KATEGORI_OPTIONS = [
   { value: 'other', label: 'Umum' },
   { value: 'bug', label: 'Bug' },
@@ -213,7 +162,6 @@ export function PekerjaanDetailPage() {
   const tiketFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<DetailTab>('ringkasan')
-  const [activeWeek, setActiveWeek] = useState(1)
   const [previewPhotos, setPreviewPhotos] = useState<Foto[]>([])
   const [previewIndex, setPreviewIndex] = useState(0)
   const currentPreviewFoto = previewPhotos[previewIndex] || null
@@ -256,9 +204,6 @@ export function PekerjaanDetailPage() {
   const isKomunal = watch('is_komunal') as boolean
   const tiketKategori = watchTiket('kategori')
   const showTiketAttachment = tiketKategori === 'lapangan' || tiketKategori === 'document'
-  const [editedProgress, setEditedProgress] = useState<Record<string, { rencana?: string; realisasi?: string }>>({})
-  const [progressSaved, setProgressSaved] = useState(false)
-  const [progressItemForm, setProgressItemForm] = useState<ProgressItemFormState>(EMPTY_PROGRESS_ITEM_FORM)
   const [progressErrorMessage, setProgressErrorMessage] = useState<string | null>(null)
   const [editingOutputId, setEditingOutputId] = useState<number | null>(null)
   const [outputForm, setOutputForm] = useState({
@@ -374,12 +319,6 @@ export function PekerjaanDetailPage() {
     enabled: Number.isFinite(pekerjaanId),
   })
 
-  const progressQuery = useQuery({
-    queryKey: ['pekerjaan', 'progress', pekerjaanId],
-    queryFn: () => getProgressReport(pekerjaanId),
-    enabled: Number.isFinite(pekerjaanId),
-  })
-
   const tiketQuery = useQuery({
     queryKey: ['tiket', 'list', { pekerjaanId }],
     queryFn: () => getTiketList({ pekerjaan_id: pekerjaanId, per_page: 15 }),
@@ -387,54 +326,50 @@ export function PekerjaanDetailPage() {
   })
 
   const pekerjaan = pekerjaanQuery.data as PekerjaanDetail | undefined
-  const progressView = progressQuery.data as ProgressReportView | undefined
   const fotoList = pekerjaan?.foto ?? []
   const penerimaList = pekerjaan?.penerima ?? []
   const outputList = pekerjaan?.output ?? []
   const tiketList = tiketQuery.data?.data ?? []
   const totalFoto = fotoList.length
   const totalPenerima = penerimaList.length
-  const progressValue = Number(progressView?.totals?.total_weighted_progress ?? pekerjaan?.progress_total ?? 0)
+  const tahunAnggaran = useMemo(() => {
+    const fromKegiatan = Number(pekerjaan?.kegiatan?.tahun_anggaran)
+    return Number.isFinite(fromKegiatan) && fromKegiatan > 0 ? fromKegiatan : new Date().getFullYear()
+  }, [pekerjaan?.kegiatan?.tahun_anggaran])
+
+  const progressEstimasiQuery = useQuery({
+    queryKey: ['pekerjaan', 'progress-estimasi', pekerjaanId, tahunAnggaran],
+    queryFn: () => getPekerjaanProgressEstimasi(pekerjaanId, tahunAnggaran),
+    enabled: Number.isFinite(pekerjaanId) && Boolean(pekerjaan),
+  })
+
+  const progressValue = Number(
+    progressEstimasiQuery.data?.data?.fisik?.latest_realisasi ?? pekerjaan?.progress_total ?? 0,
+  )
   const statusFoto = resolveFotoStatus(pekerjaan)
-  const maxWeek = Math.max(1, Number(progressView?.max_minggu ?? 1))
 
   const kegiatanLabel = pickFirstText([
     pekerjaan?.kegiatan?.nama_sub_kegiatan,
     pekerjaan?.kegiatan?.nama_kegiatan,
     recordText(pekerjaan?.kegiatan, 'nama_program'),
-    progressView?.kegiatan?.nama_sub_kegiatan,
-    progressView?.kegiatan?.nama_kegiatan,
   ])
   const tahunLabel = pickFirstText([
     stringValue(pekerjaan?.kegiatan?.tahun_anggaran),
-    stringValue(progressView?.kegiatan?.tahun_anggaran),
     recordText(pekerjaan?.kegiatan, 'tahun_anggaran'),
-    recordText(progressView?.kegiatan, 'tahun_anggaran'),
   ])
   const lokasiLabel = pickFirstText([
     pekerjaan?.kecamatan?.nama_kecamatan,
     pekerjaan?.desa?.nama_desa,
-    progressView?.pekerjaan?.lokasi,
-    progressView?.pekerjaan?.kecamatan_nama,
-    progressView?.pekerjaan?.desa_nama,
   ])
   const pengawasLabel = pickFirstText([
     pekerjaan?.pengawas?.nama,
     recordText(pekerjaan, 'pengawas_nama'),
-    recordText(progressView?.pekerjaan, 'pengawas_nama'),
   ])
   const pendampingLabel = pickFirstText([
     pekerjaan?.pendamping?.nama,
     recordText(pekerjaan, 'pendamping_nama'),
-    recordText(progressView?.pekerjaan, 'pendamping_nama'),
   ])
   const sourceBadges = normalizeArray(pekerjaan?.assignment_sources)
-
-  useEffect(() => {
-    if (activeWeek > maxWeek) {
-      setActiveWeek(maxWeek)
-    }
-  }, [activeWeek, maxWeek])
 
   useEffect(() => {
     if (isKomunal) {
@@ -729,82 +664,6 @@ export function PekerjaanDetailPage() {
     },
   })
 
-  const updateProgressMutation = useMutation({
-    mutationFn: () => {
-      const items = buildProgressItemsPayload(progressView?.items ?? [], editedProgress, activeWeek)
-      return updateProgress(pekerjaanId, { items, week_count: maxWeek })
-    },
-    onSuccess: async () => {
-      setEditedProgress({})
-      setProgressSaved(true)
-      setTimeout(() => setProgressSaved(false), 2000)
-      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'progress', pekerjaanId] })
-    },
-    onError: (error) => {
-      setProgressErrorMessage(formatApiError(error, 'Gagal menyimpan progress mingguan.'))
-    },
-  })
-
-  const addProgressItemMutation = useMutation({
-    mutationFn: (input: ProgressItemFormState) => {
-      const existingItems = buildProgressItemsPayload(progressView?.items ?? [], editedProgress, activeWeek)
-      const newItem = {
-        nama_item: input.nama_item.trim(),
-        rincian_item: input.rincian_item.trim() || null,
-        satuan: input.satuan,
-        harga_satuan: input.harga_satuan.trim() ? parseFloat(input.harga_satuan) || null : null,
-        bobot: input.bobot.trim() ? parseFloat(input.bobot) || null : null,
-        target_volume: input.target_volume.trim() ? parseFloat(input.target_volume) || null : null,
-        weekly_data: {},
-      }
-      return updateProgress(pekerjaanId, { items: [...existingItems, newItem], week_count: maxWeek })
-    },
-    onSuccess: async () => {
-      setProgressItemForm(EMPTY_PROGRESS_ITEM_FORM)
-      setEditedProgress({})
-      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'progress', pekerjaanId] })
-    },
-    onError: (error) => {
-      setProgressErrorMessage(formatApiError(error, 'Gagal menambah item pekerjaan.'))
-    },
-  })
-
-  function resetProgressItemForm() {
-    setProgressItemForm(EMPTY_PROGRESS_ITEM_FORM)
-  }
-
-  function handleProgressItemSubmit(event: FormEvent) {
-    event.preventDefault()
-    if (!progressItemForm.nama_item.trim()) {
-      setProgressErrorMessage('Nama item wajib diisi.')
-      return
-    }
-    if (!progressItemForm.satuan) {
-      setProgressErrorMessage('Satuan wajib dipilih.')
-      return
-    }
-    setProgressErrorMessage(null)
-    addProgressItemMutation.mutate(progressItemForm)
-  }
-
-  function getProgressCellValue(itemIndex: number, field: 'rencana' | 'realisasi', weekData?: { rencana?: number | null; realisasi?: number | null }) {
-    const edited = editedProgress[`${itemIndex}`]?.[field]
-    if (edited !== undefined) return edited
-    const val = weekData?.[field]
-    if (val === undefined || val === null) return ''
-    return String(val)
-  }
-
-  function setProgressCell(itemIndex: number, field: 'rencana' | 'realisasi', value: string) {
-    setEditedProgress((prev) => ({
-      ...prev,
-      [`${itemIndex}`]: {
-        ...prev[`${itemIndex}`],
-        [field]: value,
-      },
-    }))
-  }
-
   function handlePrintPDF() {
     if (!fotoList.length) {
       alert('Tidak ada data untuk dicetak')
@@ -1023,9 +882,6 @@ export function PekerjaanDetailPage() {
     )
   }
 
-  const progressItems = progressView?.items ?? []
-  const weekOptions = Array.from({ length: maxWeek }, (_, index) => index + 1)
-
   return (
     <div className="stack stack--page-detail">
       {/* ─── Compact Hero ─── */}
@@ -1051,7 +907,7 @@ export function PekerjaanDetailPage() {
           <span className="detail-sep">•</span>
           <span>TA {tahunLabel}</span>
           <span className="detail-sep">•</span>
-          <span>Pagu <strong>{formatCurrency(pekerjaan.pagu ?? progressView?.pekerjaan?.pagu ?? 0)}</strong></span>
+          <span>Pagu <strong>{formatCurrency(pekerjaan.pagu ?? 0)}</strong></span>
           <span className="detail-sep">•</span>
           <div className="detail-progress-inline">
             <span>Progress</span>
@@ -1537,261 +1393,11 @@ export function PekerjaanDetailPage() {
 
       {/* ─── Tab: Progress ─── */}
       {activeTab === 'progress' ? (
-        <div className="stack stack--compact">
-          {progressQuery.isPending ? (
-            <div className="detail-section-full detail-section-loading">
-              <Spinner />
-              <span>Memuat progress...</span>
-            </div>
-          ) : progressView ? (
-            <>
-              <div className="detail-kpi-row">
-                <div className={`detail-kpi-card detail-kpi-card--info`}>
-                  <div className="detail-kpi-label">Total bobot</div>
-                  <div className="detail-kpi-value">{formatPercent(progressView.totals?.total_bobot ?? 0)}</div>
-                  <div className="detail-kpi-hint">Akumulasi bobot item</div>
-                </div>
-                {(() => {
-                  const deviasi = progressView.items?.reduce((acc, item) => {
-                    const bobot = Number(item.bobot || 0)
-                    const target = Number(item.target_volume || 0)
-                    if (target <= 0) return acc
-                    let itemPlan = 0
-                    let itemReal = 0
-                    Object.values(item.weekly_data || {}).forEach(d => {
-                      itemPlan += Number(d.rencana || 0)
-                      itemReal += Number(d.realisasi || 0)
-                    })
-                    const planPercent = (itemPlan / target) * bobot
-                    const realPercent = (itemReal / target) * bobot
-                    return acc + (realPercent - planPercent)
-                  }, 0) ?? 0
-
-                  return (
-                    <div className={`detail-kpi-card detail-kpi-card--${deviasi >= 0 ? 'success' : 'danger'}`}>
-                      <div className="detail-kpi-label">Deviasi</div>
-                      <div className="detail-kpi-value">
-                        {deviasi > 0 ? '+' : ''}{formatPercent(deviasi)}
-                      </div>
-                      <div className="detail-kpi-hint">Selisih realisasi dengan rencana</div>
-                    </div>
-                  )
-                })()}
-                <div className={`detail-kpi-card detail-kpi-card--${progressTone(progressView.totals?.total_weighted_progress ?? 0)}`}>
-                  <div className="detail-kpi-label">Progress terhitung</div>
-                  <div className="detail-kpi-value">{formatPercent(progressView.totals?.total_weighted_progress ?? 0)}</div>
-                  <div className="detail-kpi-hint">Dari komposisi progress</div>
-                </div>
-                <div className="detail-kpi-card">
-                  <div className="detail-kpi-label">Minggu</div>
-                  <div className="detail-kpi-value">{formatNumber(progressView.max_minggu ?? 0)}</div>
-                  <div className="detail-kpi-hint">Batas waktu tersedia</div>
-                </div>
-              </div>
-
-              <div className="detail-section-full">
-                <div className="detail-tab-header">
-                  <div className="detail-tab-header-left">
-                    <h2>Tambah item pekerjaan</h2>
-                    <p>
-                      {progressItems.length > 0
-                        ? 'Tambahkan item baru ke daftar progress'
-                        : 'Mulai dengan menambahkan item pekerjaan pertama'}
-                    </p>
-                  </div>
-                </div>
-
-                <form className="neo-form" onSubmit={handleProgressItemSubmit}>
-                  <div className="neo-form-grid">
-                    <FieldGroup label="Nama item">
-                      <Input
-                        value={progressItemForm.nama_item}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, nama_item: event.target.value }))
-                        }
-                        placeholder="Contoh: Pekerjaan persiapan"
-                        required
-                      />
-                    </FieldGroup>
-                    <FieldGroup label="Rincian item">
-                      <Input
-                        value={progressItemForm.rincian_item}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, rincian_item: event.target.value }))
-                        }
-                        placeholder="Detail pekerjaan (opsional)"
-                      />
-                    </FieldGroup>
-                    <FieldGroup label="Satuan">
-                      <select
-                        className="neo-input"
-                        value={progressItemForm.satuan}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, satuan: event.target.value }))
-                        }
-                        required
-                      >
-                        <option value="">Pilih satuan</option>
-                        {OUTPUT_SATUAN_OPTIONS.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </FieldGroup>
-                    <FieldGroup label="Target volume">
-                      <Input
-                        type="number"
-                        step="any"
-                        value={progressItemForm.target_volume}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, target_volume: event.target.value }))
-                        }
-                        placeholder="0"
-                      />
-                    </FieldGroup>
-                    <FieldGroup label="Bobot (%)">
-                      <Input
-                        type="number"
-                        step="any"
-                        value={progressItemForm.bobot}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, bobot: event.target.value }))
-                        }
-                        placeholder="0"
-                      />
-                    </FieldGroup>
-                    <FieldGroup label="Harga satuan">
-                      <Input
-                        type="number"
-                        step="any"
-                        value={progressItemForm.harga_satuan}
-                        onChange={(event) =>
-                          setProgressItemForm((current) => ({ ...current, harga_satuan: event.target.value }))
-                        }
-                        placeholder="0"
-                      />
-                    </FieldGroup>
-                  </div>
-
-                  <div className="neo-form-actions">
-                    <Button type="submit" isLoading={addProgressItemMutation.isPending}>
-                      Tambah item
-                    </Button>
-                    <Button type="button" variant="neutral" onClick={resetProgressItemForm}>
-                      Reset form
-                    </Button>
-                  </div>
-                </form>
-              </div>
-
-              <div className="detail-section-full">
-                <div className="detail-tab-header">
-                  <div className="detail-tab-header-left">
-                    <h2>Rincian per minggu</h2>
-                    <p>Isi kolom Rencana dan Realisasi lalu simpan</p>
-                  </div>
-                  <div className="detail-inline-controls">
-                    <Label>Minggu aktif</Label>
-                    <select
-                      className="neo-input neo-input--week"
-                      value={activeWeek}
-                      onChange={(event) => {
-                        setActiveWeek(Number(event.target.value))
-                        setEditedProgress({})
-                      }}
-                    >
-                      {weekOptions.map((week) => (
-                        <option key={week} value={week}>
-                          Minggu {week}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      size="sm"
-                      isLoading={updateProgressMutation.isPending}
-                      disabled={Object.keys(editedProgress).length === 0}
-                      onClick={() => updateProgressMutation.mutate()}
-                    >
-                      <Save size={14} />
-                      <span>Simpan</span>
-                    </Button>
-                    {progressSaved ? (
-                      <Badge tone="success"><Check size={12} /> Tersimpan</Badge>
-                    ) : null}
-                  </div>
-                </div>
-
-                {progressItems.length ? (
-                  <div className="table-wrap">
-                    <table className="neo-table">
-                      <thead>
-                        <tr>
-                          <th>Item</th>
-                          <th>Satuan</th>
-                          <th>Target</th>
-                          <th>Rencana</th>
-                          <th>Realisasi</th>
-                          <th>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {progressItems.map((item, itemIndex) => {
-                          const weekData = item.weekly_data?.[String(activeWeek)]
-                          const realisasiVal = getProgressCellValue(itemIndex, 'realisasi', weekData)
-                          const realisasiNum = Number(realisasiVal || 0)
-                          return (
-                            <tr key={`progress-item-${itemIndex}`}>
-                              <td>
-                                <div className="table-title">{item.nama_item || item.rincian_item || '-'}</div>
-                                {item.rincian_item ? <div className="table-subtitle">{item.rincian_item}</div> : null}
-                              </td>
-                              <td>{item.satuan || '-'}</td>
-                              <td>{stringValue(item.target_volume)}</td>
-                              <td>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  className="neo-input neo-input--cell"
-                                  placeholder="0"
-                                  value={getProgressCellValue(itemIndex, 'rencana', weekData)}
-                                  onChange={(e) => setProgressCell(itemIndex, 'rencana', e.target.value)}
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="number"
-                                  step="any"
-                                  className="neo-input neo-input--cell"
-                                  placeholder="0"
-                                  value={getProgressCellValue(itemIndex, 'realisasi', weekData)}
-                                  onChange={(e) => setProgressCell(itemIndex, 'realisasi', e.target.value)}
-                                />
-                              </td>
-                              <td>
-                                <Badge tone={progressTone(realisasiNum) as 'danger' | 'warning' | 'success'}>
-                                  {realisasiNum > 0 ? formatPercent(realisasiNum) : 'Belum diisi'}
-                                </Badge>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <EmptyState
-                    title="Belum ada item progress"
-                    description="Gunakan form di atas untuk menambahkan item pekerjaan pertama."
-                  />
-                )}
-              </div>
-            </>
-          ) : (
-            <EmptyState title="Progress belum tersedia" description="Backend belum mengirim ringkasan progress untuk pekerjaan ini." />
-          )}
-        </div>
+        <PekerjaanProgressEstimasiTab
+          pekerjaanId={pekerjaanId}
+          tahunAnggaran={tahunAnggaran}
+          onError={setProgressErrorMessage}
+        />
       ) : null}
 
       {/* ─── Tab: Tiket ─── */}
@@ -1973,7 +1579,7 @@ export function PekerjaanDetailPage() {
 
       <AlertModal
         open={Boolean(progressErrorMessage)}
-        title="Progress gagal disimpan"
+        title="Progress estimasi"
         description={progressErrorMessage ?? undefined}
         onClose={() => setProgressErrorMessage(null)}
       />
@@ -2233,31 +1839,6 @@ export function PekerjaanDetailPage() {
   )
 }
 
-function resolveFotoStatus(detail?: Pick<PekerjaanDetail, 'foto_status' | 'foto_count' | 'foto_required_count'> | null) {
-  if (detail?.foto_status === 'belum_ada_foto' || detail?.foto_status === 'belum_selesai' || detail?.foto_status === 'selesai') {
-    return detail.foto_status
-  }
-
-  const fotoCount = Number(detail?.foto_count ?? 0)
-  const fotoRequired = Number(detail?.foto_required_count ?? 0)
-
-  if (fotoCount <= 0) {
-    return 'belum_ada_foto'
-  }
-
-  if (fotoRequired > 0 && fotoCount < fotoRequired) {
-    return 'belum_selesai'
-  }
-
-  return 'selesai'
-}
-
-function statusFotoText(status: ReturnType<typeof resolveFotoStatus>) {
-  if (status === 'belum_ada_foto') return 'Belum ada foto'
-  if (status === 'belum_selesai') return 'Belum selesai'
-  return 'Lengkap'
-}
-
 function tiketPrioritasTone(prioritas?: string | null): MetricTone {
   if (prioritas === 'high' || prioritas === 'tinggi') return 'danger'
   if (prioritas === 'medium' || prioritas === 'sedang') return 'warning'
@@ -2285,12 +1866,6 @@ function tiketKategoriLabel(kategori?: string | null) {
     other: 'Umum',
   }
   return labels[kategori || ''] || kategori || '-'
-}
-
-function statusFotoTone(status: ReturnType<typeof resolveFotoStatus>) {
-  if (status === 'belum_ada_foto') return 'warning' as const
-  if (status === 'belum_selesai') return 'danger' as const
-  return 'success' as const
 }
 
 function stringValue(value?: number | string | null) {

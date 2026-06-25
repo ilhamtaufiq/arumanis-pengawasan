@@ -1,3 +1,5 @@
+import { sanitizeLocationUrl } from '@/lib/sso-token'
+
 export const BUILD_ID_STORAGE_KEY = 'pengawas-app-build-id'
 
 export type AppBuildInfo = {
@@ -9,6 +11,9 @@ export type AppBuildInfo = {
 const CHUNK_ERROR_PATTERNS = [
   'failed to fetch dynamically imported module',
   'importing a module script failed',
+  'failed to load module script',
+  'mime type',
+  'text/html',
   'chunkloaderror',
   'loading chunk',
   'loading css chunk',
@@ -129,16 +134,11 @@ export async function hardReloadApp(): Promise<void> {
     return
   }
 
-  await clearBrowserCaches()
-
-  try {
-    await fetch(window.location.href, { cache: 'reload', mode: 'same-origin' })
-  } catch {
-    // ignore
-  }
-
-  const url = new URL(window.location.href)
+  const url = sanitizeLocationUrl(new URL(window.location.href))
   url.searchParams.set('_cb', Date.now().toString(36))
   url.searchParams.delete('_reload')
+
+  // Navigate immediately so stale lazy chunks cannot keep loading during async cache work.
+  void clearBrowserCaches()
   window.location.replace(url.toString())
 }

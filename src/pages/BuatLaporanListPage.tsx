@@ -1,19 +1,28 @@
-import { useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router-dom'
-import { ApiError, getPekerjaanList } from '@/lib/api'
-import { getPengawasPublicPath, redirectToMainAppSignIn } from '@/lib/sso-token'
-import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
-import { Badge, Button, EmptyState, ProgressFill, SectionHeader, Spinner, Surface } from '@/components/ui'
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { FileSpreadsheet } from 'lucide-react'
+import { ApiError, getPekerjaanList } from '@/lib/api'
+import { formatPercent } from '@/lib/format'
+import {
+  AnchorButton,
+  Badge,
+  Button,
+  EmptyState,
+  ProgressFill,
+  SectionHeader,
+  Spinner,
+  Surface,
+} from '@/components/ui'
 
-export function PekerjaanPage() {
+export function BuatLaporanListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [queryText, setQueryText] = useState(searchParams.get('search') || '')
   const tahun = searchParams.get('tahun') || ''
   const page = Number(searchParams.get('page') || '1')
 
   const pekerjaan = useQuery({
-    queryKey: ['pekerjaan', 'list', { tahun, search: queryText, page }],
+    queryKey: ['buat-laporan', 'list', { tahun, search: queryText, page }],
     queryFn: () =>
       getPekerjaanList({
         per_page: 20,
@@ -30,24 +39,12 @@ export function PekerjaanPage() {
   const currentPage = Number(meta?.current_page || page)
   const lastPage = Number(meta?.last_page || 1)
   const pekerjaanError = pekerjaan.error instanceof ApiError ? pekerjaan.error : null
-  const errorTitle =
-    pekerjaanError?.status === 401
-      ? 'Sesi tidak valid'
-      : pekerjaanError?.status === 403
-        ? 'Akses ditolak'
-        : 'Gagal memuat pekerjaan'
-  const errorDescription =
-    pekerjaanError?.status === 401
-      ? 'Sesi login sudah tidak terbaca oleh server. Masuk ulang untuk memuat daftar pekerjaan.'
-      : pekerjaanError?.status === 403
-        ? 'Akun ini tidak memiliki izin untuk melihat daftar pekerjaan.'
-        : pekerjaanError?.message || 'Terjadi kesalahan saat mengambil data pekerjaan dari server.'
 
   return (
     <div className="stack">
       <SectionHeader
-        title="Pekerjaan"
-        description="Daftar paket yang dapat difilter, dibuka, dan dipantau per lokasi."
+        title="Buat Laporan Mingguan"
+        description="Pilih pekerjaan untuk mengisi atau memperbarui laporan progress mingguan (RAB)."
         action={
           <form
             className="toolbar"
@@ -56,6 +53,7 @@ export function PekerjaanPage() {
               const next = new URLSearchParams(searchParams)
               if (queryText) next.set('search', queryText)
               else next.delete('search')
+              next.set('page', '1')
               setSearchParams(next)
             }}
           >
@@ -73,9 +71,13 @@ export function PekerjaanPage() {
                 const next = new URLSearchParams(searchParams)
                 if (event.target.value) next.set('tahun', event.target.value)
                 else next.delete('tahun')
+                next.set('page', '1')
                 setSearchParams(next)
               }}
             />
+            <Button type="submit" size="sm">
+              Cari
+            </Button>
           </form>
         }
       />
@@ -85,58 +87,41 @@ export function PekerjaanPage() {
           <div className="empty-state">
             <Spinner />
             <div className="empty-state-title">Memuat pekerjaan...</div>
-            <div className="empty-state-description">Mengambil data paket dari server.</div>
           </div>
         ) : pekerjaan.isError ? (
           <EmptyState
-            title={errorTitle}
-            description={errorDescription}
+            title={pekerjaanError?.status === 401 ? 'Sesi tidak valid' : 'Gagal memuat pekerjaan'}
+            description={pekerjaanError?.message || 'Terjadi kesalahan saat mengambil data.'}
             action={
-              <div className="pagination-actions pagination-actions--start">
-                <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaan.refetch()}>
-                  Coba lagi
-                </Button>
-                {pekerjaanError?.status === 401 ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="sm"
-                    onClick={() =>
-                      redirectToMainAppSignIn(
-                        getPengawasPublicPath(window.location.pathname, window.location.search),
-                      )
-                    }
-                  >
-                    Masuk ulang
-                  </Button>
-                ) : null}
-              </div>
+              <Button type="button" variant="neutral" size="sm" onClick={() => pekerjaan.refetch()}>
+                Coba lagi
+              </Button>
             }
           />
         ) : pekerjaan.data?.data?.length ? (
           <div className="table-wrap">
-            <table className="neo-table">
+            <table className="neo-table buat-laporan-table">
               <thead>
                 <tr>
                   <th>Paket</th>
+                  <th>Kegiatan</th>
                   <th>Lokasi</th>
-                  <th>Pagu</th>
                   <th>Progress</th>
-                  <th>Update</th>
+                  <th>Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {pekerjaan.data.data.map((item) => (
                   <tr key={item.id}>
-                    <td>
-                      <div className="table-title">
-                        <Link to={`/pekerjaan/${item.id}`}>{item.nama_paket}</Link>
-                        <div className="table-subtitle">{item.kode_rekening || '-'}</div>
-                      </div>
+                    <td data-label="Paket">
+                      <div className="table-title">{item.nama_paket}</div>
+                      <div className="table-subtitle">{item.kode_rekening || '-'}</div>
                     </td>
-                    <td>{item.kecamatan?.nama_kecamatan || item.desa?.nama_desa || '-'}</td>
-                    <td>{formatCurrency(item.pagu ?? 0)}</td>
-                    <td>
+                    <td data-label="Kegiatan">{item.kegiatan?.nama_sub_kegiatan || '-'}</td>
+                    <td data-label="Lokasi">
+                      {item.kecamatan?.nama_kecamatan || '-'} • {item.desa?.nama_desa || '-'}
+                    </td>
+                    <td data-label="Progress">
                       <div className="progress-inline">
                         <div className="progress-track">
                           <ProgressFill percent={Number(item.progress_total ?? 0)} />
@@ -144,14 +129,22 @@ export function PekerjaanPage() {
                         <span>{formatPercent(item.progress_total ?? 0)}</span>
                       </div>
                     </td>
-                    <td>{formatDate(item.updated_at)}</td>
+                    <td data-label="Aksi">
+                      <AnchorButton to={`/buat-laporan/${item.id}`} className="neo-button--sm">
+                        <FileSpreadsheet size={14} />
+                        <span>Buat Laporan</span>
+                      </AnchorButton>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <EmptyState title="Tidak ada pekerjaan" description="Gunakan filter untuk menemukan paket yang relevan." />
+          <EmptyState
+            title="Tidak ada pekerjaan"
+            description="Belum ada paket yang bisa dilaporkan dengan filter saat ini."
+          />
         )}
       </Surface>
 

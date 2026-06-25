@@ -13,6 +13,9 @@ import type {
   Pengawas,
   PengawasStatistics,
   ProgressReportView,
+  PekerjaanProgressEstimasi,
+  PekerjaanProgressEstimasiResponse,
+  SavePekerjaanProgressEstimasiPayload,
   Tiket,
   UnknownRecord,
 } from '@/lib/types'
@@ -217,6 +220,18 @@ export async function syncAuthToken(token: string) {
     method: 'POST',
     body: { token },
   })
+}
+
+export async function exchangeHandoffCode(code: string) {
+  const payload = await requestBffJson<ApiEnvelope<{ user: AuthUser }> | { user: AuthUser }>(
+    '/auth/exchange-handoff',
+    {
+      method: 'POST',
+      body: { code },
+    },
+  )
+
+  return unwrapEntity<AuthUser>(payload)
 }
 
 export async function logout() {
@@ -564,4 +579,33 @@ export async function createTiket(input: {
 export async function getPengawasList() {
   const payload = await requestJson<ApiEnvelope<Pengawas[]> | PaginatedResponse<Pengawas>>('/pengawas')
   return unwrapCollection<Pengawas>(payload).data
+}
+
+function unwrapProgressEstimasiResponse(payload: unknown): PekerjaanProgressEstimasiResponse {
+  const record = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const data = unwrapEntity<PekerjaanProgressEstimasi>(payload)
+  const puspen = Array.isArray(record.puspen_progress_fisik) ? record.puspen_progress_fisik : []
+
+  return {
+    data,
+    puspen_progress_fisik: puspen as PekerjaanProgressEstimasiResponse['puspen_progress_fisik'],
+  }
+}
+
+export async function getPekerjaanProgressEstimasi(pekerjaanId: number | string, tahun: number) {
+  const query = new URLSearchParams({ tahun: String(tahun) })
+  const payload = await requestJson<unknown>(`/pekerjaan/${pekerjaanId}/progress-estimasi?${query}`)
+  return unwrapProgressEstimasiResponse(payload)
+}
+
+export async function savePekerjaanProgressEstimasi(
+  pekerjaanId: number | string,
+  input: SavePekerjaanProgressEstimasiPayload,
+) {
+  const payload = await requestJson<unknown>(`/pekerjaan/${pekerjaanId}/progress-estimasi`, {
+    method: 'PUT',
+    body: input,
+  })
+
+  return unwrapProgressEstimasiResponse(payload)
 }

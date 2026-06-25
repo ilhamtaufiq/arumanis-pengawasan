@@ -15,8 +15,38 @@
           var storageKey = 'pengawas-app-build-id';
           var lastKnown = localStorage.getItem(storageKey);
 
+          var SSO_KEYS = ['token', 'access_token', 'auth_token'];
+
+          function isBootstrapPath(pathname) {
+            var normalized = pathname.replace(/\/$/, '') || '/';
+            return /\/(login|sign-in)$/.test(normalized);
+          }
+
+          function sanitizeUrl(url) {
+            var keptToken = null;
+            if (isBootstrapPath(url.pathname)) {
+              for (var i = 0; i < SSO_KEYS.length; i++) {
+                var value = url.searchParams.get(SSO_KEYS[i]);
+                if (value) {
+                  keptToken = value;
+                  break;
+                }
+              }
+            }
+
+            for (var j = 0; j < SSO_KEYS.length; j++) {
+              url.searchParams.delete(SSO_KEYS[j]);
+            }
+
+            if (keptToken) {
+              url.searchParams.set('token', keptToken);
+            }
+
+            return url;
+          }
+
           function hardReload() {
-            var url = new URL(window.location.href);
+            var url = sanitizeUrl(new URL(window.location.href));
             url.searchParams.set('_cb', Date.now().toString(36));
             window.location.replace(url.toString());
           }
@@ -35,14 +65,9 @@
           }
 
           if (lastKnown && lastKnown !== servedId) {
-            localStorage.setItem(storageKey, servedId);
             clearClientCaches();
             hardReload();
             return;
-          }
-
-          if (servedId) {
-            localStorage.setItem(storageKey, servedId);
           }
         } catch (e) { /* ignore */ }
       })();

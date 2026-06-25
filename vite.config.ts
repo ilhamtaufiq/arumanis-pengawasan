@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { resolveRootRedirectLocation } from './src/lib/sso-token'
 
 const PUBLIC_BASE = '/pengawasan'
 const appVersion = process.env.npm_package_version || '1.0.0'
@@ -15,16 +16,10 @@ function redirectRootToBase(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '/'
         const [pathname, search = ''] = url.split('?')
-        const query = search ? `?${search}` : ''
 
-        if (pathname === '/' || pathname === '') {
-          res.writeHead(302, { Location: `${PUBLIC_BASE}/${query}` })
-          res.end()
-          return
-        }
-
-        if (pathname === PUBLIC_BASE) {
-          res.writeHead(302, { Location: `${PUBLIC_BASE}/${query}` })
+        if (pathname === '/' || pathname === '' || pathname === PUBLIC_BASE) {
+          const location = resolveRootRedirectLocation(PUBLIC_BASE, pathname, search)
+          res.writeHead(302, { Location: location })
           res.end()
           return
         }

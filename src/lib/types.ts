@@ -95,6 +95,10 @@ export type Pekerjaan = {
   pagu?: number
   progress_total?: number
   deviasi?: number
+  progress_estimasi_fisik?: number | null
+  progress_estimasi_keuangan?: number | null
+  deviasi_estimasi_fisik?: number | null
+  deviasi_estimasi_keuangan?: number | null
   foto_count?: number
   foto_required_count?: number | null
   foto_status?: 'belum_ada_foto' | 'belum_selesai' | 'selesai' | null
@@ -310,4 +314,52 @@ export type Tiket = {
   image_url?: string | null
   created_at?: string | null
   updated_at?: string | null
+}
+
+export type ProgressHistoryEntry = {
+  id?: number
+  tanggal: string
+  persen: number
+}
+
+export type ProgressEstimasiSection = {
+  rencana: ProgressHistoryEntry[]
+  realisasi: ProgressHistoryEntry[]
+  latest_rencana: number | null
+  latest_realisasi: number | null
+  deviasi: number | null
+}
+
+export type PekerjaanProgressEstimasi = {
+  pekerjaan_id: number
+  tahun_anggaran: number
+  fisik: ProgressEstimasiSection
+  keuangan: ProgressEstimasiSection
+  updated_at: string | null
+}
+
+export type PuspenProgressFisikSnapshot = {
+  kontrak_id: number
+  kode_paket: string | null
+  rencana: number | null
+  realisasi: number | null
+  deviasi: number | null
+  updated_at: string | null
+}
+
+export type PekerjaanProgressEstimasiResponse = {
+  data: PekerjaanProgressEstimasi
+  puspen_progress_fisik: PuspenProgressFisikSnapshot[]
+}
+
+export type SavePekerjaanProgressEstimasiPayload = {
+  tahun: number
+  fisik: {
+    rencana: Array<{ tanggal: string; persen: number }>
+    realisasi: Array<{ tanggal: string; persen: number }>
+  }
+  keuangan: {
+    rencana: Array<{ tanggal: string; persen: number }>
+    realisasi: Array<{ tanggal: string; persen: number }>
+  }
 }

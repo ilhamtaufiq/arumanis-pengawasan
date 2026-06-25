@@ -19,9 +19,9 @@ export function NotFoundPage() {
             <Home size={16} />
             <span>Ke dashboard</span>
           </Link>
-          <Link className="neo-button neo-button--neutral" to="/login">
-            Ke halaman login
-          </Link>
+          <a className="neo-button neo-button--neutral" href="/sign-in">
+            Masuk via Arumanis
+          </a>
         </div>
       </Surface>
     </div>
