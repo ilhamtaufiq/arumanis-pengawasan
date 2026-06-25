@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { existsSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
-import { resolveRootRedirectLocation } from '../src/lib/sso-token'
+import { resolveRootRedirectLocation } from './lib/sso-token'
 
 const API_BASE = (Bun.env.APIAMIS_BASE_URL || 'http://apiamis.test/api').replace(/\/$/, '')
 const PORT = Number(Bun.env.PORT || '3000')
@@ -250,6 +250,7 @@ app.get('*', async (c) => {
 })
 
 Bun.serve({
+  hostname: '0.0.0.0',
   port: PORT,
   fetch: app.fetch,
 })
