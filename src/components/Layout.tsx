@@ -64,10 +64,11 @@ export function AppLayout({
 
     return window.innerWidth >= 1100
   })
-  const [welcomeOpen, setWelcomeOpen] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem('arumanis.welcome-hidden') !== 'true'
-  })
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false)
+  const [notificationPopupBlocking, setNotificationPopupBlocking] = useState(true)
+  const welcomeEligible =
+    typeof window !== 'undefined' && window.localStorage.getItem('arumanis.welcome-hidden') !== 'true'
+  const welcomeOpen = welcomeEligible && !welcomeDismissed && !notificationPopupBlocking
 
   const currentTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname])
 
@@ -118,6 +119,7 @@ export function AppLayout({
         </nav>
 
         <div className="sidebar-footer">
+          <NotificationBell placement="sidebar" />
           <div className="sidebar-user">
             <div className="sidebar-user-name">{user.name}</div>
             <div className="sidebar-user-email">{user.email}</div>
@@ -148,9 +150,6 @@ export function AppLayout({
               <h1 className="topbar-title">{currentTitle}</h1>
             </div>
           </div>
-          <div className="topbar-actions">
-            <NotificationBell />
-          </div>
           <div className="topbar-user">
             <div className="topbar-user-name">{user.name}</div>
             <div className="topbar-user-role">
@@ -165,17 +164,17 @@ export function AppLayout({
         <main className="page-content">{children ?? <Outlet />}</main>
       </div>
 
-      <BannerNotification />
+      <BannerNotification onBlockingChange={setNotificationPopupBlocking} />
 
       <WelcomeModal
         open={welcomeOpen}
         userName={user.name}
         description="Panel ini menampilkan pekerjaan yang benar-benar Anda awasi. Mulai dari dashboard, lalu masuk ke detail paket untuk update progress, foto, dan tiket."
         guideTo="/panduan"
-        onClose={() => setWelcomeOpen(false)}
+        onClose={() => setWelcomeDismissed(true)}
         onHideForever={() => {
           window.localStorage.setItem('arumanis.welcome-hidden', 'true')
-          setWelcomeOpen(false)
+          setWelcomeDismissed(true)
         }}
       />
     </div>

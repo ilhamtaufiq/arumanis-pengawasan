@@ -99,6 +99,16 @@ export function isBannerNotification(value: unknown): boolean {
   return value === true || value === 1 || value === '1' || value === 'true'
 }
 
+export function hasBroadcastHistory(notification: Pick<AppNotification, 'data'>): boolean {
+  const id = notification.data.broadcast_history_id
+  return typeof id === 'number' && Number.isFinite(id) && id > 0
+}
+
+/** Notifikasi yang ditampilkan sebagai popup di dashboard pengawas. */
+export function isPopupNotification(notification: Pick<AppNotification, 'data'>): boolean {
+  return isBannerNotification(notification.data.is_banner) || hasBroadcastHistory(notification)
+}
+
 export type ResolvedNotificationLink =
   | { kind: 'internal'; path: string }
   | { kind: 'external'; href: string }

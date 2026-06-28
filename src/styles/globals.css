@@ -102,6 +102,7 @@ button {
 
 .app-shell--sidebar-collapsed .brand-title,
 .app-shell--sidebar-collapsed .nav-item span,
+.app-shell--sidebar-collapsed .notification-bell__label,
 .app-shell--sidebar-collapsed .sidebar-user,
 .app-shell--sidebar-collapsed .logout-label {
   display: none;
@@ -3545,10 +3546,48 @@ button {
   position: relative;
 }
 
+.notification-bell--sidebar {
+  width: 100%;
+}
+
 .notification-bell__trigger {
   position: relative;
   min-width: 42px;
   padding-inline: 10px;
+}
+
+.notification-bell__trigger--sidebar {
+  width: 100%;
+  min-height: 42px;
+  justify-content: flex-start;
+  gap: 9px;
+  padding: 9px 11px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  font-weight: 700;
+}
+
+.notification-bell__trigger--sidebar:hover {
+  background: #fffef0;
+}
+
+.app-shell--sidebar-collapsed .notification-bell__trigger--sidebar {
+  justify-content: center;
+  padding: 12px;
+}
+
+.notification-bell--sidebar .notification-bell__panel {
+  top: auto;
+  bottom: 0;
+  right: auto;
+  left: calc(100% + 10px);
+}
+
+.notification-bell__label {
+  flex: 1;
+  text-align: left;
 }
 
 .notification-bell__badge {
@@ -3729,6 +3768,15 @@ button {
   margin-bottom: 14px;
 }
 
+.notification-banner__queue {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .notification-banner__title {
   margin: 0;
   font-size: 22px;
@@ -3772,5 +3820,13 @@ button {
   .notification-bell__panel {
     right: 0;
     left: auto;
+  }
+
+  .notification-bell--sidebar .notification-bell__panel {
+    left: 0;
+    right: 0;
+    top: calc(100% + 10px);
+    bottom: auto;
+    width: auto;
   }
 }

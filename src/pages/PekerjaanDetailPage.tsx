@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, History, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
   createFoto,
   createOutput,
@@ -23,6 +23,7 @@ import {
 } from '@/lib/api'
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
+import { KontrakAddendumTab } from '@/components/KontrakAddendumTab'
 import { PekerjaanProgressEstimasiTab } from '@/components/PekerjaanProgressEstimasiTab'
 import { extractCoordinates } from '@/lib/image-gps-utils'
 import { formatKoordinatDisplay } from '@/lib/koordinat-utils'
@@ -47,7 +48,7 @@ import {
 } from '@/components/ui'
 import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
 
-type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'tiket'
+type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'addendum' | 'tiket'
 
 type PenerimaFormState = {
   nama: string
@@ -103,6 +104,7 @@ const DETAIL_TABS: Array<{ id: DetailTab; label: string; icon: ReactNode }> = [
   { id: 'penerima', label: 'Penerima', icon: <FileText size={14} /> },
   { id: 'foto', label: 'Foto', icon: <Camera size={14} /> },
   { id: 'progress', label: 'Progress', icon: <RefreshCcw size={14} /> },
+  { id: 'addendum', label: 'Addendum', icon: <History size={14} /> },
   { id: 'tiket', label: 'Tiket', icon: <MessageSquareText size={14} /> },
 ]
 
@@ -342,6 +344,15 @@ export function PekerjaanDetailPage() {
     queryFn: () => getPekerjaanProgressEstimasi(pekerjaanId, tahunAnggaran),
     enabled: Number.isFinite(pekerjaanId) && Boolean(pekerjaan),
   })
+
+  const kontrakId = useMemo(() => {
+    const kontrakList = pekerjaan?.kontrak
+    if (!Array.isArray(kontrakList) || kontrakList.length === 0) return null
+
+    const first = kontrakList[0] as { id?: number | string }
+    const parsed = Number(first.id)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [pekerjaan?.kontrak])
 
   const progressValue = Number(
     progressEstimasiQuery.data?.data?.fisik?.latest_realisasi ?? pekerjaan?.progress_total ?? 0,
@@ -1398,6 +1409,10 @@ export function PekerjaanDetailPage() {
           tahunAnggaran={tahunAnggaran}
           onError={setProgressErrorMessage}
         />
+      ) : null}
+
+      {activeTab === 'addendum' ? (
+        <KontrakAddendumTab pekerjaanId={pekerjaanId} kontrakId={kontrakId} />
       ) : null}
 
       {/* ─── Tab: Tiket ─── */}

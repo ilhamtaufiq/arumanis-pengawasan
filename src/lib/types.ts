@@ -363,3 +363,87 @@ export type SavePekerjaanProgressEstimasiPayload = {
     realisasi: Array<{ tanggal: string; persen: number }>
   }
 }
+
+export type KontrakAddendumJenis = 'teknis' | 'biaya' | 'waktu' | 'teknis_biaya' | 'lainnya'
+export type KontrakAddendumStatus = 'draft' | 'diajukan' | 'disetujui' | 'ditolak'
+
+export type KontrakAddendumAttachmentType =
+  | 'surat_permohonan'
+  | 'surat_undangan_pembahasan'
+  | 'risalah_rapat_pembahasan'
+  | 'surat_perintah_pelaksanaan_kerja_sesuai_addendum'
+  | 'cco'
+  | 'laporan_pekerjaan'
+  | 'berita_acara'
+  | 'sk_peneliti_kontrak'
+
+export type KontrakAddendumAttachment = {
+  id: number
+  name: string
+  url: string
+  type: string
+  document_type?: string | null
+  label?: string | null
+  size: number
+}
+
+export type KontrakAddendum = {
+  id: number
+  kontrak_id: number
+  addendum_ke: number
+  nomor_addendum: string | null
+  tanggal_addendum: string
+  jenis_addendum: KontrakAddendumJenis
+  alasan: string | null
+  deskripsi_perubahan: string | null
+  nilai_kontrak_sebelum: number | null
+  nilai_kontrak_sesudah: number | null
+  tgl_selesai_sebelum: string | null
+  tgl_selesai_sesudah: string | null
+  status: KontrakAddendumStatus
+  can_submit?: boolean
+  can_edit?: boolean
+  attachments?: KontrakAddendumAttachment[]
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type KontrakVersion = {
+  type: 'utama' | 'addendum'
+  id?: number
+  label: string
+  addendum_ke?: number
+  nomor: string | null
+  tanggal: string | null
+  nilai_kontrak: number | null
+  tgl_selesai: string | null
+  status: string
+}
+
+export type KontrakDetail = {
+  id: number
+  spk: string | null
+  kode_paket: string | null
+  tgl_spk: string | null
+  tgl_spmk: string | null
+  tgl_selesai: string | null
+  nilai_kontrak: number | null
+  nilai_kontrak_berjalan?: number | null
+  tgl_selesai_berjalan?: string | null
+  penyedia?: { id: number; nama: string } | null
+  addendums?: KontrakAddendum[]
+  contract_versions?: KontrakVersion[]
+  latest_approved_addendum?: KontrakAddendum | null
+}
+
+export type KontrakAddendumPayload = {
+  addendum_ke: number
+  tanggal_addendum: string
+  jenis_addendum: KontrakAddendumJenis
+  alasan?: string
+  deskripsi_perubahan?: string
+  nilai_kontrak_sebelum?: number | null
+  nilai_kontrak_sesudah?: number | null
+  tgl_selesai_sebelum?: string
+  tgl_selesai_sesudah?: string
+}

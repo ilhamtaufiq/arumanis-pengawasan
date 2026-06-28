@@ -1,7 +1,7 @@
 import { Bell, CheckCheck, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AnchorButton, Button } from '@/components/ui'
+import { AnchorButton, Button, cn } from '@/components/ui'
 import {
   extractNotificationList,
   useMarkAllNotificationsRead,
@@ -14,7 +14,11 @@ import {
 } from '@/lib/notifications'
 import { NotificationList } from '@/components/NotificationList'
 
-export function NotificationBell() {
+type NotificationBellProps = {
+  placement?: 'topbar' | 'sidebar'
+}
+
+export function NotificationBell({ placement = 'sidebar' }: NotificationBellProps) {
   const navigate = useNavigate()
   const panelRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
@@ -68,17 +72,24 @@ export function NotificationBell() {
   }
 
   return (
-    <div className="notification-bell" ref={panelRef}>
+    <div
+      className={cn('notification-bell', placement === 'sidebar' && 'notification-bell--sidebar')}
+      ref={panelRef}
+    >
       <Button
         type="button"
-        variant="neutral"
-        className="notification-bell__trigger"
+        variant={placement === 'sidebar' ? 'ghost' : 'neutral'}
+        className={cn(
+          'notification-bell__trigger',
+          placement === 'sidebar' && 'notification-bell__trigger--sidebar',
+        )}
         aria-label={`Notifikasi${unreadCount > 0 ? `, ${unreadCount} belum dibaca` : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((current) => !current)}
       >
         <Bell size={18} />
+        {placement === 'sidebar' ? <span className="notification-bell__label">Notifikasi</span> : null}
         {unreadCount > 0 ? (
           <span className="notification-bell__badge" aria-hidden>
             {unreadCount > 9 ? '9+' : unreadCount}

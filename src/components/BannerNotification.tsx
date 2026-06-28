@@ -1,5 +1,5 @@
 import { ExternalLink } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Badge, Button } from '@/components/ui'
 import {
@@ -8,55 +8,97 @@ import {
   useUnreadNotifications,
 } from '@/hooks/useNotifications'
 import {
-  isBannerNotification,
+  isPopupNotification,
   notificationTypeMeta,
   resolveNotificationLink,
   resolveNotificationType,
   type AppNotification,
 } from '@/lib/notifications'
 
-export function BannerNotification() {
+type BannerNotificationProps = {
+  /** true saat popup broadcast masih perlu ditampilkan atau data belum siap */
+  onBlockingChange?: (blocking: boolean) => void
+}
+
+export function BannerNotification({ onBlockingChange }: BannerNotificationProps) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [currentNotification, setCurrentNotification] = useState<AppNotification | null>(null)
-  const [sessionDismissed, setSessionDismissed] = useState<string | null>(null)
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => new Set())
 
-  const { data } = useUnreadNotifications(30_000)
+  const { data, isLoading } = useUnreadNotifications(30_000)
   const markRead = useMarkNotificationRead()
 
-  useEffect(() => {
+  const popupQueue = useMemo(() => {
     const notifications = extractNotificationList(data)
-    const bannerNotif = notifications.find(
+    return notifications.filter(
       (notification) =>
-        isBannerNotification(notification.data.is_banner) &&
+        isPopupNotification(notification) &&
         !notification.read_at &&
-        sessionDismissed !== notification.id,
+        !dismissedIds.has(notification.id),
     )
+  }, [data, dismissedIds])
 
-    if (bannerNotif && !currentNotification) {
-      setCurrentNotification(bannerNotif)
+  useEffect(() => {
+    if (isLoading) {
+      onBlockingChange?.(true)
+      return
+    }
+
+    if (popupQueue.length === 0) {
+      setOpen(false)
+      setCurrentNotification(null)
+      onBlockingChange?.(false)
+      return
+    }
+
+    onBlockingChange?.(true)
+
+    const activeStillQueued = currentNotification
+      ? popupQueue.some((notification) => notification.id === currentNotification.id)
+      : false
+
+    if (!currentNotification || !activeStillQueued) {
+      const nextNotification = popupQueue[0]
+      if (!nextNotification) {
+        return
+      }
+
+      setCurrentNotification(nextNotification)
       setOpen(true)
     }
-  }, [data, currentNotification, sessionDismissed])
+  }, [isLoading, popupQueue, currentNotification, onBlockingChange])
+
+  function dismissCurrent(markAsRead: boolean) {
+    if (!currentNotification) {
+      return
+    }
+
+    if (markAsRead) {
+      markRead.mutate(currentNotification.id)
+    }
+
+    setDismissedIds((current) => {
+      const next = new Set(current)
+      next.add(currentNotification.id)
+      return next
+    })
+    setCurrentNotification(null)
+    setOpen(false)
+  }
 
   function handleClose() {
-    if (currentNotification) {
-      setSessionDismissed(currentNotification.id)
-    }
-    setOpen(false)
-    setCurrentNotification(null)
+    dismissCurrent(false)
   }
 
   function handleDismiss() {
-    if (currentNotification) {
-      markRead.mutate(currentNotification.id)
-    }
-    setOpen(false)
-    setCurrentNotification(null)
+    dismissCurrent(true)
   }
 
   function handleAction() {
-    if (!currentNotification) return
+    if (!currentNotification) {
+      return
+    }
 
     const link = resolveNotificationLink(currentNotification.data.url)
     if (link?.kind === 'internal') {
@@ -75,6 +117,8 @@ export function BannerNotification() {
   const type = resolveNotificationType(currentNotification.data.type)
   const meta = notificationTypeMeta[type]
   const link = resolveNotificationLink(currentNotification.data.url)
+  const queuePosition = popupQueue.findIndex((notification) => notification.id === currentNotification.id)
+  const queueTotal = popupQueue.length
 
   return (
     <div className="modal-backdrop notification-banner-backdrop" role="presentation" onClick={handleClose}>
@@ -88,6 +132,11 @@ export function BannerNotification() {
       >
         <div className="notification-banner__hero">
           <Badge tone={meta.tone}>Pengumuman Penting</Badge>
+          {queueTotal > 1 ? (
+            <p className="notification-banner__queue">
+              {queuePosition + 1} dari {queueTotal} pengumuman
+            </p>
+          ) : null}
           <h2 id="notification-banner-title" className="notification-banner__title">
             {currentNotification.data.title}
           </h2>

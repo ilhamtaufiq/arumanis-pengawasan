@@ -16,6 +16,8 @@ import type {
   PekerjaanProgressEstimasi,
   PekerjaanProgressEstimasiResponse,
   SavePekerjaanProgressEstimasiPayload,
+  KontrakAddendum,
+  KontrakDetail,
   Tiket,
   UnknownRecord,
 } from '@/lib/types'
@@ -608,4 +610,26 @@ export async function savePekerjaanProgressEstimasi(
   })
 
   return unwrapProgressEstimasiResponse(payload)
+}
+
+export async function getKontrakDetail(kontrakId: number | string) {
+  const payload = await requestJson<ApiEnvelope<KontrakDetail> | KontrakDetail>(`/kontrak/${kontrakId}`)
+  return unwrapEntity<KontrakDetail>(payload)
+}
+
+export async function createKontrakAddendum(kontrakId: number | string, formData: FormData) {
+  const payload = await requestJson<ApiEnvelope<KontrakAddendum>>(`/kontrak/${kontrakId}/addendums`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  return unwrapEntity<KontrakAddendum>(payload)
+}
+
+export async function submitKontrakAddendum(addendumId: number | string) {
+  const payload = await requestJson<ApiEnvelope<KontrakAddendum>>(`/kontrak-addendums/${addendumId}/submit`, {
+    method: 'POST',
+  })
+
+  return unwrapEntity<KontrakAddendum>(payload)
 }
