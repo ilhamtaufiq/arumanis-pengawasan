@@ -8,7 +8,13 @@ FROM oven/bun:1.2.17-alpine AS build
 WORKDIR /app
 
 ARG APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
+ARG VITE_UMAMI_SCRIPT_URL=https://umami-cvkpzrlvpd23hquu71dt6s05.cianjur.space/script.js
+ARG VITE_UMAMI_WEBSITE_ID=cb0064bf-1fd5-4b32-811b-14d8694d135c
+ARG VITE_UMAMI_DOMAINS=arumanis.cianjur.space
 ENV APIAMIS_BASE_URL=${APIAMIS_BASE_URL}
+ENV VITE_UMAMI_SCRIPT_URL=${VITE_UMAMI_SCRIPT_URL}
+ENV VITE_UMAMI_WEBSITE_ID=${VITE_UMAMI_WEBSITE_ID}
+ENV VITE_UMAMI_DOMAINS=${VITE_UMAMI_DOMAINS}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
