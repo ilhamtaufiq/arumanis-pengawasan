@@ -46,6 +46,7 @@ import {
   StatusChip,
   Textarea,
 } from '@/components/ui'
+import { trackPengawasEvent } from '@/lib/analytics/visitor-events'
 import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
 
 type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'addendum' | 'tiket'
@@ -328,6 +329,18 @@ export function PekerjaanDetailPage() {
   })
 
   const pekerjaan = pekerjaanQuery.data as PekerjaanDetail | undefined
+
+  useEffect(() => {
+    if (!pekerjaan || !Number.isFinite(pekerjaanId)) {
+      return
+    }
+
+    void trackPengawasEvent('pekerjaan_view', {
+      pekerjaan_id: pekerjaanId,
+      nama: pekerjaan.nama_paket,
+    })
+  }, [pekerjaan, pekerjaanId])
+
   const fotoList = pekerjaan?.foto ?? []
   const penerimaList = pekerjaan?.penerima ?? []
   const outputList = pekerjaan?.output ?? []
@@ -655,7 +668,12 @@ export function PekerjaanDetailPage() {
       formData.append('file', input.file)
       return createFoto(formData)
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
+      void trackPengawasEvent('foto_upload', {
+        pekerjaan_id: pekerjaanId,
+        komponen_id: variables.output.id,
+        slot: variables.slot,
+      })
       setUploadErrorMessage(null)
       setUploadTarget(null)
       setUploadFile(null)

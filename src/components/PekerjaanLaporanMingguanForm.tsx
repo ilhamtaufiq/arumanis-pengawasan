@@ -4,6 +4,7 @@ import { Check, Plus, Save } from 'lucide-react'
 import { formatApiError, getProgressReport, updateProgress } from '@/lib/api'
 import { formatPercent, progressTone } from '@/lib/format'
 import type { ProgressItem, ProgressReportView } from '@/lib/types'
+import { trackPengawasEvent } from '@/lib/analytics/visitor-events'
 import { Badge, Button, EmptyState, FieldGroup, Input, Label, Spinner } from '@/components/ui'
 
 const SATUAN_OPTIONS = ['Unit', 'Meter', 'Meter Persegi', 'Meter Kubik'] as const
@@ -110,6 +111,10 @@ export function PekerjaanLaporanMingguanForm({
       return updateProgress(pekerjaanId, { items, week_count: maxWeek })
     },
     onSuccess: async () => {
+      void trackPengawasEvent('laporan_submit', {
+        pekerjaan_id: pekerjaanId,
+        week: activeWeek,
+      })
       setEditedProgress({})
       setProgressSaved(true)
       window.setTimeout(() => setProgressSaved(false), 2000)
