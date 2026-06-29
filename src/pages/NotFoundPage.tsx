@@ -1,15 +1,13 @@
 import { Link } from 'react-router-dom'
 import { Home, SearchX } from 'lucide-react'
+import { ErrorPageHero } from '@/components/ErrorPageHero'
 import { Surface } from '@/components/ui'
 
 export function NotFoundPage() {
   return (
     <div className="auth-page">
       <Surface className="auth-card error-page-card">
-        <div className="error-page-icon">
-          <SearchX size={28} />
-        </div>
-        <div className="error-page-code">404</div>
+        <ErrorPageHero status={404} icon={<SearchX size={28} />} />
         <div className="empty-state-title">Halaman tidak ditemukan</div>
         <div className="empty-state-description">
           Alamat yang Anda buka tidak ada atau sudah dipindahkan. Periksa URL atau kembali ke dashboard.
