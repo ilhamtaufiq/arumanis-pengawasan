@@ -4,6 +4,12 @@ export type UmamiConfig = {
   domains?: string
 }
 
+export type UmamiEnv = {
+  VITE_UMAMI_SCRIPT_URL?: string
+  VITE_UMAMI_WEBSITE_ID?: string
+  VITE_UMAMI_DOMAINS?: string
+}
+
 declare global {
   interface Window {
     umami?: {
@@ -17,21 +23,21 @@ declare global {
 
 let scriptLoadPromise: Promise<void> | null = null
 
-export function getUmamiConfig(): UmamiConfig | null {
-  const scriptUrl = import.meta.env.VITE_UMAMI_SCRIPT_URL?.trim()
-  const websiteId = import.meta.env.VITE_UMAMI_WEBSITE_ID?.trim()
+export function getUmamiConfig(env: UmamiEnv = import.meta.env): UmamiConfig | null {
+  const scriptUrl = env.VITE_UMAMI_SCRIPT_URL?.trim()
+  const websiteId = env.VITE_UMAMI_WEBSITE_ID?.trim()
 
   if (!scriptUrl || !websiteId) {
     return null
   }
 
-  const domains = import.meta.env.VITE_UMAMI_DOMAINS?.trim()
+  const domains = env.VITE_UMAMI_DOMAINS?.trim()
 
   return domains ? { scriptUrl, websiteId, domains } : { scriptUrl, websiteId }
 }
 
-export function isUmamiEnabled(): boolean {
-  return getUmamiConfig() !== null
+export function isUmamiEnabled(env: UmamiEnv = import.meta.env): boolean {
+  return getUmamiConfig(env) !== null
 }
 
 export function loadUmamiScript(config: UmamiConfig): Promise<void> {

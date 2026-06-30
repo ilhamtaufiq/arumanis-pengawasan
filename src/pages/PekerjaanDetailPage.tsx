@@ -6,7 +6,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, History, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
-  createFoto,
   createOutput,
   createPenerima,
   createTiket,
@@ -47,6 +46,9 @@ import {
   Textarea,
 } from '@/components/ui'
 import { trackPengawasEvent } from '@/lib/analytics/visitor-events'
+import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
+import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
+import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
 
 type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'addendum' | 'tiket'
@@ -666,7 +668,7 @@ export function PekerjaanDetailPage() {
         formData.append('penerima_id', String(input.penerima.id))
       }
       formData.append('file', input.file)
-      return createFoto(formData)
+      return uploadFotoWithRetry(formData)
     },
     onSuccess: async (_data, variables) => {
       void trackPengawasEvent('foto_upload', {
@@ -679,7 +681,39 @@ export function PekerjaanDetailPage() {
       setUploadFile(null)
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
-    onError: (error) => {
+    onError: async (error, variables) => {
+      if (shouldQueueAfterFailedUpload(error)) {
+        try {
+          const queueInput: Parameters<typeof enqueueFotoUpload>[0] = {
+            pekerjaanId,
+            komponenId: variables.output.id,
+            komponenLabel: variables.output.komponen,
+            slot: variables.slot,
+            koordinat: variables.koordinat,
+            file: variables.file,
+          }
+          if (variables.penerima?.id !== undefined) {
+            queueInput.penerimaId = variables.penerima.id
+          }
+          await enqueueFotoUpload(queueInput)
+          await queryClient.invalidateQueries({ queryKey: fotoUploadQueueKey })
+          setUploadErrorMessage(
+            'Koneksi tidak stabil. Foto disimpan di perangkat dan akan dikirim otomatis saat online.',
+          )
+          setUploadTarget(null)
+          setUploadFile(null)
+          return
+        } catch (queueError) {
+          setUploadErrorMessage(
+            formatApiError(
+              queueError,
+              'Gagal mengunggah foto dan tidak dapat disimpan sementara. Coba lagi dengan koneksi yang lebih stabil.',
+            ),
+          )
+          return
+        }
+      }
+
       setUploadErrorMessage(formatApiError(error, 'Gagal mengunggah foto. Periksa file, koordinat, dan koneksi internet.'))
     },
   })
@@ -1833,7 +1867,7 @@ export function PekerjaanDetailPage() {
                     }}
                   />
                   <div className="upload-hint">
-                    Foto akan dikirim ke backend dengan konteks output dan slot yang dipilih.
+                    Foto akan dikirim dengan konteks output dan slot yang dipilih. Jika koneksi gagal, file disimpan sementara dan dikirim ulang otomatis.
                   </div>
                 </div>
 

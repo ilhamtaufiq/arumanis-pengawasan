@@ -305,6 +305,64 @@ button {
   white-space: nowrap;
 }
 
+.pending-upload-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 35;
+}
+
+.pending-upload-banner--offline {
+  background: #fde68a;
+  color: #111111;
+}
+
+.pending-upload-banner--online {
+  background: #bfdbfe;
+  color: #111111;
+}
+
+.pending-upload-banner__icon {
+  flex-shrink: 0;
+}
+
+.pending-upload-banner__copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.pending-upload-banner__title {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.pending-upload-banner__hint {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.pending-upload-banner__action {
+  flex-shrink: 0;
+}
+
+.spin-slow {
+  animation: spin-slow 1s linear infinite;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .topbar {
   border-bottom: 2px solid var(--border);
   background: var(--background);

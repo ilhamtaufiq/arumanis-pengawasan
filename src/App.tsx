@@ -82,7 +82,6 @@ function ProtectedRoute() {
   const hasSsoBootstrap = Boolean(
     getSsoTokenFromSearch(location.search) || getHandoffCodeFromSearch(location.search),
   )
-
   useEffect(() => {
     if (!needsAuthRedirect || hasSsoBootstrap || redirectedRef.current) {
       return

@@ -2,6 +2,7 @@ import type { AuthUser } from '@/lib/types'
 import { AnchorButton, Button, cn, WelcomeModal } from '@/components/ui'
 import { BannerNotification } from '@/components/BannerNotification'
 import { ImpersonateBanner } from '@/components/ImpersonateBanner'
+import { PendingFotoUploadBanner } from '@/components/PendingFotoUploadBanner'
 import { NotificationBell } from '@/components/NotificationBell'
 import {
   ClipboardList,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -71,6 +73,8 @@ export function AppLayout({
   const welcomeOpen = welcomeEligible && !welcomeDismissed && !notificationPopupBlocking
 
   const currentTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname])
+
+  usePresenceHeartbeat()
 
   useEffect(() => {
     window.localStorage.setItem('arumanis.sidebar-open', String(sidebarOpen))
@@ -160,6 +164,8 @@ export function AppLayout({
             </AnchorButton>
           </div>
         </header>
+
+        <PendingFotoUploadBanner />
 
         <main className="page-content">{children ?? <Outlet />}</main>
       </div>
