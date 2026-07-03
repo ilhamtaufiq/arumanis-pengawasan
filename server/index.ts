@@ -181,6 +181,32 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
     return c.json({ message: 'Logged out' })
   })
 
+  app.post(`${prefix}/bff/broadcasting/auth`, async (c) => {
+    const token = getCookie(c, COOKIE_NAME)
+    if (!token) {
+      return c.json({ message: 'Unauthenticated' }, 401)
+    }
+
+    const headers = new Headers()
+    headers.set('Accept', 'application/json')
+    headers.set('Authorization', `Bearer ${token}`)
+    const incomingContentType = c.req.header('content-type')
+    if (incomingContentType) {
+      headers.set('Content-Type', incomingContentType)
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/broadcasting/auth`, {
+        method: 'POST',
+        headers,
+        body: await c.req.arrayBuffer(),
+      })
+      return relayResponse(response)
+    } catch {
+      return c.json({ message: 'Upstream API tidak tersedia' }, 502)
+    }
+  })
+
   app.all(`${prefix}/bff/api/*`, async (c) => {
     const path = normalizeRequestPath(c.req.path)
     const targetPath = (path.replace(/^\/bff\/api/, '') || '/').replace(/^\//, '')
