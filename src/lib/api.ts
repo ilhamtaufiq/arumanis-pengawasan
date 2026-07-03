@@ -17,6 +17,7 @@ import type {
   PekerjaanProgressEstimasiResponse,
   SavePekerjaanProgressEstimasiPayload,
   KontrakAddendum,
+  KontrakAddendumRegisterGapResponse,
   KontrakDetail,
   Tiket,
   UnknownRecord,
@@ -615,6 +616,18 @@ export async function savePekerjaanProgressEstimasi(
 export async function getKontrakDetail(kontrakId: number | string) {
   const payload = await requestJson<ApiEnvelope<KontrakDetail> | KontrakDetail>(`/kontrak/${kontrakId}`)
   return unwrapEntity<KontrakDetail>(payload)
+}
+
+export async function getKontrakAddendumRegisterGaps(kontrakId: number | string) {
+  const payload = await requestJson<ApiEnvelope<KontrakAddendumRegisterGapResponse> | KontrakAddendumRegisterGapResponse>(
+    `/kontrak/${kontrakId}/addendum-register-gaps`,
+  )
+
+  if (payload && typeof payload === 'object' && 'items' in payload) {
+    return payload as KontrakAddendumRegisterGapResponse
+  }
+
+  return unwrapEntity<KontrakAddendumRegisterGapResponse>(payload)
 }
 
 export async function createKontrakAddendum(kontrakId: number | string, formData: FormData) {

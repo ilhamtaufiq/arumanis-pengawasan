@@ -1,15 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, ExternalLink, FileText, Send } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ExternalLink, FileText, Send } from 'lucide-react'
 import {
   createKontrakAddendum,
   formatApiError,
+  getKontrakAddendumRegisterGaps,
   getKontrakDetail,
   submitKontrakAddendum,
 } from '@/lib/api'
 import {
   buildKontrakAddendumFormData,
+  ADDENDUM_REGISTER_GAP_HEADLINE,
+  getAddendumMissingAttachmentLabels,
   getMissingAttachmentLabels,
+  getRegisterGapStatusLines,
+  isAddendumIncomplete,
   KONTRAK_ADDENDUM_ATTACHMENT_TYPES,
   KONTRAK_ADDENDUM_JENIS_OPTIONS,
 } from '@/lib/kontrak-addendum'
@@ -19,6 +24,7 @@ import type {
   KontrakAddendumAttachmentType,
   KontrakAddendumJenis,
   KontrakAddendumPayload,
+  KontrakAddendumRegisterGap,
   KontrakVersion,
 } from '@/lib/types'
 import {
@@ -30,6 +36,7 @@ import {
   Input,
   LoadingRow,
   StatusChip,
+  Surface,
   Textarea,
 } from '@/components/ui'
 
@@ -143,12 +150,20 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     enabled: Number.isFinite(kontrakId) && (kontrakId ?? 0) > 0,
   })
 
+  const registerGapsQuery = useQuery({
+    queryKey: ['kontrak', 'addendum-register-gaps', kontrakId],
+    queryFn: () => getKontrakAddendumRegisterGaps(kontrakId as number),
+    enabled: Number.isFinite(kontrakId) && (kontrakId ?? 0) > 0,
+  })
+
   const kontrak = kontrakQuery.data
+  const registerGaps = registerGapsQuery.data?.items ?? []
   const addendums = kontrak?.addendums ?? []
   const versions = useMemo(() => (kontrak ? buildVersions(kontrak) : []), [kontrak])
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['kontrak', 'detail', kontrakId] })
+    queryClient.invalidateQueries({ queryKey: ['kontrak', 'addendum-register-gaps', kontrakId] })
     queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
   }
 
@@ -187,9 +202,20 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     onError: (error) => setFormError(formatApiError(error, 'Gagal mengajukan addendum.')),
   })
 
-  const openForm = () => {
+  const openForm = (gap?: KontrakAddendumRegisterGap) => {
     if (!kontrak) return
-    setForm(buildDefaultForm(kontrak))
+    const baseForm = buildDefaultForm(kontrak)
+
+    setForm(
+      gap
+        ? {
+            ...baseForm,
+            tanggal_addendum: gap.tanggal_register || baseForm.tanggal_addendum,
+            alasan: `Pelengkapan data addendum untuk register nomor ${gap.nomor_register}.`,
+            deskripsi_perubahan: `Nomor addendum ${gap.nomor_register} sudah terdaftar di Register Dokumen, namun belum tercatat di sistem. Mohon lengkapi pengajuan addendum dengan nomor yang sama.`,
+          }
+        : baseForm,
+    )
     setAttachments(emptyAttachments())
     setFormError(null)
     setFormOpen(true)
@@ -219,6 +245,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
 
   const draftCount = addendums.filter((item) => item.status === 'draft').length
   const submittedCount = addendums.filter((item) => item.status === 'diajukan').length
+  const incompleteAddendums = addendums.filter(isAddendumIncomplete)
+  const hasIncompleteItems = registerGaps.length > 0 || incompleteAddendums.length > 0
 
   return (
     <div className="stack stack--compact">
@@ -247,6 +275,77 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
         <div className="form-error" role="alert">
           {formError}
         </div>
+      ) : null}
+
+      {hasIncompleteItems ? (
+        <Surface tone="warning" className="detail-section-full">
+          <div className="detail-tab-header">
+            <div className="detail-tab-header-left">
+              <h2>
+                <AlertTriangle size={16} /> Addendum perlu dilengkapi
+              </h2>
+              <p>
+                Nomor register addendum sudah dibuat, tetapi detail pengajuan belum ada dan belum disetujui.
+                Lengkapi data di bawah ini, atau selesaikan draft yang masih kurang lampiran.
+              </p>
+            </div>
+          </div>
+
+          <div className="stack stack--compact">
+            {registerGaps.map((gap) => (
+              <div key={gap.register_id} className="detail-output-card">
+                <div className="detail-output-card-head">
+                  <div>
+                    <div className="output-title">Register sudah ada — {gap.nomor_register}</div>
+                    <div className="output-meta">
+                      {ADDENDUM_REGISTER_GAP_HEADLINE}
+                    </div>
+                  </div>
+                  <Badge tone="warning">Belum disetujui</Badge>
+                </div>
+                <ul className="stack stack--compact hint-text">
+                  {getRegisterGapStatusLines(gap).map((item) => (
+                    <li key={item.label}>
+                      <strong>{item.label}:</strong> {item.value}
+                      {item.done ? ' ✓' : ''}
+                    </li>
+                  ))}
+                </ul>
+                <p className="hint-text">
+                  Register: {formatDate(gap.tanggal_register)}
+                  {gap.type_name ? ` · ${gap.type_name}` : ''}
+                </p>
+                <div className="neo-form-actions">
+                  <Button type="button" size="sm" onClick={() => openForm(gap)}>
+                    Lengkapi detail addendum
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {incompleteAddendums.map((addendum) => {
+              const missingLabels = getAddendumMissingAttachmentLabels(addendum)
+
+              return (
+                <div key={addendum.id} className="detail-output-card">
+                  <div className="detail-output-card-head">
+                    <div>
+                      <div className="output-title">
+                        Addendum ke-{addendum.addendum_ke}
+                        {addendum.nomor_addendum ? ` — ${addendum.nomor_addendum}` : ''}
+                      </div>
+                      <div className="output-meta">
+                        Status {addendum.status} · {formatDate(addendum.tanggal_addendum)}
+                      </div>
+                    </div>
+                    <Badge tone="warning">Lampiran belum lengkap</Badge>
+                  </div>
+                  <p className="hint-text">Dokumen yang masih kurang: {missingLabels.join(', ')}</p>
+                </div>
+              )
+            })}
+          </div>
+        </Surface>
       ) : null}
 
       <div className="detail-section-full">
@@ -412,7 +511,7 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
               type="button"
               className="detail-penerima-form-toggle"
               aria-expanded={formOpen}
-              onClick={() => (formOpen ? setFormOpen(false) : openForm())}
+              onClick={() => (formOpen ? setFormOpen(false) : openForm(undefined))}
             >
               <ChevronDown size={16} />
               <span>{formOpen ? 'Tutup form' : 'Buka form'}</span>

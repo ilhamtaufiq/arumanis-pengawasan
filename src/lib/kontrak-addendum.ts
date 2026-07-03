@@ -1,4 +1,20 @@
-import type { KontrakAddendumAttachmentType, KontrakAddendumPayload } from '@/lib/types'
+import type {
+  KontrakAddendum,
+  KontrakAddendumAttachmentType,
+  KontrakAddendumPayload,
+  KontrakAddendumRegisterGap,
+} from '@/lib/types'
+
+export const ADDENDUM_REGISTER_GAP_HEADLINE =
+  'Nomor register addendum sudah dibuat, tetapi detail pengajuan belum ada dan belum disetujui.'
+
+export function getRegisterGapStatusLines(gap: KontrakAddendumRegisterGap) {
+  return [
+    { label: 'Nomor register', value: gap.nomor_register, done: true },
+    { label: 'Detail addendum', value: 'Belum ada — data pengajuan, lampiran, dan nilai belum diisi', done: false },
+    { label: 'Persetujuan', value: 'Belum disetujui — pengajuan addendum belum tercatat/disetujui', done: false },
+  ]
+}
 
 export const KONTRAK_ADDENDUM_ATTACHMENT_TYPES: Record<KontrakAddendumAttachmentType, string> = {
   surat_permohonan: 'Surat Permohonan',
@@ -55,4 +71,24 @@ export function getMissingAttachmentLabels(
   return (Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[])
     .filter((type) => !attachments[type])
     .map((type) => KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type])
+}
+
+export function getAddendumMissingAttachmentLabels(addendum: KontrakAddendum) {
+  const uploadedTypes = new Set(
+    (addendum.attachments ?? [])
+      .map((attachment) => attachment.document_type)
+      .filter((type): type is KontrakAddendumAttachmentType => Boolean(type)),
+  )
+
+  return (Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[])
+    .filter((type) => !uploadedTypes.has(type))
+    .map((type) => KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type])
+}
+
+export function isAddendumIncomplete(addendum: KontrakAddendum) {
+  if (!['draft', 'ditolak'].includes(addendum.status)) {
+    return false
+  }
+
+  return getAddendumMissingAttachmentLabels(addendum).length > 0
 }

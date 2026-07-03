@@ -447,3 +447,32 @@ export type KontrakAddendumPayload = {
   tgl_selesai_sebelum?: string
   tgl_selesai_sesudah?: string
 }
+
+export type KontrakAddendumRegisterGap = {
+  register_id: number
+  nomor_register: string
+  tanggal_register: string
+  type_code?: string | null
+  type_name?: string | null
+  kontrak_id: number
+  addendum_count: number
+  pekerjaan?: {
+    id: number
+    nama_paket: string
+    kode_rekening?: string | null
+  } | null
+  penyedia?: {
+    id: number
+    nama: string
+  } | null
+  pengawas?: {
+    id: number
+    nama: string
+  } | null
+}
+
+export type KontrakAddendumRegisterGapResponse = {
+  total: number
+  items: KontrakAddendumRegisterGap[]
+  type_codes: string[]
+}
