@@ -18,6 +18,7 @@ import {
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
+import { LiveChatWidget } from '@/features/live-chat/LiveChatWidget'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -183,6 +184,8 @@ export function AppLayout({
           setWelcomeDismissed(true)
         }}
       />
+
+      <LiveChatWidget user={user} />
     </div>
   )
 }
