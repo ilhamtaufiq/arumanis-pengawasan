@@ -12,6 +12,7 @@ declare global {
 let echoInstance: EchoInstance | null = null
 
 const BASE = import.meta.env.BASE_URL
+const AUTH_ENDPOINT = `${BASE}bff/broadcasting/auth`
 
 export function isEchoEnabled(): boolean {
   return Boolean(import.meta.env.VITE_REVERB_APP_KEY?.trim())
@@ -38,12 +39,46 @@ export function getEcho(): EchoInstance | null {
       wssPort: port,
       forceTLS,
       enabledTransports: ['ws', 'wss'],
-      authEndpoint: `${BASE}bff/broadcasting/auth`,
+      authEndpoint: AUTH_ENDPOINT,
       auth: {
         headers: {
           Accept: 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
         },
       },
+      authorizer: (channel) => ({
+        authorize: (socketId, callback) => {
+          const body = new URLSearchParams({
+            socket_id: socketId,
+            channel_name: channel.name,
+          })
+
+          fetch(AUTH_ENDPOINT, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: body.toString(),
+          })
+            .then(async (response) => {
+              if (!response.ok) {
+                const text = await response.text()
+                callback(new Error(text || `Auth failed (${response.status})`), null)
+                return
+              }
+
+              const data = await response.json()
+              callback(null, data)
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : 'Auth request failed'
+              callback(new Error(message), null)
+            })
+        },
+      }),
     })
   }
 
