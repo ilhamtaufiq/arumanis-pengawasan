@@ -91,6 +91,8 @@ const OUTPUT_KOMPONEN_OPTIONS = [
   'MCK Individu',
   'MCK Komunal',
   'Pipa',
+  'Kran Umum',
+  'Hidran Umum',
   'Broncaptering',
   'Reservoir',
   'Tangki Septik Individu',
