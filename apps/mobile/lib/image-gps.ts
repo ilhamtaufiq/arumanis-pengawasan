@@ -1,4 +1,5 @@
-import exifr from 'exifr/dist/lite.esm.mjs'
+import '@/lib/exifr-polyfill'
+import exifr from 'exifr'
 import { formatKoordinat } from '@pengawas/shared/koordinat'
 import type { PickedImageAsset } from './foto-upload-meta'
 

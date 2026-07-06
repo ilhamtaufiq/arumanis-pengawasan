@@ -16,6 +16,7 @@ import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
 import { ProgressTab } from '@/components/pekerjaan/ProgressTab'
 import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
 import { TiketTab } from '@/components/pekerjaan/TiketTab'
+import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary'
 import { EmptyState, Spinner } from '@/components/ui'
 
 function resolveRouteId(value: string | string[] | undefined) {
@@ -97,38 +98,48 @@ export default function PekerjaanDetailScreen() {
 
   return (
     <ScreenContainer>
-      <View
-        style={{
-          flex: 1,
-          minHeight: 0,
-          alignItems: isTablet ? 'center' : 'stretch',
+      <ScreenErrorBoundary
+        scope="Detail pekerjaan"
+        extra={{
+          pekerjaanId,
+          routeId: id,
+          activeTab,
+          namaPaket: item.nama_paket,
         }}
       >
-        <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1, minHeight: 0 }}>
-          <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
-          <DetailTabBar active={activeTab} onChange={setActiveTab} />
+        <View
+          style={{
+            flex: 1,
+            minHeight: 0,
+            alignItems: isTablet ? 'center' : 'stretch',
+          }}
+        >
+          <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1, minHeight: 0 }}>
+            <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
+            <DetailTabBar active={activeTab} onChange={setActiveTab} />
 
-          <ScrollView
-            style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={{
-              flexGrow: 1,
-              padding: contentPadding,
-              paddingTop: 8,
-              gap: 16,
-              paddingBottom: 32,
-            }}
-            keyboardShouldPersistTaps="handled"
-          >
-          {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
-          {activeTab === 'progress' ? (
-            <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
-          ) : null}
-          {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
-          {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
-          {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
-          </ScrollView>
+            <ScrollView
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={{
+                flexGrow: 1,
+                padding: contentPadding,
+                paddingTop: 8,
+                gap: 16,
+                paddingBottom: 32,
+              }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
+              {activeTab === 'progress' ? (
+                <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
+              ) : null}
+              {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
+              {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
+              {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
+            </ScrollView>
+          </View>
         </View>
-      </View>
+      </ScreenErrorBoundary>
     </ScreenContainer>
   )
 }

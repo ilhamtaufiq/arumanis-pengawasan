@@ -18,7 +18,7 @@ const exifrLitePath = path.resolve(monorepoRoot, 'node_modules/exifr/dist/lite.e
 const defaultResolveRequest = config.resolver.resolveRequest
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === 'exifr') {
+  if (moduleName === 'exifr' || moduleName === 'exifr/dist/lite.esm.mjs') {
     return { filePath: exifrLitePath, type: 'sourceFile' }
   }
 
