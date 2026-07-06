@@ -9,7 +9,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_APIAMIS_BASE_URL": "http://apiamis.test/api",
-        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "http://arumanis.test/oauth-callback"
+        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "pengawas://oauth-callback"
       }
     },
     "preview": {
@@ -19,7 +19,7 @@
       },
       "env": {
         "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api",
-        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "https://arumanis.cianjur.space/oauth-callback",
+        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "pengawas://oauth-callback",
         "EXPO_PUBLIC_REVERB_HOST": "apiamis.cianjur.space",
         "EXPO_PUBLIC_REVERB_PORT": "443",
         "EXPO_PUBLIC_REVERB_SCHEME": "https"
@@ -32,7 +32,7 @@
       },
       "env": {
         "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api",
-        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "https://arumanis.cianjur.space/oauth-callback",
+        "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "pengawas://oauth-callback",
         "EXPO_PUBLIC_REVERB_HOST": "apiamis.cianjur.space",
         "EXPO_PUBLIC_REVERB_PORT": "443",
         "EXPO_PUBLIC_REVERB_SCHEME": "https"

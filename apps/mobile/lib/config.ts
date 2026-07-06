@@ -21,19 +21,14 @@ export function getApiBaseUrl() {
 }
 
 /**
- * URL redirect setelah Google OAuth di apiamis (FRONTEND_URL/oauth-callback).
- * Harus sama dengan FRONTEND_URL di server Laravel.
+ * Deep link callback OAuth mobile — harus selaras dengan MOBILE_OAUTH_CALLBACK_URL di apiamis.
+ * Web Arumanis tetap memakai FRONTEND_URL/oauth-callback (tanpa ?platform=mobile).
  */
-export function getOAuthCallbackUrl() {
+export function getMobileOAuthCallbackUrl() {
   const fromEnv = process.env.EXPO_PUBLIC_OAUTH_CALLBACK_URL
   if (fromEnv?.trim()) {
     return fromEnv.trim().replace(/\/$/, '')
   }
 
-  const apiBase = getApiBaseUrl()
-  if (apiBase.includes('cianjur.space')) {
-    return 'https://arumanis.cianjur.space/oauth-callback'
-  }
-
-  return 'http://arumanis.test/oauth-callback'
+  return 'pengawas://oauth-callback'
 }

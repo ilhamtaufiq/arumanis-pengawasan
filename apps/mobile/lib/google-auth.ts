@@ -1,5 +1,5 @@
 import * as WebBrowser from 'expo-web-browser'
-import { getApiBaseUrl, getOAuthCallbackUrl } from '@/lib/config'
+import { getApiBaseUrl, getMobileOAuthCallbackUrl } from '@/lib/config'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -33,7 +33,7 @@ function parseOAuthCallbackUrl(url: string): OAuthCallbackResult {
 
 async function fetchGoogleAuthUrl() {
   const apiBase = getApiBaseUrl()
-  const response = await fetch(`${apiBase}/auth/google`, {
+  const response = await fetch(`${apiBase}/auth/google?platform=mobile`, {
     headers: { Accept: 'application/json' },
   })
 
@@ -55,11 +55,11 @@ async function fetchGoogleAuthUrl() {
 }
 
 /**
- * Buka OAuth Google via in-app browser; tangkap redirect ke FRONTEND_URL/oauth-callback#token=...
- * Backend apiamis sudah mengeluarkan token di fragment — sama dengan app Arumanis web.
+ * Buka OAuth Google via in-app browser; tangkap deep link pengawas://oauth-callback#token=...
+ * Backend membedakan platform=mobile agar tidak masuk halaman web Arumanis/pengawas.
  */
 export async function signInWithGoogle(): Promise<string> {
-  const redirectUrl = getOAuthCallbackUrl()
+  const redirectUrl = getMobileOAuthCallbackUrl()
   const authUrl = await fetchGoogleAuthUrl()
 
   const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl)
