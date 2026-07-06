@@ -10,7 +10,8 @@
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild",
-    "build:android": "bash ../../scripts/build-android.sh"
+    "build:android": "bash ../../scripts/build-android.sh",
+    "eas-build-pre-install": "cd ../.. && bun install"
   },
   "dependencies": {
     "@pengawas/api-client": "workspace:*",

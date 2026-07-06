@@ -18,7 +18,9 @@
       "bundleIdentifier": "space.cianjur.pengawas",
       "icon": "./assets/arumanis.png",
       "infoPlist": {
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -26,7 +28,15 @@
         "foregroundImage": "./assets/arumanis.png",
         "backgroundColor": "#ffcc00"
       },
-      "package": "space.cianjur.pengawas"
+      "package": "space.cianjur.pengawas",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -62,6 +72,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "36061f5b-6c14-4034-8ff7-47886d1cf983"
+      }
+    },
+    "owner": "olobor"
   }
 }

@@ -17,7 +17,10 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api"
+        "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api",
+        "EXPO_PUBLIC_REVERB_HOST": "apiamis.cianjur.space",
+        "EXPO_PUBLIC_REVERB_PORT": "443",
+        "EXPO_PUBLIC_REVERB_SCHEME": "https"
       }
     },
     "production": {
@@ -25,7 +28,10 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api"
+        "EXPO_PUBLIC_APIAMIS_BASE_URL": "https://apiamis.cianjur.space/api",
+        "EXPO_PUBLIC_REVERB_HOST": "apiamis.cianjur.space",
+        "EXPO_PUBLIC_REVERB_PORT": "443",
+        "EXPO_PUBLIC_REVERB_SCHEME": "https"
       }
     }
   },
