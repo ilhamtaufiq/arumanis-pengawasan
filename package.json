@@ -19,7 +19,8 @@
     "mobile": "bun run --filter @pengawas/mobile start",
     "mobile:web": "bun run --filter @pengawas/mobile web",
     "mobile:typecheck": "bun run --filter @pengawas/mobile typecheck",
-    "mobile:build-android": "bash scripts/build-android.sh"
+    "mobile:build-android": "bash scripts/build-android.sh",
+    "mobile:prebuild": "bun run --filter @pengawas/mobile prebuild"
   },
   "dependencies": {
     "@pengawas/api-client": "workspace:*",

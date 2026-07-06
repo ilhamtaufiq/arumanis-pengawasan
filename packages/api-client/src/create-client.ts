@@ -453,6 +453,24 @@ export function createApiClient(config: ApiClientConfig) {
     async markAllNotificationsRead() {
       return requestApi<{ message: string }>('/notifications/mark-all-read', { method: 'POST' })
     },
+
+    async sendPresenceHeartbeat(
+      app = 'pengawasan',
+      options?: {
+        koordinat?: string
+      },
+    ) {
+      const body: { app: string; koordinat?: string } = { app }
+      const koordinat = options?.koordinat?.trim()
+      if (koordinat) {
+        body.koordinat = koordinat
+      }
+
+      return requestApi<{ data: { ok: boolean; online_window_minutes: number } }>('/presence/heartbeat', {
+        method: 'POST',
+        body,
+      })
+    },
   }
 }
 

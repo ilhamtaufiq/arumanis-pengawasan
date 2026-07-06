@@ -1,7 +1,8 @@
-import { ScrollView, Text, View } from 'react-native'
+import { ScrollView, Switch, Text, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatCurrency, formatNumber } from '@pengawas/shared/format'
+import { useBackgroundLocation } from '@/hooks/useBackgroundLocation'
 import { getPengawasList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { NeoBadge, NeoButton, NeoSurface, SectionHeader, Spinner } from '@/components/ui'
@@ -9,6 +10,7 @@ import { colors } from '@/theme/tokens'
 
 export default function ProfilScreen() {
   const { user, logout, isLoading, canFetch } = useAuth()
+  const backgroundLocation = useBackgroundLocation()
 
   const pengawasQuery = useQuery({
     queryKey: queryKeys.pengawas.list(),
@@ -50,6 +52,41 @@ export default function ProfilScreen() {
           <Row label="Nama" value={matched.nama} />
           <Row label="Lokasi" value={formatNumber(matched.jumlah_lokasi)} />
           <Row label="Total Pagu" value={formatCurrency(matched.total_pagu)} />
+        </NeoSurface>
+      ) : null}
+
+      {backgroundLocation.supported ? (
+        <NeoSurface style={{ gap: 10 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800' }}>Pelacakan GPS</Text>
+          <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
+            Kirim koordinat ke server saat handphone aktif, termasuk saat aplikasi tidak dibuka. Di Android
+            muncul notifikasi layanan lokasi.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.foreground }}>
+              Lokasi latar belakang
+            </Text>
+            <Switch
+              value={backgroundLocation.enabled}
+              disabled={backgroundLocation.loading}
+              onValueChange={(next) => {
+                if (next) {
+                  void backgroundLocation.enable()
+                  return
+                }
+                void backgroundLocation.disable()
+              }}
+              trackColor={{ false: colors.muted, true: colors.main }}
+              thumbColor={colors.card}
+            />
+          </View>
+          <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
+            Status: {backgroundLocation.active ? 'aktif mengirim' : 'nonaktif'}
+            {backgroundLocation.enabled && !backgroundLocation.active ? ' (menunggu izin / layanan)' : ''}
+          </Text>
+          {backgroundLocation.error ? (
+            <Text style={{ fontSize: 12, color: colors.danger }}>{backgroundLocation.error}</Text>
+          ) : null}
         </NeoSurface>
       ) : null}
 

@@ -110,4 +110,5 @@ export const {
   getNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  sendPresenceHeartbeat,
 } = api

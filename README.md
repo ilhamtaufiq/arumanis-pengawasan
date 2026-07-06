@@ -25,6 +25,7 @@ Aplikasi ini berjalan sebagai layanan terpisah di subpath `/pengawasan`, berpasa
 - [Konfigurasi](#konfigurasi)
 - [Struktur Proyek](#struktur-proyek)
 - [Skrip Tersedia](#skrip-tersedia)
+- [Aplikasi Mobile (Expo)](#aplikasi-mobile-expo)
 - [Deployment](#deployment)
 - [Dokumentasi Pengguna](#dokumentasi-pengguna)
 - [Repositori Terkait](#repositori-terkait)
@@ -236,6 +237,84 @@ tests/                    # Unit test (Bun test)
 | `bun run preview` | Preview build production |
 | `bun run typecheck` | Pengecekan tipe TypeScript |
 | `bun test` | Unit test |
+| `bun run mobile` | Expo dev server (`apps/mobile`) |
+| `bun run mobile:web` | Mobile app di browser |
+| `bun run mobile:typecheck` | Typecheck app mobile |
+| `bun run mobile:build-android` | Build APK di VPS (Gradle lokal) |
+
+---
+
+## Aplikasi Mobile (Expo)
+
+Aplikasi native **`apps/mobile`** untuk pengawas lapangan. Auth langsung ke APIAMIS (Bearer + SecureStore), tanpa BFF web.
+
+### Prasyarat
+
+| Kebutuhan | Catatan |
+|---|---|
+| Bun 1.2+ | Sama dengan monorepo root |
+| Expo Go / emulator | Untuk development |
+| APIAMIS dapat diakses | `http://apiamis.test/api` (dev) |
+
+### Setup cepat
+
+```bash
+# Dari root monorepo
+bun install
+
+# Salin env mobile
+cp apps/mobile/.env.example apps/mobile/.env
+
+# Edit EXPO_PUBLIC_APIAMIS_BASE_URL dan Reverb (opsional)
+# Jalankan
+bun run mobile
+```
+
+**Device fisik:** gunakan IP LAN PC, bukan `localhost` / `apiamis.test`, kecuali DNS Laragon sudah diarahkan di jaringan yang sama.
+
+### Environment (`apps/mobile/.env`)
+
+```env
+EXPO_PUBLIC_APIAMIS_BASE_URL=http://apiamis.test/api
+
+# Reverb (kosongkan jika tidak dipakai)
+EXPO_PUBLIC_REVERB_APP_KEY=
+EXPO_PUBLIC_REVERB_HOST=apiamis.test
+EXPO_PUBLIC_REVERB_PORT=8080
+EXPO_PUBLIC_REVERB_SCHEME=http
+```
+
+Production: salin `apps/mobile/.env.production.example` → `.env.production` sebelum build APK.
+
+### Build Android (VPS)
+
+```bash
+# Di VPS dengan Android SDK + JDK 17 + Bun
+chmod +x scripts/build-android.sh
+./scripts/build-android.sh
+```
+
+Script otomatis: `git pull` → bump versi → `expo prebuild` → `assembleRelease` → salin APK ke `dist/`.
+
+### EAS Build (opsional)
+
+Profil di `apps/mobile/eas.json` (`development`, `preview`, `production`). Contoh:
+
+```bash
+cd apps/mobile
+bunx eas build --platform android --profile preview
+```
+
+### Struktur mobile
+
+```text
+apps/mobile/
+├── app/                 # Expo Router (tabs, login, pekerjaan, notifikasi)
+├── components/          # UI neobrutalism + tab pekerjaan
+├── hooks/               # Query, realtime, antrean foto
+├── lib/                 # API, auth, upload, presence
+└── assets/arumanis.png  # Icon & splash
+```
 
 ---
 

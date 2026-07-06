@@ -6,11 +6,15 @@ import type { Foto, Output, PekerjaanDetail, Penerima } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { queryKeys } from '@pengawas/shared/query-keys'
-import { createFoto, deleteFoto } from '@/lib/api'
+import { deleteFoto } from '@/lib/api'
 import { appendFotoFileToFormData, type PickedImageAsset } from '@/lib/foto-upload'
+import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
+import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
+import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
 import { buildFotoMatrix } from '@/lib/pekerjaan-helpers'
 import { FOTO_MATRIX_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagination'
 import { FotoPreviewModal } from '@/components/pekerjaan/FotoPreviewModal'
+import { FotoUploadQueueBanner } from '@/components/pekerjaan/FotoUploadQueueBanner'
 import { FotoUploadModal } from '@/components/pekerjaan/FotoUploadModal'
 import {
   ChoiceDialog,
@@ -121,7 +125,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
       await appendFotoFileToFormData(formData, input.asset)
 
-      return createFoto(formData)
+      return uploadFotoWithRetry(formData)
     },
     onSuccess: async () => {
       setUploadingTarget(null)
@@ -132,7 +136,39 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       setErrorMessage(null)
       await invalidate()
     },
-    onError: (error) => {
+    onError: async (error, variables) => {
+      if (shouldQueueAfterFailedUpload(error)) {
+        try {
+          await enqueueFotoUpload({
+            pekerjaanId,
+            komponenId: variables.target.output.id,
+            komponenLabel: variables.target.output.komponen,
+            slot: variables.target.slot,
+            koordinat: variables.koordinat,
+            asset: variables.asset,
+            penerimaId: variables.target.penerima?.id,
+            replaceFotoId: variables.replaceFotoId,
+          })
+          await queryClient.invalidateQueries({ queryKey: fotoUploadQueueKey })
+          setUploadingTarget(null)
+          setPendingUpload(null)
+          setSourceRequest(null)
+          setErrorMessage(
+            'Koneksi tidak stabil. Foto disimpan di perangkat dan akan dikirim otomatis saat online.',
+          )
+          return
+        } catch (queueError) {
+          setUploadingTarget(null)
+          setErrorMessage(
+            formatApiError(
+              queueError,
+              'Gagal mengunggah foto dan tidak dapat disimpan sementara. Coba lagi dengan koneksi yang lebih stabil.',
+            ),
+          )
+          return
+        }
+      }
+
       setUploadingTarget(null)
       setErrorMessage(formatApiError(error, 'Gagal mengunggah foto.'))
     },
@@ -297,6 +333,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   return (
     <View style={{ gap: 16 }}>
+      <FotoUploadQueueBanner />
+
       {errorMessage ? (
         <NeoSurface tone="secondary" style={{ padding: 12 }}>
           <Text style={{ fontWeight: '700' }}>{errorMessage}</Text>

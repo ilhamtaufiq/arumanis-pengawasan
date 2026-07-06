@@ -2,6 +2,9 @@ import { Tabs } from 'expo-router'
 import { useNotificationRealtime } from '@/hooks/useNotificationRealtime'
 import { usePengawasRealtime } from '@/hooks/usePengawasRealtime'
 import { AppHeader } from '@/components/AppHeader'
+import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
+
+export const ErrorBoundary = createRouteErrorBoundary('Layar utama')
 import { ClipboardList, LayoutDashboard, MessageSquareText } from 'lucide-react-native'
 import { Platform, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'

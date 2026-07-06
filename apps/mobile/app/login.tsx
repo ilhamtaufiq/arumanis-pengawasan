@@ -3,6 +3,9 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-na
 import { useAuth } from '@/lib/auth'
 import { NeoButton, NeoInput, NeoSurface, Spinner } from '@/components/ui'
 import { colors } from '@/theme/tokens'
+import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
+
+export const ErrorBoundary = createRouteErrorBoundary('Login', false)
 
 export default function LoginScreen() {
   const { login, isLoading: authLoading } = useAuth()

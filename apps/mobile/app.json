@@ -7,16 +7,23 @@
     "scheme": "pengawas",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/arumanis.png",
     "splash": {
+      "image": "./assets/arumanis.png",
       "resizeMode": "contain",
       "backgroundColor": "#fff7e6"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "space.cianjur.pengawas"
+      "bundleIdentifier": "space.cianjur.pengawas",
+      "icon": "./assets/arumanis.png",
+      "infoPlist": {
+        "UIBackgroundModes": ["location"]
+      }
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/arumanis.png",
         "backgroundColor": "#ffcc00"
       },
       "package": "space.cianjur.pengawas"
@@ -37,7 +44,19 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Aplikasi membutuhkan lokasi untuk koordinat foto dokumentasi."
+          "locationWhenInUsePermission": "Aplikasi membutuhkan lokasi untuk koordinat foto dokumentasi.",
+          "locationAlwaysAndWhenInUsePermission": "Izinkan lokasi selalu agar koordinat GPS pengawas tetap terkirim saat aplikasi tidak dibuka.",
+          "locationAlwaysPermission": "Izinkan lokasi selalu agar koordinat GPS pengawas tetap terkirim saat aplikasi tidak dibuka.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/arumanis.png",
+          "color": "#ffcc00"
         }
       ]
     ],

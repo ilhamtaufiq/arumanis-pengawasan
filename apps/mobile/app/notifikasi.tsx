@@ -15,6 +15,9 @@ import { useAuth } from '@/lib/auth'
 import { AppHeader } from '@/components/AppHeader'
 import { NeoButton, NeoSurface, PaginationBar, Spinner } from '@/components/ui'
 import { colors } from '@/theme/tokens'
+import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
+
+export const ErrorBoundary = createRouteErrorBoundary('Notifikasi')
 
 export default function NotifikasiScreen() {
   const { canFetch } = useAuth()

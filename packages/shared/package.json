@@ -10,6 +10,7 @@
     "./foto-status": "./src/foto-status.ts",
     "./query-keys": "./src/query-keys.ts",
     "./koordinat": "./src/koordinat.ts",
-    "./notifications": "./src/notifications.ts"
+    "./notifications": "./src/notifications.ts",
+    "./presence-location": "./src/presence-location.ts"
   }
 }

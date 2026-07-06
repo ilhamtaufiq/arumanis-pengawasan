@@ -13,6 +13,7 @@ import type { AuthUser } from '@pengawas/shared'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { ApiError } from '@pengawas/api-client'
 import { hydrateSessionToken, me, mobileLogin, mobileLogout, setSessionTokenSync } from '@/lib/api'
+import { pauseBackgroundLocationTracking } from '@/lib/background-location'
 import { disconnectEcho } from '@/lib/echo'
 import { clearSessionToken } from '@/lib/session'
 
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     disconnectEcho()
+    await pauseBackgroundLocationTracking()
     await mobileLogout()
     setHasToken(false)
     queryClient.clear()

@@ -1,7 +1,7 @@
 # Arumanis Pengawasan — Mobile App Progress
 
 **Target stack:** Expo + React Native + Expo Router + NativeWind  
-**Backend:** BFF `pengawas` → `apiamis` (tanpa ubah backend)  
+**Backend:** Langsung ke `apiamis` (Bearer token, tanpa BFF)  
 **Terakhir diperbarui:** 2026-07-06
 
 ---
@@ -12,13 +12,15 @@
 |------|--------|-----|---------|
 | 0 — Fondasi Monorepo | ✅ Selesai | — | `packages/shared`, `packages/api-client`, folder mobile |
 | 1 — Scaffold + Navigasi | ✅ Selesai | PR-2 | Expo Router, NativeWind, tab/stack, layar dasar |
-| 2 — Auth Standalone | 🔄 Sebagian | PR-3 | Langsung APIAMIS + Bearer; SSO handoff belum |
-| 3 — Detail Pekerjaan | 🔄 Sebagian | PR-4–6 | Tab inti selesai; antrean offline foto belum |
-| 4 — Notifikasi & Presence | ⬜ Belum | PR-7 | Polling notifikasi, heartbeat |
-| 5 — Polish & Distribusi | ⬜ Belum | PR-8 | EAS Build, deep link SSO, app icon |
+| 2 — Auth Standalone | ✅ Selesai | PR-3 | Login email/password langsung APIAMIS + Bearer |
+| 3 — Detail Pekerjaan | ✅ Selesai | PR-4–6 | Tab inti + antrean offline foto SQLite |
+| 4 — Notifikasi & Presence | ✅ Selesai | PR-7 | Realtime, local push, presence heartbeat |
+| 5 — Polish & Distribusi | ✅ Selesai | PR-8 | Error boundary, icon/splash, EAS, README |
 | 6 — Paritas Web (opsional) | ⬜ Belum | — | Output, addendum, panduan, maps, OCR |
 
 **Legenda:** ⬜ Belum · 🔄 Berjalan · ✅ Selesai · ⏸ Ditunda
+
+**Auth:** Hanya login email/password. Tidak ada SSO / handoff.
 
 ---
 
@@ -29,7 +31,6 @@
 - [x] `packages/api-client` — `createApiClient`, semua endpoint API
 - [x] Web re-export via `src/lib/*` (tidak break import existing)
 - [x] Folder `apps/mobile` + `task.md` ini
-- [x] Verifikasi: `bun run typecheck` + `bun test` green (39 pass)
 
 ---
 
@@ -43,16 +44,16 @@
 - [x] Dependensi: `@pengawas/shared`, `@pengawas/api-client`, `@tanstack/react-query`
 
 ### Navigasi
-- [x] Tab: Dashboard, Pekerjaan, Tiket, Profil
+- [x] Tab: Dashboard, Pekerjaan, Tiket (Profil via header)
 - [x] Stack: Login, Detail Pekerjaan, Notifikasi
 - [x] Splash background `#fff7e6` + loading states
 
 ### Layar
-- [x] Login (email/password dev via `/bff/auth/mobile/login`)
+- [x] Login (email/password langsung APIAMIS)
 - [x] Dashboard (KPI cards + daftar perhatian)
 - [x] Daftar Pekerjaan (filter, pagination)
 - [x] Tiket (daftar read-only)
-- [x] Profil + logout
+- [x] Profil + logout (header)
 - [x] Detail pekerjaan (tab ringkasan/progress/penerima/foto/tiket)
 
 ### Komponen UI (Neobrutalism)
@@ -61,55 +62,42 @@
 
 ### Acceptance
 - [x] Typecheck mobile green (`bun run mobile:typecheck`)
-- [x] Expo Web bundle green (`expo export --platform web`)
+- [x] Expo Web bundle green
 - [ ] Manual smoke: `bun run mobile` di emulator/device
-
-### Menjalankan
-```powershell
-# Terminal 1 — BFF (port 3001 jika dev server terpisah, atau 3000)
-bun run dev
-
-# Terminal 2 — Mobile (standalone ke APIAMIS, tidak perlu BFF)
-# Set EXPO_PUBLIC_APIAMIS_BASE_URL di apps/mobile/.env
-bun run mobile
-```
 
 ---
 
-## Fase 2 — Auth Standalone (sebagian selesai)
-
-Alur sama dengan upstream `www/bun` (`handleLogin` → APIAMIS), tapi tanpa BFF pengawas:
+## Fase 2 — Auth Standalone ✅
 
 - [x] `POST {APIAMIS}/auth/login` → simpan `token` di SecureStore
 - [x] `GET {APIAMIS}/auth/me` + `POST {APIAMIS}/auth/logout` via Bearer
-- [x] Semua data API langsung ke `{APIAMIS}/*` (bukan `/bff/api`)
+- [x] Semua data API langsung ke `{APIAMIS}/*`
 - [x] `createApiClient({ getAuthHeader: () => 'Bearer ...' })`
 - [x] 401 → clear token + redirect login
-- [ ] SSO / handoff: `POST {APIAMIS}/auth/handoff/exchange` + deep link
 - [ ] Test manual: login native device + smoke data pekerjaan
-
-> Web dashboard tetap pakai BFF + cookie. Mobile berdiri sendiri.
 
 ---
 
-## Fase 3 — Detail Pekerjaan (sebagian selesai)
+## Fase 3 — Detail Pekerjaan ✅
 
 ### PR-4: Ringkasan + Progress ✅
-- [x] Tab ringkasan pekerjaan (KPI, output, metadata)
-- [x] Progress estimasi (fisik/keuangan, rencana/realisasi per tanggal — sama web)
+- [x] Tab ringkasan pekerjaan (hero + data kontrak + output)
+- [x] Progress estimasi (fisik/keuangan, rencana/realisasi per tanggal)
 - [x] Loading / empty / error states
+- [x] Redesain layout detail (hero KPI, tab ikon)
 
-### PR-5: Foto (sebagian)
+### PR-5: Foto ✅
 - [x] Matriks slot 0% / 25% / 50% / 75% / 100%
-- [x] `expo-image-picker` kamera langsung + upload ke APIAMIS
-- [x] Hapus foto (konfirmasi)
-- [ ] EXIF GPS via `exifr`
-- [ ] Fallback GPS: `expo-location`
-- [ ] Antrean offline SQLite + auto-retry
+- [x] `expo-image-picker` kamera + galeri + upload ke APIAMIS
+- [x] Hapus / ganti foto + preview modal
+- [x] EXIF GPS via `exifr` (lite) + fallback `expo-location`
+- [x] Koordinat wajib + validasi
+- [x] Retry upload + antrean offline SQLite (`expo-sqlite`) + auto-retry saat online
 
 ### PR-6: Penerima + Tiket ✅
 - [x] CRUD penerima manfaat (komunal / individu)
 - [x] Form tambah tiket + daftar tiket pekerjaan
+- [x] Paginasi tab Penerima & Foto
 
 ### Ditunda (bukan MVP)
 - [ ] Tab Output matrix kompleks
@@ -120,23 +108,29 @@ Alur sama dengan upstream `www/bun` (`handleLogin` → APIAMIS), tapi tanpa BFF 
 
 ---
 
-## Fase 4 — Notifikasi & Presence
+## Fase 4 — Notifikasi & Presence ✅
 
-- [ ] Polling notifikasi (interval ~20s)
-- [ ] Halaman daftar notifikasi
-- [ ] Mark read / mark all read
-- [ ] Presence heartbeat
-- [ ] Push notification (butuh endpoint backend — fase lanjut)
+- [x] Polling notifikasi (fallback jika Reverb off)
+- [x] Realtime via Laravel Reverb (`useNotificationRealtime`)
+- [x] Halaman daftar notifikasi + panel header
+- [x] Mark read / mark all read
+- [x] Presence heartbeat (`POST /presence/heartbeat`, app `pengawasan`)
+- [x] Local push saat app background (`expo-notifications` + broadcast Reverb)
+- [x] Tap notifikasi → navigasi internal (`useNotificationNavigation`)
+- [x] Pelacakan GPS latar belakang (opt-in di Profil, `expo-task-manager` + heartbeat + koordinat)
+
+> Push server-side (FCM/APNs token ke backend) belum ada endpoint `apiamis` — ditunda.
 
 ---
 
-## Fase 5 — Polish & Distribusi
+## Fase 5 — Polish & Distribusi ✅
 
-- [ ] Error boundary per screen + retry button
-- [ ] Deep link SSO (`pengawas://auth?code=...`)
-- [ ] EAS Build profiles (development, preview, production)
-- [ ] App icon + splash screen
-- [ ] Dokumentasi setup developer (README section Mobile)
+- [x] Error boundary per layar + retry (`ScreenErrorFallback`, Expo Router `ErrorBoundary`)
+- [x] Build APK lokal VPS (`scripts/build-android.sh`, git sync otomatis)
+- [x] EAS Build profiles (`apps/mobile/eas.json`: development, preview, production)
+- [x] App icon + splash (`assets/arumanis.png`, `expo-splash-screen` hide setelah auth)
+- [x] Dokumentasi setup developer (README § Aplikasi Mobile)
+- [ ] Manual smoke: emulator/device + APK production
 
 ---
 
@@ -148,7 +142,6 @@ Alur sama dengan upstream `www/bun` (`handleLogin` → APIAMIS), tapi tanpa BFF 
 - [ ] Panduan (markdown renderer)
 - [ ] Peta koordinat (`react-native-maps`)
 - [ ] OCR watermark (native / defer)
-- [ ] Laravel Echo realtime
 
 ---
 
@@ -156,51 +149,23 @@ Alur sama dengan upstream `www/bun` (`handleLogin` → APIAMIS), tapi tanpa BFF 
 
 | Web | Mobile | Status |
 |-----|--------|--------|
-| `react-router-dom` | Expo Router | ⬜ |
-| Tailwind CSS | NativeWind | ⬜ |
-| `lucide-react` | `lucide-react-native` | ⬜ |
-| Dropzone | `expo-image-picker` | ⬜ |
-| IndexedDB | `expo-sqlite` | ⬜ |
-| httpOnly cookie | SecureStore + Bearer | ⬜ |
+| `react-router-dom` | Expo Router | ✅ |
+| Tailwind CSS | NativeWind | ✅ |
+| `lucide-react` | `lucide-react-native` | ✅ |
+| Dropzone | `expo-image-picker` | ✅ |
+| IndexedDB | `expo-sqlite` + `expo-file-system` | ✅ |
+| httpOnly cookie | SecureStore + Bearer | ✅ |
 | Leaflet | `react-native-maps` | ⬜ |
 | Tesseract.js | Defer | ⬜ |
-| Laravel Echo | Polling | ⬜ |
-
----
-
-## Shared Packages (sudah tersedia)
-
-| Package | Isi | Dipakai mobile |
-|---------|-----|----------------|
-| `@pengawas/shared` | types, format, foto-status, query-keys | ✅ Siap |
-| `@pengawas/api-client` | `createApiClient`, semua endpoint | ✅ Siap (butuh config Bearer di Fase 2) |
-
----
-
-## Catatan & Blocker
-
-| Tanggal | Catatan |
-|---------|---------|
-| 2026-07-06 | Fase 0 selesai — monorepo + shared packages |
-| 2026-07-06 | Fase 1 selesai — Expo scaffold + layar dasar + Neo UI |
-| 2026-07-06 | BFF mobile auth dasar (Bearer, mobile/login, CORS) |
-| 2026-07-06 | Fix Babel: pin `nativewind@4.1.23` (hindari `react-native-worklets` dari 4.2.x) |
-| 2026-07-06 | Auth standalone: langsung APIAMIS, alur sama www/bun upstream |
-| 2026-07-06 | Fase 3: tab detail pekerjaan (ringkasan, progress, penerima, foto, tiket) |
-| | Blocker Fase 5: SSO deep link perlu koordinasi dengan portal Arumanis |
+| Laravel Echo | Reverb + polling fallback | ✅ |
 
 ---
 
 ## Verifikasi Rutin
 
 ```powershell
-# Root (web + packages)
 rtk bun run typecheck
 rtk bun test
-
-# Mobile (setelah Fase 1)
+rtk bun run mobile:typecheck
 rtk bun run mobile:web
-
-# BFF terpisah (apiamis.test)
-rtk bun run dev:server
 ```
