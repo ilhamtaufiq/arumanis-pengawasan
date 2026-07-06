@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useNotificationRealtime } from '@/hooks/useNotificationRealtime'
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
 import { LiveChatWidget } from '@/features/live-chat/LiveChatWidget'
 
@@ -76,6 +77,7 @@ export function AppLayout({
   const currentTitle = useMemo(() => getPageTitle(location.pathname), [location.pathname])
 
   usePresenceHeartbeat()
+  useNotificationRealtime(user.id)
 
   useEffect(() => {
     window.localStorage.setItem('arumanis.sidebar-open', String(sidebarOpen))

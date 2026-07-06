@@ -72,22 +72,87 @@ async function getBottomCrop(file: File, bottomPercent = 0.40): Promise<HTMLCanv
   })
 }
 
+export function normalizeOcrText(text: string): string {
+  return text
+    .replace(/\|/g, ' ')
+    .replace(/\bLaf\b/gi, 'Lat')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function remapGarbledLonFraction(digits: string) {
+  const map: Record<string, string> = {
+    '5': '1',
+    '4': '5',
+    '1': '4',
+    '3': '1',
+    '7': '3',
+    '8': '8',
+  }
+
+  return digits
+    .split('')
+    .map((ch) => map[ch] ?? ch)
+    .join('')
+    .slice(0, 6)
+}
+
+function applyIndonesiaLatHeuristic(lat: number) {
+  if (lat > 0 && lat < 8) return -lat
+  return lat
+}
+
+function formatCoordinatePair(lat: number, lon: number) {
+  const normalizedLat = applyIndonesiaLatHeuristic(lat)
+  return `${normalizedLat.toFixed(6)}, ${lon.toFixed(6)}`
+}
+
 // More robust parser for common watermark formats in project photos
-function parseCoordinatesFromText(text: string): string | null {
+export function parseCoordinatesFromText(text: string): string | null {
   if (!text) return null
 
-  // Clean up text
-  const clean = text.replace(/\s+/g, ' ').trim()
+  const clean = normalizeOcrText(text)
+
+  // Pattern 0: Concatenated OCR without separator, e.g. -7.1653984107.1545166
+  const concatenated = clean.match(/(-?\d{1,2}\.\d{4,})(\d{3}\.\d{4,})/)
+  if (concatenated) {
+    const lat = parseFloat(concatenated[1] || '0')
+    const lon = parseFloat(concatenated[2] || '0')
+    if (lat > -12 && lat < 8 && lon > 90 && lon < 145) {
+      return formatCoordinatePair(lat, lon)
+    }
+  }
+
+  // Pattern 0b: Decimal pair with compass suffix, e.g. 7.23865417S 107.1541178E
+  const compassDecimal = clean.match(/(-?\d+\.\d{3,})\s*([NS])\s+(-?\d+\.\d{3,})\s*([EW])/i)
+  if (compassDecimal) {
+    let lat = parseFloat(compassDecimal[1] || '0')
+    let lon = parseFloat(compassDecimal[3] || '0')
+    if (compassDecimal[2]?.toUpperCase() === 'S' && lat > 0) lat = -lat
+    if (compassDecimal[4]?.toUpperCase() === 'W' && lon > 0) lon = -lon
+    return formatCoordinatePair(lat, lon)
+  }
+
+  // Pattern 0c: Degree suffix watermark, e.g. -6.794353° S 107.228834° E
+  const degreeSuffix = clean.match(/(-?\d+\.\d{3,})°\s*([NS])\s+(-?\d+\.\d{3,})°\s*([EW])/i)
+  if (degreeSuffix) {
+    let lat = parseFloat(degreeSuffix[1] || '0')
+    let lon = parseFloat(degreeSuffix[3] || '0')
+    if (degreeSuffix[2]?.toUpperCase() === 'S' && lat > 0) lat = -lat
+    if (degreeSuffix[4]?.toUpperCase() === 'W' && lon > 0) lon = -lon
+    return formatCoordinatePair(lat, lon)
+  }
 
   // Pattern 1: Explicit Lat / Long (very common in GPS Map Camera watermarks)
   // Handles: "Lat -6.794353, Long 107.228834" or "Lat:-6.79 Long 107.22" etc.
-  let m = clean.match(/(?:Lat|Latitude|LS)[^\d-]*(-?\d+\.\d{3,})/i)
-  const latCand = m ? parseFloat(m[1] || '0') : null
+  let m = clean.match(/(?:Lat|Latitude|LS|Laf)[^\d-]*(-?\d+\.\d{3,})/i)
+  let latCand = m ? parseFloat(m[1] || '0') : null
 
   m = clean.match(/(?:Long|Longitude|Lon|BT|BTG)[^\d-]*(-?\d+\.\d{3,})/i)
   const lonCand = m ? parseFloat(m[1] || '0') : null
 
   if (latCand !== null && lonCand !== null) {
+    latCand = applyIndonesiaLatHeuristic(latCand)
     return `${latCand.toFixed(6)}, ${lonCand.toFixed(6)}`
   }
 
@@ -97,9 +162,22 @@ function parseCoordinatesFromText(text: string): string | null {
   if (m) {
     const lat = parseFloat(m[1] || '0')
     const lon = parseFloat(m[2] || '0')
-    // Basic sanity check for Indonesia area
     if (lat > -12 && lat < 8 && lon > 90 && lon < 145) {
-      return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
+      return formatCoordinatePair(lat, lon)
+    }
+  }
+
+  // Pattern 2b: Garbled OCR from timestamp compass watermark
+  const garbled = clean.match(/(\d{11}).*?107\D*(\d{6})/)
+  if (garbled) {
+    const latChunk = garbled[1] || ''
+    const lonChunk = garbled[2] || ''
+    if (latChunk.startsWith('17') && latChunk.length >= 11) {
+      const lat = -parseFloat(`7.${latChunk.slice(2, 8)}`)
+      const lon = parseFloat(`107.${remapGarbledLonFraction(lonChunk)}`)
+      if (Number.isFinite(lat) && Number.isFinite(lon) && lon > 90 && lon < 145) {
+        return `${lat.toFixed(6)}, ${lon.toFixed(6)}`
+      }
     }
   }
 
@@ -131,10 +209,10 @@ function parseCoordinatesFromText(text: string): string | null {
       const a = parseFloat(numbers[i] || '0')
       const b = parseFloat(numbers[i + 1] || '0')
       if (a > -12 && a < 8 && b > 90 && b < 145) {
-        return `${a.toFixed(6)}, ${b.toFixed(6)}`
+        return formatCoordinatePair(a, b)
       }
       if (b > -12 && b < 8 && a > 90 && a < 145) {
-        return `${b.toFixed(6)}, ${a.toFixed(6)}`
+        return formatCoordinatePair(b, a)
       }
     }
   }

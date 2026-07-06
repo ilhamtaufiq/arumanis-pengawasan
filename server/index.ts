@@ -18,6 +18,22 @@ const app = new Hono()
 
 const isProd = Bun.env.BUN_ENV === 'production' || Bun.env.NODE_ENV === 'production'
 
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin')
+  if (origin && isAllowedMobileOrigin(origin)) {
+    c.header('Access-Control-Allow-Origin', origin)
+    c.header('Access-Control-Allow-Headers', 'Accept, Authorization, Content-Type')
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+    c.header('Vary', 'Origin')
+  }
+
+  if (c.req.method === 'OPTIONS') {
+    return c.body(null, 204)
+  }
+
+  await next()
+})
+
 // Avoid root->base redirect in production. In stripping-proxy deploys (common for subpath),
 // the server sees '/' for the mounted app entrypoint; redirecting to PUBLIC_BASE_PATH
 // causes ERR_TOO_MANY_REDIRECTS. Dev still gets the convenience redirect.
@@ -58,6 +74,42 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
     const loginPath = PUBLIC_BASE_PATH ? `${PUBLIC_BASE_PATH}/login` : '/login'
     url.pathname = loginPath
     return c.redirect(url.toString())
+  })
+
+  app.post(`${prefix}/bff/auth/mobile/login`, async (c) => {
+    if (isProd) {
+      return c.json({ message: 'Login mobile dinonaktifkan di production. Gunakan SSO Arumanis.' }, 403)
+    }
+
+    try {
+      const body = await safeJsonBody(c)
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+      })
+
+      const payload = await safeParseResponse(response)
+
+      if (!response.ok) {
+        return c.json(payload ?? { message: 'Login gagal' }, response.status as any)
+      }
+
+      const token = extractToken(payload)
+      if (!token) {
+        return c.json({ message: 'Token tidak diterima dari backend' }, 502)
+      }
+
+      return c.json({
+        token,
+        user: extractEntity(payload?.user ?? payload?.data?.user ?? payload?.data ?? payload),
+      })
+    } catch {
+      return c.json({ message: 'Login gagal' }, 500)
+    }
   })
 
   app.post(`${prefix}/bff/auth/login`, async (c) => {
@@ -182,7 +234,7 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
   })
 
   app.post(`${prefix}/bff/broadcasting/auth`, async (c) => {
-    const token = getCookie(c, COOKIE_NAME)
+    const token = resolveSessionToken(c)
     if (!token) {
       return c.json({ message: 'Unauthenticated' }, 401)
     }
@@ -220,7 +272,7 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
       headers.set('Content-Type', incomingContentType)
     }
 
-    const token = getCookie(c, COOKIE_NAME)
+    const token = resolveSessionToken(c)
     if (token) {
       headers.set('Authorization', `Bearer ${token}`)
     }
@@ -318,8 +370,28 @@ function normalizeRequestPath(pathname: string) {
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 }
 
+function resolveSessionToken(c: Context) {
+  const authHeader = c.req.header('Authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    const bearer = authHeader.slice(7).trim()
+    if (bearer) return bearer
+  }
+
+  return getCookie(c, COOKIE_NAME) ?? null
+}
+
+function isAllowedMobileOrigin(origin: string) {
+  return (
+    origin.startsWith('http://localhost') ||
+    origin.startsWith('http://127.0.0.1') ||
+    origin.startsWith('exp://') ||
+    /^https?:\/\/10\.\d+\.\d+\.\d+(?::\d+)?$/.test(origin) ||
+    /^https?:\/\/192\.168\.\d+\.\d+(?::\d+)?$/.test(origin)
+  )
+}
+
 async function forwardAuthRequest(c: Context, target: string, method: string) {
-  const token = getCookie(c, COOKIE_NAME)
+  const token = resolveSessionToken(c)
   if (!token) {
     return c.json({ message: 'Unauthenticated' }, 401 as any)
   }

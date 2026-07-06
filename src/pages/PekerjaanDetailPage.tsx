@@ -25,7 +25,7 @@ import { KoordinatMapPicker } from '@/components/KoordinatMapPicker'
 import { KontrakAddendumTab } from '@/components/KontrakAddendumTab'
 import { PekerjaanProgressEstimasiTab } from '@/components/PekerjaanProgressEstimasiTab'
 import { extractCoordinates } from '@/lib/image-gps-utils'
-import { formatKoordinatDisplay } from '@/lib/koordinat-utils'
+import { formatKoordinatDisplay, hasParsableKoordinat } from '@/lib/koordinat-utils'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@/lib/foto-status'
 import {
   AnchorButton,
@@ -308,6 +308,15 @@ export function PekerjaanDetailPage() {
       window.clearTimeout(timer)
     }
   }, [uploadKoordinat, uploadTarget, pekerjaanId])
+
+  const canSubmitFotoUpload = useMemo(
+    () =>
+      Boolean(uploadFile) &&
+      hasParsableKoordinat(uploadKoordinat) &&
+      koordinatValidation?.loading === false &&
+      koordinatValidation?.valid === true,
+    [uploadFile, uploadKoordinat, koordinatValidation],
+  )
 
   useEffect(() => {
     if (!tiketKategori) return
@@ -665,7 +674,7 @@ export function PekerjaanDetailPage() {
       formData.append('pekerjaan_id', String(pekerjaanId))
       formData.append('komponen_id', String(input.output.id))
       formData.append('keterangan', input.slot)
-      formData.append('koordinat', input.koordinat || 'manual')
+      formData.append('koordinat', input.koordinat.trim())
       if (input.penerima) {
         formData.append('penerima_id', String(input.penerima.id))
       }
@@ -1830,7 +1839,7 @@ export function PekerjaanDetailPage() {
 
               <div className="upload-modal-content">
                 <div className="neo-surface neo-surface--highlight">
-                  <div className="upload-section-title">Koordinat GPS</div>
+                  <div className="upload-section-title">Koordinat GPS (wajib)</div>
                   <KoordinatMapPicker
                     value={uploadKoordinat}
                     onChange={setUploadKoordinat}
@@ -1877,14 +1886,14 @@ export function PekerjaanDetailPage() {
                   <Button
                     type="button"
                     isLoading={uploadFotoMutation.isPending}
-                    disabled={!uploadFile}
+                    disabled={!canSubmitFotoUpload}
                     onClick={() => {
-                      if (!uploadFile) return
+                      if (!uploadFile || !canSubmitFotoUpload) return
                       const mutationInput: { file: File; output: Output; slot: string; penerima?: Penerima | undefined; koordinat: string } = {
                         file: uploadFile,
                         output: uploadTarget.output,
                         slot: uploadTarget.slot,
-                        koordinat: uploadKoordinat,
+                        koordinat: uploadKoordinat.trim(),
                       }
                       if (uploadTarget.penerima) {
                         mutationInput.penerima = uploadTarget.penerima

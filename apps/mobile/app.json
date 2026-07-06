@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Arumanis Pengawasan",
+    "slug": "pengawas-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "pengawas",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#fff7e6"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "space.cianjur.pengawas"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffcc00"
+      },
+      "package": "space.cianjur.pengawas"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Aplikasi membutuhkan kamera untuk dokumentasi foto pekerjaan."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Aplikasi membutuhkan lokasi untuk koordinat foto dokumentasi."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

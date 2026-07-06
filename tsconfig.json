@@ -16,9 +16,12 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@pengawas/shared": ["packages/shared/src/index.ts"],
+      "@pengawas/shared/*": ["packages/shared/src/*"],
+      "@pengawas/api-client": ["packages/api-client/src/index.ts"]
     }
   },
-  "include": ["src", "server", "scripts", "vite.config.ts", "tests"],
+  "include": ["src", "server", "scripts", "vite.config.ts", "tests", "packages/*/src"],
   "exclude": ["dist", "node_modules"]
 }

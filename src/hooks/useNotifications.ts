@@ -1,17 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryKeys } from '@pengawas/shared/query-keys'
 import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   type NotificationListResult,
 } from '@/lib/notifications'
+import { isEchoEnabled } from '@/lib/echo'
 
-export const notificationKeys = {
-  all: ['notifications'] as const,
-  list: (unreadOnly: boolean, page: number) =>
-    [...notificationKeys.all, 'list', { unreadOnly, page }] as const,
-  unread: () => [...notificationKeys.all, 'unread'] as const,
-}
+export const notificationKeys = queryKeys.notifications
 
 export function useNotificationList(unreadOnly = false, page = 1) {
   return useQuery({
@@ -21,11 +18,13 @@ export function useNotificationList(unreadOnly = false, page = 1) {
 }
 
 export function useUnreadNotifications(pollInterval = 20_000) {
+  const realtimeEnabled = isEchoEnabled()
+
   return useQuery({
     queryKey: notificationKeys.unread(),
     queryFn: () => getNotifications(true),
-    refetchInterval: pollInterval,
-    refetchIntervalInBackground: true,
+    refetchInterval: realtimeEnabled ? false : pollInterval,
+    refetchIntervalInBackground: !realtimeEnabled,
   })
 }
 

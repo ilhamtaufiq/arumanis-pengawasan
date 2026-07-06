@@ -60,6 +60,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(process.cwd(), 'src'),
+      '@pengawas/shared': resolve(process.cwd(), 'packages/shared/src/index.ts'),
+      '@pengawas/shared/types': resolve(process.cwd(), 'packages/shared/src/types.ts'),
+      '@pengawas/shared/format': resolve(process.cwd(), 'packages/shared/src/format.ts'),
+      '@pengawas/shared/foto-status': resolve(process.cwd(), 'packages/shared/src/foto-status.ts'),
+      '@pengawas/shared/query-keys': resolve(process.cwd(), 'packages/shared/src/query-keys.ts'),
+      '@pengawas/api-client': resolve(process.cwd(), 'packages/api-client/src/index.ts'),
     },
   },
   server: {

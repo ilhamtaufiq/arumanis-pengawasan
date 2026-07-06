@@ -147,7 +147,7 @@ export function buildFotoFormDataFromQueue(entry: QueuedFotoUpload): FormData {
   formData.append('pekerjaan_id', String(entry.pekerjaanId))
   formData.append('komponen_id', String(entry.komponenId))
   formData.append('keterangan', entry.slot)
-  formData.append('koordinat', entry.koordinat || 'manual')
+  formData.append('koordinat', entry.koordinat)
   if (entry.penerimaId !== undefined) {
     formData.append('penerima_id', String(entry.penerimaId))
   }

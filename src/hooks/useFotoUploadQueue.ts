@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef } from 'react'
+import { queryKeys } from '@pengawas/shared/query-keys'
 import { createFoto } from '@/lib/api'
 import {
   buildFotoFormDataFromQueue,
@@ -10,7 +11,7 @@ import {
 } from '@/lib/foto-upload-queue'
 import { trackPengawasEvent } from '@/lib/analytics/visitor-events'
 
-export const fotoUploadQueueKey = ['foto-upload-queue'] as const
+export const fotoUploadQueueKey = queryKeys.fotoUploadQueue
 
 export function useFotoUploadQueue() {
   const queryClient = useQueryClient()
