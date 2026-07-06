@@ -9,7 +9,7 @@ export default function PekerjaanLayout() {
   return (
     <Stack
       screenOptions={{
-        contentStyle: { backgroundColor: colors.background },
+        contentStyle: { flex: 1, backgroundColor: colors.background },
       }}
     >
       <Stack.Screen

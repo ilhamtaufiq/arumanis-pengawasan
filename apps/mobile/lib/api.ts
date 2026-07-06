@@ -1,5 +1,6 @@
 import { ApiError, createApiClient, formatApiError, unwrapEntity } from '@pengawas/api-client'
 import type { AuthUser } from '@pengawas/shared'
+import { signInWithGoogle } from './google-auth'
 import { getApiBaseUrl } from './config'
 import {
   clearSessionToken,
@@ -74,6 +75,13 @@ export async function mobileLogin(input: { email: string; password: string }) {
   setSessionTokenSync(token)
 
   return user
+}
+
+export async function mobileGoogleLogin() {
+  const token = await signInWithGoogle()
+  await setSessionToken(token)
+  setSessionTokenSync(token)
+  return me()
 }
 
 export async function mobileLogout() {

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { ScrollView, View } from 'react-native'
 import { useResponsive } from '@/lib/responsive'
 import { useLocalSearchParams } from 'expo-router'
+import { colors } from '@/theme/tokens'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { usePekerjaanRealtime } from '@/hooks/usePekerjaanRealtime'
@@ -17,8 +18,22 @@ import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
 import { TiketTab } from '@/components/pekerjaan/TiketTab'
 import { EmptyState, Spinner } from '@/components/ui'
 
+function resolveRouteId(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  return raw?.trim() ?? ''
+}
+
+function ScreenContainer({ children }: { children: ReactNode }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background, minHeight: 0 }}>
+      {children}
+    </View>
+  )
+}
+
 export default function PekerjaanDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const params = useLocalSearchParams<{ id?: string | string[] }>()
+  const id = resolveRouteId(params.id)
   const pekerjaanId = Number(id)
   const [activeTab, setActiveTab] = useState<DetailTabId>('ringkasan')
   const { contentPadding, isTablet, maxContentWidth } = useResponsive()
@@ -43,43 +58,67 @@ export default function PekerjaanDetailScreen() {
     return Number(item.progress_estimasi_fisik ?? item.progress_total ?? 0)
   }, [detailQuery.data])
 
-  if (!Number.isFinite(pekerjaanId)) {
-    return <EmptyState title="ID tidak valid" description="Parameter pekerjaan pada URL tidak bisa dibaca." />
+  if (!id || !Number.isFinite(pekerjaanId) || pekerjaanId <= 0) {
+    return (
+      <ScreenContainer>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 16 }}>
+          <EmptyState title="ID tidak valid" description="Parameter pekerjaan pada URL tidak bisa dibaca." />
+        </View>
+      </ScreenContainer>
+    )
   }
 
   if (authLoading || detailQuery.isLoading) {
-    return <Spinner label="Memuat detail..." />
+    return (
+      <ScreenContainer>
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <Spinner label="Memuat detail..." />
+        </View>
+      </ScreenContainer>
+    )
   }
 
   if (detailQuery.isError || !detailQuery.data) {
     return (
-      <EmptyState
-        title="Gagal memuat detail"
-        description={detailQuery.error instanceof Error ? detailQuery.error.message : 'Pekerjaan tidak ditemukan'}
-        actionLabel="Coba lagi"
-        onAction={() => void detailQuery.refetch()}
-      />
+      <ScreenContainer>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 16 }}>
+          <EmptyState
+            title="Gagal memuat detail"
+            description={detailQuery.error instanceof Error ? detailQuery.error.message : 'Pekerjaan tidak ditemukan'}
+            actionLabel="Coba lagi"
+            onAction={() => void detailQuery.refetch()}
+          />
+        </View>
+      </ScreenContainer>
     )
   }
 
   const item = detailQuery.data
 
   return (
-    <View style={{ flex: 1, alignItems: isTablet ? 'center' : 'stretch' }}>
-      <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1 }}>
-        <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
-        <DetailTabBar active={activeTab} onChange={setActiveTab} />
+    <ScreenContainer>
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          alignItems: isTablet ? 'center' : 'stretch',
+        }}
+      >
+        <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1, minHeight: 0 }}>
+          <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
+          <DetailTabBar active={activeTab} onChange={setActiveTab} />
 
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{
-            padding: contentPadding,
-            paddingTop: 8,
-            gap: 16,
-            paddingBottom: 32,
-          }}
-          keyboardShouldPersistTaps="handled"
-        >
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              padding: contentPadding,
+              paddingTop: 8,
+              gap: 16,
+              paddingBottom: 32,
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
           {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
           {activeTab === 'progress' ? (
             <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
@@ -87,8 +126,9 @@ export default function PekerjaanDetailScreen() {
           {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
           {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
           {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
-    </View>
+    </ScreenContainer>
   )
 }

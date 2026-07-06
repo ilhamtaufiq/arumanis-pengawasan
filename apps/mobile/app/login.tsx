@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
 import { useAuth } from '@/lib/auth'
+import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton'
 import { NeoButton, NeoInput, NeoSurface, Spinner } from '@/components/ui'
 import { colors } from '@/theme/tokens'
 import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
@@ -8,11 +9,12 @@ import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
 export const ErrorBoundary = createRouteErrorBoundary('Login', false)
 
 export default function LoginScreen() {
-  const { login, isLoading: authLoading } = useAuth()
+  const { login, loginWithGoogle, isLoading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [googleSubmitting, setGoogleSubmitting] = useState(false)
 
   async function handleSubmit() {
     setError(null)
@@ -23,6 +25,18 @@ export default function LoginScreen() {
       setError(err instanceof Error ? err.message : 'Login gagal')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setError(null)
+    setGoogleSubmitting(true)
+    try {
+      await loginWithGoogle()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login Google gagal')
+    } finally {
+      setGoogleSubmitting(false)
     }
   }
 
@@ -78,7 +92,19 @@ export default function LoginScreen() {
           <NeoButton
             label={submitting ? 'Memproses...' : 'Masuk'}
             onPress={() => void handleSubmit()}
-            disabled={submitting || !email.trim() || !password}
+            disabled={submitting || googleSubmitting || !email.trim() || !password}
+          />
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1, height: 2, backgroundColor: colors.border }} />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>ATAU</Text>
+            <View style={{ flex: 1, height: 2, backgroundColor: colors.border }} />
+          </View>
+
+          <GoogleLoginButton
+            onPress={() => void handleGoogleLogin()}
+            loading={googleSubmitting}
+            disabled={submitting}
           />
         </NeoSurface>
       </ScrollView>

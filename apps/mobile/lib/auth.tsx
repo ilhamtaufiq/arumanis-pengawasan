@@ -12,7 +12,14 @@ import {
 import type { AuthUser } from '@pengawas/shared'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { ApiError } from '@pengawas/api-client'
-import { hydrateSessionToken, me, mobileLogin, mobileLogout, setSessionTokenSync } from '@/lib/api'
+import {
+  hydrateSessionToken,
+  me,
+  mobileGoogleLogin,
+  mobileLogin,
+  mobileLogout,
+  setSessionTokenSync,
+} from '@/lib/api'
 import { pauseBackgroundLocationTracking } from '@/lib/background-location'
 import { disconnectEcho } from '@/lib/echo'
 import { clearSessionToken } from '@/lib/session'
@@ -24,6 +31,7 @@ type AuthContextValue = {
   /** Sesi sudah di-bootstrap dan /auth/me sukses — aman untuk fetch API terproteksi */
   canFetch: boolean
   login: (input: { email: string; password: string }) => Promise<void>
+  loginWithGoogle: () => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -112,6 +120,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   )
 
+  const loginWithGoogle = useCallback(async () => {
+    await mobileGoogleLogin()
+    setHasToken(true)
+    await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all })
+  }, [queryClient])
+
   const logout = useCallback(async () => {
     disconnectEcho()
     await pauseBackgroundLocationTracking()
@@ -128,9 +142,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated,
       canFetch,
       login,
+      loginWithGoogle,
       logout,
     }),
-    [canFetch, isAuthenticated, isLoading, login, logout, meQuery.data],
+    [canFetch, isAuthenticated, isLoading, login, loginWithGoogle, logout, meQuery.data],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

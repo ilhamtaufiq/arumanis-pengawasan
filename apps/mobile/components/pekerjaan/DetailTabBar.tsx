@@ -1,4 +1,3 @@
-import { type ReactNode } from 'react'
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native'
 import {
   Camera,
@@ -6,6 +5,7 @@ import {
   RefreshCcw,
   Shield,
   Users,
+  type LucideIcon,
 } from 'lucide-react-native'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
 import { useResponsive } from '@/lib/responsive'
@@ -16,17 +16,17 @@ type DetailTabBarProps = {
   onChange: (tab: DetailTabId) => void
 }
 
-const DETAIL_TAB_CONFIG: Array<{ id: DetailTabId; label: string; icon: ReactNode }> = [
-  { id: 'ringkasan', label: 'Ringkasan', icon: <Shield size={14} color={colors.foreground} /> },
-  { id: 'progress', label: 'Progress', icon: <RefreshCcw size={14} color={colors.foreground} /> },
-  { id: 'penerima', label: 'Penerima', icon: <Users size={14} color={colors.foreground} /> },
-  { id: 'foto', label: 'Foto', icon: <Camera size={14} color={colors.foreground} /> },
-  { id: 'tiket', label: 'Tiket', icon: <MessageSquareText size={14} color={colors.foreground} /> },
+const DETAIL_TAB_CONFIG: Array<{ id: DetailTabId; label: string; Icon: LucideIcon }> = [
+  { id: 'ringkasan', label: 'Ringkasan', Icon: Shield },
+  { id: 'progress', label: 'Progress', Icon: RefreshCcw },
+  { id: 'penerima', label: 'Penerima', Icon: Users },
+  { id: 'foto', label: 'Foto', Icon: Camera },
+  { id: 'tiket', label: 'Tiket', Icon: MessageSquareText },
 ]
 
 function TabPill({
   label,
-  icon,
+  Icon,
   selected,
   onPress,
   equalWidth,
@@ -34,7 +34,7 @@ function TabPill({
   iconOnly,
 }: {
   label: string
-  icon: ReactNode
+  Icon: LucideIcon
   selected: boolean
   onPress: () => void
   equalWidth?: boolean
@@ -67,7 +67,7 @@ function TabPill({
         !pressed && !selected ? shadows.sm : null,
       ]}
     >
-      {icon}
+      <Icon size={14} color={colors.foreground} strokeWidth={2.5} />
       {iconOnly ? null : (
         <Text
           numberOfLines={1}
@@ -116,7 +116,7 @@ export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
             <TabPill
               key={tab.id}
               label={tab.label}
-              icon={tab.icon}
+              Icon={tab.Icon}
               selected={tab.id === active}
               onPress={() => onChange(tab.id)}
               equalWidth
@@ -141,7 +141,7 @@ export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
           <TabPill
             key={tab.id}
             label={tab.label}
-            icon={tab.icon}
+            Icon={tab.Icon}
             selected={tab.id === active}
             onPress={() => onChange(tab.id)}
             compact={isCompact}
