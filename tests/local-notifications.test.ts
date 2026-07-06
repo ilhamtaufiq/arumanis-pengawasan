@@ -26,7 +26,6 @@ describe('parseBroadcastNotificationPayload', () => {
     expect(parseBroadcastNotificationPayload({ message: 'Halo pengawas' })).toEqual({
       title: 'Notifikasi Pengawas',
       body: 'Halo pengawas',
-      url: undefined,
     })
   })
 })

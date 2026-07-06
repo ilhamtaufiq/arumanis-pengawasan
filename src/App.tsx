@@ -32,10 +32,6 @@ const BuatLaporanPage = lazy(async () => ({ default: (await import('@/pages/Buat
 const NotificationsPage = lazy(
   async () => ({ default: (await import('@/pages/NotificationsPage')).NotificationsPage }),
 )
-const PengawasLocationPage = lazy(
-  async () => ({ default: (await import('@/pages/PengawasLocationPage')).PengawasLocationPage }),
-)
-
 export function App() {
   return (
     <Suspense
@@ -63,7 +59,6 @@ export function App() {
             <Route path="/tiket" element={<TiketPage />} />
             <Route path="/panduan" element={<GuidePage />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/lokasi-pengawas" element={<PengawasLocationPage />} />
             <Route path="/notifikasi" element={<NotificationsPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />

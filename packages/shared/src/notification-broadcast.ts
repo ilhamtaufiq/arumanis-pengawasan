@@ -14,9 +14,14 @@ export function parseBroadcastNotificationPayload(payload: unknown): LocalNotifi
 
   if (!title && !body) return null
 
-  return {
+  const result: LocalNotificationPayload = {
     title: title || 'Notifikasi Pengawas',
     body: body || 'Ada pembaruan baru untuk akun Anda.',
-    url,
   }
+
+  if (url) {
+    result.url = url
+  }
+
+  return result
 }
