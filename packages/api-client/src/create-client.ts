@@ -471,6 +471,28 @@ export function createApiClient(config: ApiClientConfig) {
         body,
       })
     },
+
+    async getPresenceOnline() {
+      const payload = await requestApi<{
+        data: Array<{
+          id: number
+          name: string
+          email: string
+          avatar?: string | null
+          gender?: string | null
+          app: string
+          last_seen_at: string
+          koordinat?: string | null
+          koordinat_at?: string | null
+        }>
+        meta?: { online_window_minutes?: number }
+      }>('/presence/online')
+
+      return {
+        users: Array.isArray(payload?.data) ? payload.data : [],
+        onlineWindowMinutes: Number(payload?.meta?.online_window_minutes ?? 5),
+      }
+    },
   }
 }
 

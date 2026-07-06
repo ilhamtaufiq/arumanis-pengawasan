@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
+  MapPin,
   MessageSquareText,
   BookOpenText,
   PanelLeftClose,
@@ -24,6 +25,7 @@ import { LiveChatWidget } from '@/features/live-chat/LiveChatWidget'
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/pekerjaan', label: 'Pekerjaan', icon: ClipboardList },
+  { to: '/lokasi-pengawas', label: 'Lokasi Pengawas', icon: MapPin },
   { to: '/buat-laporan', label: 'Buat Laporan', icon: FileSpreadsheet },
   { to: '/tiket', label: 'Tiket', icon: MessageSquareText },
   { to: '/panduan', label: 'Panduan', icon: BookOpenText },
@@ -33,6 +35,7 @@ const navItems = [
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
   '/pekerjaan': 'Daftar Pekerjaan',
+  '/lokasi-pengawas': 'Lokasi Pengawas',
   '/buat-laporan': 'Buat Laporan Mingguan',
   '/tiket': 'Tiket & Isu Lapangan',
   '/panduan': 'Panduan Pengguna',

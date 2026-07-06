@@ -11,6 +11,7 @@
     "./query-keys": "./src/query-keys.ts",
     "./koordinat": "./src/koordinat.ts",
     "./notifications": "./src/notifications.ts",
-    "./presence-location": "./src/presence-location.ts"
+    "./presence-location": "./src/presence-location.ts",
+    "./presence": "./src/presence.ts"
   }
 }

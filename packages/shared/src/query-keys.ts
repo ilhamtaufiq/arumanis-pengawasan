@@ -40,6 +40,10 @@ export const queryKeys = {
       [...queryKeys.notifications.all, 'list', { unreadOnly, page }] as const,
     unread: () => [...queryKeys.notifications.all, 'unread'] as const,
   },
+  presence: {
+    all: ['presence'] as const,
+    online: () => [...queryKeys.presence.all, 'online'] as const,
+  },
   fotoUploadQueue: ['foto-upload-queue'] as const,
   kontrak: {
     all: ['kontrak'] as const,

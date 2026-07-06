@@ -3114,6 +3114,16 @@ button {
   z-index: 0;
 }
 
+.pengawas-location-map {
+  height: min(62vh, 520px);
+  min-height: 360px;
+  width: 100%;
+  border: 3px solid var(--border);
+  box-shadow: 4px 4px 0 0 var(--border);
+  background: #e8eef2;
+  z-index: 0;
+}
+
 .koordinat-map-hint {
   font-size: 11px;
   font-weight: 700;

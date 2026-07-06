@@ -76,4 +76,5 @@ export const {
   getKontrakAddendumRegisterGaps,
   createKontrakAddendum,
   submitKontrakAddendum,
+  getPresenceOnline,
 } = client
