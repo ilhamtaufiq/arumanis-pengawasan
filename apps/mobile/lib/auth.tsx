@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsRestoring, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSegments } from 'expo-router'
 import {
   createContext,
@@ -22,6 +22,7 @@ import {
 } from '@/lib/api'
 import { pauseBackgroundLocationTracking } from '@/lib/background-location'
 import { disconnectEcho } from '@/lib/echo'
+import { removePersistedQueryCache } from '@/lib/query-persist'
 import { clearSessionToken } from '@/lib/session'
 
 type AuthContextValue = {
@@ -41,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
   const segments = useSegments()
   const queryClient = useQueryClient()
+  const isRestoring = useIsRestoring()
   const [bootstrapped, setBootstrapped] = useState(false)
   const [hasToken, setHasToken] = useState(false)
 
@@ -56,13 +58,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const meQuery = useQuery({
     queryKey: queryKeys.auth.me(),
     queryFn: me,
-    enabled: bootstrapped && hasToken,
+    enabled: bootstrapped && hasToken && !isRestoring,
     retry: false,
+    networkMode: 'offlineFirst',
   })
 
   const isAuthenticated = Boolean(meQuery.data)
   const canFetch = bootstrapped && hasToken && isAuthenticated
-  const isLoading = !bootstrapped || (hasToken && meQuery.isLoading)
+  const isLoading =
+    !bootstrapped || isRestoring || (hasToken && meQuery.isPending && !meQuery.data)
 
   useEffect(() => {
     if (!canFetch) return
@@ -80,10 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!bootstrapped || meQuery.isLoading) return
 
     const inAuthGroup = segments[0] === 'login'
+    const meError = meQuery.isError ? meQuery.error : null
+    const meErrorStatus = meError instanceof ApiError ? meError.status : null
 
     if (meQuery.isError) {
-      const status = meQuery.error instanceof ApiError ? meQuery.error.status : null
-      if (status === 401 || status === 403) {
+      if (meErrorStatus === 401 || meErrorStatus === 403) {
         void clearSessionToken()
         setSessionTokenSync(null)
         setHasToken(false)
@@ -97,19 +102,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (hasToken && !meQuery.data && !meQuery.isError && !inAuthGroup) {
-      return
-    }
-
-    if (hasToken && !meQuery.data && meQuery.isError && !inAuthGroup) {
-      router.replace('/login')
+    if (hasToken && !meQuery.data && !inAuthGroup) {
       return
     }
 
     if (meQuery.data && inAuthGroup) {
       router.replace('/(tabs)')
     }
-  }, [bootstrapped, hasToken, meQuery.data, meQuery.isError, meQuery.isLoading, router, segments])
+  }, [bootstrapped, hasToken, meQuery.data, meQuery.isError, meQuery.isLoading, meQuery.error, router, segments])
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
@@ -132,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await mobileLogout()
     setHasToken(false)
     queryClient.clear()
+    await removePersistedQueryCache()
     router.replace('/login')
   }, [queryClient, router])
 

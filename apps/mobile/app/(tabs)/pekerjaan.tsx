@@ -29,6 +29,7 @@ export default function PekerjaanScreen() {
       }),
     enabled: canFetch,
     retry: false,
+    networkMode: 'offlineFirst',
   })
 
   const meta = pekerjaanQuery.data?.meta as Record<string, unknown> | undefined
@@ -64,9 +65,9 @@ export default function PekerjaanScreen() {
         </View>
       </View>
 
-      {pekerjaanQuery.isLoading ? <Spinner label="Memuat pekerjaan..." /> : null}
+      {pekerjaanQuery.isPending && !pekerjaanQuery.data ? <Spinner label="Memuat pekerjaan..." /> : null}
 
-      {error ? (
+      {error && !pekerjaanQuery.data ? (
         <EmptyState
           title={error.status === 401 ? 'Sesi tidak valid' : error.status === 403 ? 'Akses ditolak' : 'Gagal memuat'}
           description={error.message}
@@ -80,7 +81,7 @@ export default function PekerjaanScreen() {
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
         ListEmptyComponent={
-          !pekerjaanQuery.isLoading && !error ? (
+          !pekerjaanQuery.isPending && !error ? (
             <EmptyState title="Belum ada pekerjaan" description="Tidak ada data untuk filter ini." />
           ) : null
         }

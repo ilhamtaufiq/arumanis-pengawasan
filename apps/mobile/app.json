@@ -3,6 +3,15 @@
     "name": "Arumanis Pengawasan",
     "slug": "pengawas-mobile",
     "version": "0.1.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/36061f5b-6c14-4034-8ff7-47886d1cf983",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "scheme": "pengawas",
     "userInterfaceStyle": "light",
@@ -61,6 +70,7 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
+      "expo-updates",
       "expo-sqlite",
       [
         "expo-notifications",

@@ -16,9 +16,13 @@ async function readEnabled(): Promise<boolean> {
 
   try {
     const value = await SecureStore.getItemAsync(PREFS_KEY)
+    // Default aktif — GPS wajib untuk app pengawasan lapangan.
+    if (value == null) {
+      return true
+    }
     return value === '1'
   } catch {
-    return false
+    return true
   }
 }
 

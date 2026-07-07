@@ -213,6 +213,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       mimeType: asset.mimeType ?? 'image/jpeg',
       fileName: asset.fileName ?? undefined,
       file: asset.file ?? undefined,
+      exif: (asset.exif as Record<string, unknown> | null | undefined) ?? null,
     }
   }
 
@@ -227,6 +228,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,
       allowsEditing: false,
+      exif: true,
     })
 
     return assetFromResult(result)
@@ -243,6 +245,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,
       allowsEditing: false,
+      exif: true,
     })
 
     return assetFromResult(result)

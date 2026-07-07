@@ -1,6 +1,7 @@
 import { createContext, useContext, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import NetInfo from '@react-native-community/netinfo'
+import { assessNetworkConnectivity } from '@/lib/network-context'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { deleteFoto } from '@/lib/api'
 import {
@@ -28,7 +29,7 @@ const FotoUploadQueueContext = createContext<FotoUploadQueueContextValue | null>
 
 async function isOnline(): Promise<boolean> {
   const state = await NetInfo.fetch()
-  return state.isConnected === true && state.isInternetReachable !== false
+  return assessNetworkConnectivity(state).hasInternet
 }
 
 function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextValue {
@@ -106,8 +107,7 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
     if (!enabled) return
 
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const online = state.isConnected === true && state.isInternetReachable !== false
-      if (online) flushQueue()
+      if (assessNetworkConnectivity(state).hasInternet) flushQueue()
     })
 
     return unsubscribe

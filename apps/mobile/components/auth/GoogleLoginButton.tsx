@@ -45,13 +45,15 @@ export function GoogleLoginButton({ onPress, disabled, loading }: GoogleLoginBut
         return [
           {
             minHeight: 44,
+            width: '100%',
+            alignSelf: 'stretch',
             paddingHorizontal: 16,
             paddingVertical: 12,
             backgroundColor: '#ffffff',
             borderWidth: 2,
             borderColor: colors.border,
             borderRadius: radius,
-            opacity: isDisabled ? 0.6 : 1,
+            opacity: isDisabled ? 0.85 : 1,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',

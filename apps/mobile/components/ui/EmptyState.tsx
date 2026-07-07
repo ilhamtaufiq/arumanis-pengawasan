@@ -18,7 +18,9 @@ export function EmptyState({
     <NeoSurface tone="muted" style={{ gap: 12, alignItems: 'flex-start' }}>
       <Text style={{ fontSize: 18, fontWeight: '800', color: colors.foreground }}>{title}</Text>
       {description ? <Text style={{ fontSize: 14, color: colors.mutedForeground }}>{description}</Text> : null}
-      {actionLabel && onAction ? <NeoButton label={actionLabel} variant="neutral" onPress={onAction} /> : null}
+      {actionLabel && onAction ? (
+        <NeoButton label={actionLabel} variant="primary" onPress={onAction} fullWidth />
+      ) : null}
     </NeoSurface>
   )
 }

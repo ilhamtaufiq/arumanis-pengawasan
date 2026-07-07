@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "env": {
         "EXPO_PUBLIC_APIAMIS_BASE_URL": "http://apiamis.test/api",
         "EXPO_PUBLIC_OAUTH_CALLBACK_URL": "pengawas://oauth-callback"
@@ -14,6 +15,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk"
       },
@@ -27,6 +29,7 @@
     },
     "production": {
       "distribution": "internal",
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },
@@ -37,6 +40,17 @@
         "EXPO_PUBLIC_REVERB_PORT": "443",
         "EXPO_PUBLIC_REVERB_SCHEME": "https"
       }
+    }
+  },
+  "update": {
+    "development": {
+      "channel": "development"
+    },
+    "preview": {
+      "channel": "preview"
+    },
+    "production": {
+      "channel": "production"
     }
   },
   "submit": {

@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { ScrollView, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { useResponsive } from '@/lib/responsive'
 import { useLocalSearchParams } from 'expo-router'
 import { colors } from '@/theme/tokens'
-import { useQuery } from '@tanstack/react-query'
+import { useIsRestoring, useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { usePekerjaanRealtime } from '@/hooks/usePekerjaanRealtime'
+import { useIsOnline } from '@/hooks/useIsOnline'
 import { useAuth } from '@/lib/auth'
 import { getPekerjaanDetail } from '@/lib/api'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
@@ -18,7 +19,7 @@ import { ProgressTab } from '@/components/pekerjaan/ProgressTab'
 import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
 import { TiketTab } from '@/components/pekerjaan/TiketTab'
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary'
-import { EmptyState, Spinner } from '@/components/ui'
+import { EmptyState, NeoSurface, Spinner } from '@/components/ui'
 
 function resolveRouteId(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value
@@ -40,13 +41,16 @@ export default function PekerjaanDetailScreen() {
   const [activeTab, setActiveTab] = useState<DetailTabId>('ringkasan')
   const { contentPadding, isTablet, maxContentWidth } = useResponsive()
   const { canFetch, isLoading: authLoading } = useAuth()
+  const isRestoring = useIsRestoring()
+  const isOnline = useIsOnline()
   usePekerjaanRealtime(pekerjaanId)
 
   const detailQuery = useQuery({
     queryKey: queryKeys.pekerjaan.detail(pekerjaanId),
     queryFn: () => getPekerjaanDetail(id || ''),
-    enabled: canFetch && Boolean(id) && Number.isFinite(pekerjaanId),
+    enabled: canFetch && Boolean(id) && Number.isFinite(pekerjaanId) && !isRestoring,
     retry: false,
+    networkMode: 'offlineFirst',
   })
 
   const tahunAnggaran = useMemo(() => {
@@ -70,7 +74,7 @@ export default function PekerjaanDetailScreen() {
     )
   }
 
-  if (authLoading || detailQuery.isLoading) {
+  if (authLoading || isRestoring || (detailQuery.isPending && !detailQuery.data)) {
     return (
       <ScreenContainer>
         <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -130,6 +134,14 @@ export default function PekerjaanDetailScreen() {
               }}
               keyboardShouldPersistTaps="handled"
             >
+              {!isOnline ? (
+                <NeoSurface tone="main" style={{ gap: 4, padding: 12 }}>
+                  <Text style={{ fontWeight: '800', color: colors.foreground }}>Mode offline</Text>
+                  <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
+                    Menampilkan data tersimpan di perangkat. Data akan diperbarui otomatis saat koneksi kembali.
+                  </Text>
+                </NeoSurface>
+              ) : null}
               {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
               {activeTab === 'output' ? <OutputTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
               {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}

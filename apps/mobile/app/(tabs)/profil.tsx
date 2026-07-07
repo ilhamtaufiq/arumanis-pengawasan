@@ -1,4 +1,4 @@
-import { ScrollView, Switch, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatCurrency, formatNumber } from '@pengawas/shared/format'
@@ -59,38 +59,26 @@ export default function ProfilScreen() {
         <NeoSurface style={{ gap: 10 }}>
           <Text style={{ fontSize: 16, fontWeight: '800' }}>Pelacakan GPS</Text>
           <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-            Kirim koordinat ke server saat handphone aktif, termasuk saat aplikasi tidak dibuka. Di Android
-            muncul notifikasi layanan lokasi.
+            GPS dan izin lokasi wajib aktif saat aplikasi dibuka. Koordinat dikirim ke server saat handphone
+            aktif, termasuk saat aplikasi tidak dibuka.
           </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: colors.foreground }}>
-              Lokasi latar belakang
-            </Text>
-            <Switch
-              value={backgroundLocation.enabled}
-              disabled={backgroundLocation.loading}
-              onValueChange={(next) => {
-                if (next) {
-                  void backgroundLocation.enable()
-                  return
-                }
-                void backgroundLocation.disable()
-              }}
-              trackColor={{ false: colors.muted, true: colors.main }}
-              thumbColor={colors.card}
-            />
-          </View>
-          <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
-            Status: {backgroundLocation.active ? 'aktif mengirim' : 'nonaktif'}
-            {backgroundLocation.enabled && !backgroundLocation.active ? ' (menunggu izin / layanan)' : ''}
-          </Text>
+          <Row
+            label="Status pelacakan"
+            value={
+              backgroundLocation.active
+                ? 'Aktif mengirim'
+                : backgroundLocation.loading
+                  ? 'Memeriksa...'
+                  : 'Menunggu izin / layanan GPS'
+            }
+          />
           {backgroundLocation.error ? (
             <Text style={{ fontSize: 12, color: colors.danger }}>{backgroundLocation.error}</Text>
           ) : null}
         </NeoSurface>
       ) : null}
 
-      <NeoButton label="Keluar" variant="danger" onPress={() => void logout()} />
+      <NeoButton label="Keluar" variant="danger" onPress={() => void logout()} fullWidth />
     </ScrollView>
   )
 }

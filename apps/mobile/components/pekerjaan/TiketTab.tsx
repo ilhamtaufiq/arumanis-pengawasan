@@ -10,6 +10,7 @@ import {
   EmptyState,
   FormModal,
   NeoBadge,
+  NeoSelect,
   NeoButton,
   NeoInput,
   NeoSurface,
@@ -99,14 +100,18 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
         <NeoBadge tone="warning">{`Terbuka ${formatNumber(openCount)}`}</NeoBadge>
       </View>
 
+      <NeoButton label="+ Buat tiket baru" onPress={() => setFormOpen(true)} fullWidth />
+
       <NeoSurface style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <SectionHeader title="Daftar tiket" description={`${tiketList.length} tiket pekerjaan ini`} />
-          <NeoButton label="Buat tiket" onPress={() => setFormOpen(true)} compact />
-        </View>
+        <SectionHeader title="Daftar tiket" description={`${tiketList.length} tiket pekerjaan ini`} />
 
         {tiketList.length === 0 ? (
-          <EmptyState title="Belum ada tiket" description="Buat tiket pertama untuk pekerjaan ini." />
+          <EmptyState
+            title="Belum ada tiket"
+            description="Buat tiket pertama untuk melaporkan isu pekerjaan ini."
+            actionLabel="Buat tiket"
+            onAction={() => setFormOpen(true)}
+          />
         ) : (
           tiketList.map((tiket) => (
             <View
@@ -145,11 +150,15 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
         description="Laporkan isu pekerjaan ini"
         onClose={resetForm}
         footer={
-          <NeoButton
-            label={createMutation.isPending ? 'Mengirim...' : 'Buat tiket'}
-            onPress={() => createMutation.mutate()}
-            disabled={createMutation.isPending || !subjek.trim() || !deskripsi.trim()}
-          />
+          <View style={{ gap: 10 }}>
+            <NeoButton
+              label={createMutation.isPending ? 'Mengirim...' : 'Buat tiket'}
+              onPress={() => createMutation.mutate()}
+              disabled={createMutation.isPending || !subjek.trim() || !deskripsi.trim()}
+              fullWidth
+            />
+            <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={createMutation.isPending} fullWidth />
+          </View>
         }
       >
         <NeoInput label="Subjek" value={subjek} onChangeText={setSubjek} placeholder="Ringkas masalah" />
@@ -159,38 +168,25 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
           onChangeText={setDeskripsi}
           placeholder="Detail lokasi / kondisi"
           multiline
+          style={{ minHeight: 100, textAlignVertical: 'top' }}
         />
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontWeight: '700', fontSize: 14 }}>Kategori</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {KATEGORI_OPTIONS.map((option) => (
-              <NeoButton
-                key={option.value}
-                label={option.label}
-                variant={kategori === option.value ? 'primary' : 'neutral'}
-                compact
-                onPress={() => {
-                  setKategori(option.value)
-                  if (option.value === 'lapangan' || option.value === 'bug') setPrioritas('high')
-                }}
-              />
-            ))}
-          </View>
-        </View>
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontWeight: '700', fontSize: 14 }}>Prioritas</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {PRIORITAS_OPTIONS.map((option) => (
-              <NeoButton
-                key={option.value}
-                label={option.label}
-                variant={prioritas === option.value ? 'secondary' : 'neutral'}
-                compact
-                onPress={() => setPrioritas(option.value)}
-              />
-            ))}
-          </View>
-        </View>
+        <NeoSelect
+          label="Kategori"
+          value={kategori}
+          onValueChange={(value) => {
+            setKategori(value as (typeof KATEGORI_OPTIONS)[number]['value'])
+            if (value === 'lapangan' || value === 'bug') setPrioritas('high')
+          }}
+          placeholder="Pilih kategori"
+          options={KATEGORI_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+        />
+        <NeoSelect
+          label="Prioritas"
+          value={prioritas}
+          onValueChange={(value) => setPrioritas(value as (typeof PRIORITAS_OPTIONS)[number]['value'])}
+          placeholder="Pilih prioritas"
+          options={PRIORITAS_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+        />
       </FormModal>
     </View>
   )

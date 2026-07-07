@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Penerima, PekerjaanDetail } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
@@ -14,6 +14,7 @@ import {
   EmptyState,
   FormModal,
   NeoBadge,
+  NeoChipToggle,
   NeoButton,
   NeoInput,
   NeoSurface,
@@ -181,19 +182,23 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
         </NeoSurface>
       ) : null}
 
+      <NeoButton label="+ Tambah penerima manfaat" onPress={openCreateForm} fullWidth />
+
       <NeoSurface style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <SectionHeader
-            title="Daftar penerima"
-            description={`${pagination.total} tersimpan · ${DEFAULT_PAGE_SIZE} per halaman`}
-          />
-          <NeoButton label="Tambah penerima" onPress={openCreateForm} compact />
-        </View>
+        <SectionHeader
+          title="Daftar penerima"
+          description={`${pagination.total} tersimpan · ${DEFAULT_PAGE_SIZE} per halaman`}
+        />
 
         {penerimaQuery.isLoading ? <Spinner label="Memuat penerima..." /> : null}
 
         {!penerimaQuery.isLoading && pageItems.length === 0 ? (
-          <EmptyState title="Belum ada penerima" description="Tambahkan penerima manfaat pertama." />
+          <EmptyState
+            title="Belum ada penerima"
+            description="Tambahkan penerima manfaat pertama untuk pekerjaan ini."
+            actionLabel="Tambah penerima"
+            onAction={openCreateForm}
+          />
         ) : null}
 
         {pageItems.map((penerima) => (
@@ -258,17 +263,14 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
         description="Komunal = tanpa NIK/jumlah jiwa"
         onClose={resetForm}
         footer={
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            <View style={{ flex: 1, minWidth: 120 }}>
-              <NeoButton
-                label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan' : 'Tambah'}
-                onPress={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !form.nama.trim()}
-              />
-            </View>
-            <View style={{ flex: 1, minWidth: 120 }}>
-              <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={saveMutation.isPending} />
-            </View>
+          <View style={{ gap: 10 }}>
+            <NeoButton
+              label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan perubahan' : 'Tambah penerima'}
+              onPress={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !form.nama.trim()}
+              fullWidth
+            />
+            <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={saveMutation.isPending} fullWidth />
           </View>
         }
       >
@@ -300,30 +302,19 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
           placeholder="Alamat singkat"
           multiline
         />
-        <Pressable
-          onPress={() =>
+        <NeoChipToggle
+          label="Komunal"
+          checked={form.is_komunal}
+          onChange={(is_komunal) =>
             setForm((current) => ({
               ...current,
-              is_komunal: !current.is_komunal,
-              jumlah_jiwa: !current.is_komunal ? '' : current.jumlah_jiwa,
-              nik: !current.is_komunal ? '' : current.nik,
+              is_komunal,
+              jumlah_jiwa: is_komunal ? '' : current.jumlah_jiwa,
+              nik: is_komunal ? '' : current.nik,
             }))
           }
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            alignSelf: 'flex-start',
-            borderWidth: 2,
-            borderColor: colors.border,
-            borderRadius: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            backgroundColor: form.is_komunal ? colors.info : colors.card,
-          }}
-        >
-          <Text style={{ fontWeight: '700' }}>{form.is_komunal ? '✓ Komunal' : 'Komunal'}</Text>
-        </Pressable>
+          hint="Komunal = tanpa NIK/jumlah jiwa."
+        />
       </FormModal>
 
       <ConfirmDialog

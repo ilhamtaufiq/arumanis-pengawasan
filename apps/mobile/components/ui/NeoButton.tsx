@@ -7,6 +7,7 @@ type NeoButtonProps = PressableProps & {
   label: string
   variant?: Variant
   compact?: boolean
+  fullWidth?: boolean
 }
 
 const variantStyles: Record<Variant, { bg: string; fg: string; border: boolean }> = {
@@ -17,7 +18,15 @@ const variantStyles: Record<Variant, { bg: string; fg: string; border: boolean }
   ghost: { bg: 'transparent', fg: colors.foreground, border: false },
 }
 
-export function NeoButton({ label, variant = 'primary', compact, disabled, style, ...rest }: NeoButtonProps) {
+export function NeoButton({
+  label,
+  variant = 'primary',
+  compact,
+  fullWidth = false,
+  disabled,
+  style,
+  ...rest
+}: NeoButtonProps) {
   const v = variantStyles[variant]
 
   return (
@@ -29,13 +38,15 @@ export function NeoButton({ label, variant = 'primary', compact, disabled, style
         return [
           {
             minHeight: 44,
+            width: fullWidth ? '100%' : undefined,
+            alignSelf: fullWidth ? 'stretch' : undefined,
             paddingHorizontal: compact ? 12 : 16,
             paddingVertical: compact ? 8 : 12,
-            backgroundColor: v.bg,
+            backgroundColor: disabled && variant !== 'ghost' ? colors.muted : v.bg,
             borderWidth: v.border ? 2 : 0,
             borderColor: colors.border,
             borderRadius: radius,
-            opacity: disabled ? 0.6 : 1,
+            opacity: disabled ? 0.85 : 1,
             alignItems: 'center',
             justifyContent: 'center',
           },

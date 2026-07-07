@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Text, View } from 'react-native'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Output, PekerjaanDetail } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
@@ -12,6 +12,8 @@ import {
   EmptyState,
   FormModal,
   NeoBadge,
+  NeoChipToggle,
+  NeoSelect,
   NeoButton,
   NeoInput,
   NeoSurface,
@@ -141,17 +143,21 @@ export function OutputTab({ pekerjaanId, pekerjaan }: OutputTabProps) {
         </NeoSurface>
       ) : null}
 
+      <NeoButton label="+ Tambah komponen output" onPress={openCreateForm} fullWidth />
+
       <NeoSurface style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <SectionHeader
-            title="Daftar output"
-            description={`${formatNumber(outputList.length)} komponen tersimpan`}
-          />
-          <NeoButton label="Tambah output" onPress={openCreateForm} compact />
-        </View>
+        <SectionHeader
+          title="Daftar output"
+          description={`${formatNumber(outputList.length)} komponen tersimpan`}
+        />
 
         {outputList.length === 0 ? (
-          <EmptyState title="Belum ada output" description="Tambahkan komponen output untuk matriks foto dan progress." />
+          <EmptyState
+            title="Belum ada output"
+            description="Tambahkan komponen output untuk matriks foto dan progress."
+            actionLabel="Tambah output"
+            onAction={openCreateForm}
+          />
         ) : (
           outputList.map((output) => (
             <View
@@ -197,49 +203,32 @@ export function OutputTab({ pekerjaanId, pekerjaan }: OutputTabProps) {
         description="Komponen pekerjaan menjadi dasar matriks foto dan progress"
         onClose={resetForm}
         footer={
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            <View style={{ flex: 1, minWidth: 120 }}>
-              <NeoButton
-                label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan' : 'Tambah'}
-                onPress={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !form.komponen.trim()}
-              />
-            </View>
-            <View style={{ flex: 1, minWidth: 120 }}>
-              <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={saveMutation.isPending} />
-            </View>
+          <View style={{ gap: 10 }}>
+            <NeoButton
+              label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan perubahan' : 'Tambah output'}
+              onPress={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !form.komponen.trim()}
+              fullWidth
+            />
+            <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={saveMutation.isPending} fullWidth />
           </View>
         }
       >
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontWeight: '700', fontSize: 14 }}>Komponen</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {OUTPUT_KOMPONEN_OPTIONS.map((option) => (
-              <NeoButton
-                key={option}
-                label={option}
-                variant={form.komponen === option ? 'primary' : 'neutral'}
-                compact
-                onPress={() => setForm((current) => ({ ...current, komponen: option }))}
-              />
-            ))}
-          </View>
-        </View>
+        <NeoSelect
+          label="Komponen"
+          value={form.komponen}
+          onValueChange={(komponen) => setForm((current) => ({ ...current, komponen }))}
+          placeholder="Pilih komponen"
+          options={OUTPUT_KOMPONEN_OPTIONS.map((option) => ({ value: option, label: option }))}
+        />
 
-        <View style={{ gap: 8 }}>
-          <Text style={{ fontWeight: '700', fontSize: 14 }}>Satuan</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {OUTPUT_SATUAN_OPTIONS.map((option) => (
-              <NeoButton
-                key={option}
-                label={option}
-                variant={form.satuan === option ? 'secondary' : 'neutral'}
-                compact
-                onPress={() => setForm((current) => ({ ...current, satuan: option }))}
-              />
-            ))}
-          </View>
-        </View>
+        <NeoSelect
+          label="Satuan"
+          value={form.satuan}
+          onValueChange={(satuan) => setForm((current) => ({ ...current, satuan }))}
+          placeholder="Pilih satuan"
+          options={OUTPUT_SATUAN_OPTIONS.map((option) => ({ value: option, label: option }))}
+        />
 
         <NeoInput
           label="Volume"
@@ -249,31 +238,12 @@ export function OutputTab({ pekerjaanId, pekerjaan }: OutputTabProps) {
           placeholder="Volume"
         />
 
-        <Pressable
-          onPress={() =>
-            setForm((current) => ({
-              ...current,
-              penerima_is_optional: !current.penerima_is_optional,
-            }))
-          }
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            alignSelf: 'flex-start',
-            borderWidth: 2,
-            borderColor: colors.border,
-            borderRadius: 6,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            backgroundColor: form.penerima_is_optional ? colors.info : colors.card,
-          }}
-        >
-          <Text style={{ fontWeight: '700' }}>{form.penerima_is_optional ? '✓ Komponen komunal' : 'Komponen komunal'}</Text>
-        </Pressable>
-        <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
-          Aktifkan untuk output kelompok tanpa penerima individu.
-        </Text>
+        <NeoChipToggle
+          label="Komponen komunal"
+          checked={form.penerima_is_optional}
+          onChange={(penerima_is_optional) => setForm((current) => ({ ...current, penerima_is_optional }))}
+          hint="Aktifkan untuk output kelompok tanpa penerima individu."
+        />
       </FormModal>
 
       <ConfirmDialog

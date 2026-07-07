@@ -93,6 +93,7 @@ export default function LoginScreen() {
             label={submitting ? 'Memproses...' : 'Masuk'}
             onPress={() => void handleSubmit()}
             disabled={submitting || googleSubmitting || !email.trim() || !password}
+            fullWidth
           />
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

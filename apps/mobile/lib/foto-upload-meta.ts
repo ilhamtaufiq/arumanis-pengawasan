@@ -3,6 +3,7 @@ export type PickedImageAsset = {
   mimeType?: string
   fileName?: string
   file?: File
+  exif?: Record<string, unknown> | null
 }
 
 const ACCEPTED_MIME_TYPES = new Set(['image/jpeg', 'image/jpg', 'image/png'])
