@@ -11,6 +11,7 @@ import { getPekerjaanDetail } from '@/lib/api'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
 import { DetailTabBar } from '@/components/pekerjaan/DetailTabBar'
 import { FotoTab } from '@/components/pekerjaan/FotoTab'
+import { OutputTab } from '@/components/pekerjaan/OutputTab'
 import { PenerimaTab } from '@/components/pekerjaan/PenerimaTab'
 import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
 import { ProgressTab } from '@/components/pekerjaan/ProgressTab'
@@ -130,10 +131,11 @@ export default function PekerjaanDetailScreen() {
               keyboardShouldPersistTaps="handled"
             >
               {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
+              {activeTab === 'output' ? <OutputTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
+              {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
               {activeTab === 'progress' ? (
                 <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
               ) : null}
-              {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
               {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
               {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
             </ScrollView>

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native'
 import {
   Camera,
+  FileText,
   MessageSquareText,
   RefreshCcw,
   Shield,
@@ -18,9 +19,10 @@ type DetailTabBarProps = {
 
 const DETAIL_TAB_CONFIG: Array<{ id: DetailTabId; label: string; Icon: LucideIcon }> = [
   { id: 'ringkasan', label: 'Ringkasan', Icon: Shield },
-  { id: 'progress', label: 'Progress', Icon: RefreshCcw },
+  { id: 'output', label: 'Output', Icon: FileText },
   { id: 'penerima', label: 'Penerima', Icon: Users },
   { id: 'foto', label: 'Foto', Icon: Camera },
+  { id: 'progress', label: 'Progress', Icon: RefreshCcw },
   { id: 'tiket', label: 'Tiket', Icon: MessageSquareText },
 ]
 
@@ -29,17 +31,13 @@ function TabPill({
   Icon,
   selected,
   onPress,
-  equalWidth,
   compact,
-  iconOnly,
 }: {
   label: string
   Icon: LucideIcon
   selected: boolean
   onPress: () => void
-  equalWidth?: boolean
   compact?: boolean
-  iconOnly?: boolean
 }) {
   return (
     <Pressable
@@ -49,11 +47,10 @@ function TabPill({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          minHeight: 44,
-          minWidth: iconOnly ? 44 : equalWidth ? undefined : 88,
-          flex: equalWidth ? 1 : undefined,
-          paddingHorizontal: iconOnly ? 10 : compact ? 8 : 10,
-          paddingVertical: compact ? 8 : 9,
+          minHeight: 48,
+          minWidth: compact ? 96 : 108,
+          paddingHorizontal: compact ? 10 : 12,
+          paddingVertical: 10,
           borderWidth: 2,
           borderColor: colors.border,
           borderRadius: radius,
@@ -62,45 +59,38 @@ function TabPill({
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
-          gap: iconOnly ? 0 : compact ? 4 : 6,
+          gap: compact ? 5 : 7,
         },
         !pressed && !selected ? shadows.sm : null,
       ]}
     >
-      <Icon size={14} color={colors.foreground} strokeWidth={2.5} />
-      {iconOnly ? null : (
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-          style={{
-            fontWeight: '800',
-            fontSize: compact ? 11 : 12,
-            color: colors.foreground,
-            textAlign: 'center',
-          }}
-        >
-          {label}
-        </Text>
-      )}
+      <Icon size={compact ? 15 : 16} color={colors.foreground} strokeWidth={2.5} />
+      <Text
+        numberOfLines={1}
+        style={{
+          fontWeight: '800',
+          fontSize: compact ? 12 : 13,
+          color: colors.foreground,
+          textAlign: 'center',
+        }}
+      >
+        {label}
+      </Text>
     </Pressable>
   )
 }
 
 export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
   const { width } = useWindowDimensions()
-  const { contentPadding, tabMinWidth, isCompact } = useResponsive()
+  const { contentPadding, isCompact } = useResponsive()
 
   const horizontalPadding = contentPadding
-  const available = width - horizontalPadding * 2
-  const useEqualWidth = available >= DETAIL_TAB_CONFIG.length * (tabMinWidth + 20)
-  const iconOnly = isCompact && !useEqualWidth
-
   const containerStyle = {
     marginHorizontal: horizontalPadding,
     marginTop: 8,
     marginBottom: 4,
-    padding: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     borderWidth: 2,
     borderColor: colors.border,
     borderRadius: radius,
@@ -108,34 +98,18 @@ export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
     ...shadows.sm,
   }
 
-  if (useEqualWidth) {
-    return (
-      <View style={containerStyle}>
-        <View style={{ flexDirection: 'row', gap: isCompact ? 4 : 6 }}>
-          {DETAIL_TAB_CONFIG.map((tab) => (
-            <TabPill
-              key={tab.id}
-              label={tab.label}
-              Icon={tab.Icon}
-              selected={tab.id === active}
-              onPress={() => onChange(tab.id)}
-              equalWidth
-              compact={isCompact}
-              iconOnly={false}
-            />
-          ))}
-        </View>
-      </View>
-    )
-  }
-
   return (
     <View style={containerStyle}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0, maxHeight: 52 }}
-        contentContainerStyle={{ gap: 6, alignItems: 'center' }}
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{
+          gap: isCompact ? 6 : 8,
+          alignItems: 'center',
+          paddingHorizontal: 2,
+          minWidth: width - horizontalPadding * 2 - 16,
+        }}
       >
         {DETAIL_TAB_CONFIG.map((tab) => (
           <TabPill
@@ -145,7 +119,6 @@ export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
             selected={tab.id === active}
             onPress={() => onChange(tab.id)}
             compact={isCompact}
-            iconOnly={iconOnly}
           />
         ))}
       </ScrollView>

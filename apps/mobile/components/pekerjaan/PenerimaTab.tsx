@@ -12,6 +12,7 @@ import { DEFAULT_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagi
 import {
   ConfirmDialog,
   EmptyState,
+  FormModal,
   NeoBadge,
   NeoButton,
   NeoInput,
@@ -152,6 +153,12 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
     setFormOpen(false)
   }
 
+  function openCreateForm() {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setFormOpen(true)
+  }
+
   function startEdit(penerima: Penerima) {
     setEditingId(penerima.id)
     setForm({
@@ -162,10 +169,6 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
       is_komunal: Boolean(penerima.is_komunal),
     })
     setFormOpen(true)
-  }
-
-  function requestDelete(penerima: Penerima) {
-    setPendingDelete(penerima)
   }
 
   const listBusy = penerimaQuery.isLoading || deleteMutation.isPending
@@ -179,92 +182,13 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
       ) : null}
 
       <NeoSurface style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <SectionHeader
-            title={editingId ? 'Edit penerima' : 'Tambah penerima'}
-            description="Komunal = tanpa NIK/jumlah jiwa"
+            title="Daftar penerima"
+            description={`${pagination.total} tersimpan · ${DEFAULT_PAGE_SIZE} per halaman`}
           />
-          {!editingId ? (
-            <NeoButton
-              label={formOpen ? 'Tutup' : 'Form'}
-              variant="neutral"
-              compact
-              onPress={() => setFormOpen((open) => !open)}
-            />
-          ) : null}
+          <NeoButton label="Tambah penerima" onPress={openCreateForm} compact />
         </View>
-
-        {formOpen || editingId ? (
-          <View style={{ gap: 12 }}>
-            <NeoInput
-              label="Nama"
-              value={form.nama}
-              onChangeText={(nama) => setForm((current) => ({ ...current, nama }))}
-              placeholder="Nama penerima"
-            />
-            <NeoInput
-              label="Jumlah jiwa"
-              value={form.jumlah_jiwa}
-              onChangeText={(jumlah_jiwa) => setForm((current) => ({ ...current, jumlah_jiwa }))}
-              keyboardType="number-pad"
-              editable={!form.is_komunal}
-              placeholder="0"
-            />
-            <NeoInput
-              label="NIK"
-              value={form.nik}
-              onChangeText={(nik) => setForm((current) => ({ ...current, nik }))}
-              editable={!form.is_komunal}
-              placeholder="NIK"
-            />
-            <NeoInput
-              label="Alamat"
-              value={form.alamat}
-              onChangeText={(alamat) => setForm((current) => ({ ...current, alamat }))}
-              placeholder="Alamat singkat"
-              multiline
-            />
-            <Pressable
-              onPress={() =>
-                setForm((current) => ({
-                  ...current,
-                  is_komunal: !current.is_komunal,
-                  jumlah_jiwa: !current.is_komunal ? '' : current.jumlah_jiwa,
-                  nik: !current.is_komunal ? '' : current.nik,
-                }))
-              }
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                alignSelf: 'flex-start',
-                borderWidth: 2,
-                borderColor: colors.border,
-                borderRadius: 6,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                backgroundColor: form.is_komunal ? colors.info : colors.card,
-              }}
-            >
-              <Text style={{ fontWeight: '700' }}>{form.is_komunal ? '✓ Komunal' : 'Komunal'}</Text>
-            </Pressable>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <NeoButton
-                label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan' : 'Tambah'}
-                onPress={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
-              />
-              <NeoButton label="Batal" variant="neutral" onPress={resetForm} />
-            </View>
-          </View>
-        ) : null}
-      </NeoSurface>
-
-      <NeoSurface style={{ gap: 12 }}>
-        <SectionHeader
-          title="Daftar penerima"
-          description={`${pagination.total} tersimpan · ${DEFAULT_PAGE_SIZE} per halaman`}
-        />
 
         {penerimaQuery.isLoading ? <Spinner label="Memuat penerima..." /> : null}
 
@@ -284,7 +208,7 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
               backgroundColor: colors.card,
             }}
           >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
               <Text style={{ fontWeight: '800', fontSize: 15, flex: 1, flexShrink: 1, lineHeight: 22 }}>
                 {penerima.nama}
               </Text>
@@ -305,13 +229,13 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
             <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
               {formatDateTime(penerima.created_at)}
             </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               <NeoButton label="Edit" variant="neutral" compact onPress={() => startEdit(penerima)} />
               <NeoButton
                 label="Hapus"
                 variant="danger"
                 compact
-                onPress={() => requestDelete(penerima)}
+                onPress={() => setPendingDelete(penerima)}
                 disabled={deleteMutation.isPending}
               />
             </View>
@@ -327,6 +251,80 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
           disabled={listBusy}
         />
       </NeoSurface>
+
+      <FormModal
+        visible={formOpen}
+        title={editingId ? 'Edit penerima' : 'Tambah penerima'}
+        description="Komunal = tanpa NIK/jumlah jiwa"
+        onClose={resetForm}
+        footer={
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <NeoButton
+                label={saveMutation.isPending ? 'Menyimpan...' : editingId ? 'Simpan' : 'Tambah'}
+                onPress={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || !form.nama.trim()}
+              />
+            </View>
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <NeoButton label="Batal" variant="neutral" onPress={resetForm} disabled={saveMutation.isPending} />
+            </View>
+          </View>
+        }
+      >
+        <NeoInput
+          label="Nama"
+          value={form.nama}
+          onChangeText={(nama) => setForm((current) => ({ ...current, nama }))}
+          placeholder="Nama penerima"
+        />
+        <NeoInput
+          label="Jumlah jiwa"
+          value={form.jumlah_jiwa}
+          onChangeText={(jumlah_jiwa) => setForm((current) => ({ ...current, jumlah_jiwa }))}
+          keyboardType="number-pad"
+          editable={!form.is_komunal}
+          placeholder="0"
+        />
+        <NeoInput
+          label="NIK"
+          value={form.nik}
+          onChangeText={(nik) => setForm((current) => ({ ...current, nik }))}
+          editable={!form.is_komunal}
+          placeholder="NIK"
+        />
+        <NeoInput
+          label="Alamat"
+          value={form.alamat}
+          onChangeText={(alamat) => setForm((current) => ({ ...current, alamat }))}
+          placeholder="Alamat singkat"
+          multiline
+        />
+        <Pressable
+          onPress={() =>
+            setForm((current) => ({
+              ...current,
+              is_komunal: !current.is_komunal,
+              jumlah_jiwa: !current.is_komunal ? '' : current.jumlah_jiwa,
+              nik: !current.is_komunal ? '' : current.nik,
+            }))
+          }
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            alignSelf: 'flex-start',
+            borderWidth: 2,
+            borderColor: colors.border,
+            borderRadius: 6,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            backgroundColor: form.is_komunal ? colors.info : colors.card,
+          }}
+        >
+          <Text style={{ fontWeight: '700' }}>{form.is_komunal ? '✓ Komunal' : 'Komunal'}</Text>
+        </Pressable>
+      </FormModal>
 
       <ConfirmDialog
         visible={Boolean(pendingDelete)}

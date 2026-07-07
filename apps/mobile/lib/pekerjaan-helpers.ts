@@ -2,13 +2,14 @@ import type { Foto, Output, Penerima, ProgressItem } from '@pengawas/shared'
 
 export const FOTO_SLOTS = ['0%', '25%', '50%', '75%', '100%'] as const
 
-export type DetailTabId = 'ringkasan' | 'progress' | 'penerima' | 'foto' | 'tiket'
+export type DetailTabId = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'tiket'
 
 export const DETAIL_TABS: Array<{ id: DetailTabId; label: string }> = [
   { id: 'ringkasan', label: 'Ringkasan' },
-  { id: 'progress', label: 'Progress' },
+  { id: 'output', label: 'Output' },
   { id: 'penerima', label: 'Penerima' },
   { id: 'foto', label: 'Foto' },
+  { id: 'progress', label: 'Progress' },
   { id: 'tiket', label: 'Tiket' },
 ]
 

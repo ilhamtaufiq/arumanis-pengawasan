@@ -1,4 +1,5 @@
 import Constants from 'expo-constants'
+import { Platform } from 'react-native'
 
 const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined
 
@@ -21,14 +22,24 @@ export function getApiBaseUrl() {
 }
 
 /**
- * Deep link callback OAuth mobile — harus selaras dengan MOBILE_OAUTH_CALLBACK_URL di apiamis.
- * Web Arumanis tetap memakai FRONTEND_URL/oauth-callback (tanpa ?platform=mobile).
+ * Callback OAuth untuk app pengawas.
+ * Native: deep link pengawas://oauth-callback
+ * Web: origin app saat ini + /oauth-callback (bukan portal Arumanis)
  */
-export function getMobileOAuthCallbackUrl() {
+export function getOAuthCallbackUrl() {
   const fromEnv = process.env.EXPO_PUBLIC_OAUTH_CALLBACK_URL
   if (fromEnv?.trim()) {
     return fromEnv.trim().replace(/\/$/, '')
   }
 
+  if (Platform.OS === 'web' && typeof globalThis.window !== 'undefined') {
+    return `${globalThis.window.location.origin}/oauth-callback`
+  }
+
   return 'pengawas://oauth-callback'
+}
+
+/** @deprecated Gunakan getOAuthCallbackUrl */
+export function getMobileOAuthCallbackUrl() {
+  return getOAuthCallbackUrl()
 }

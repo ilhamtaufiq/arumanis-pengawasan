@@ -8,6 +8,7 @@ import { createTiket, getTiketList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import {
   EmptyState,
+  FormModal,
   NeoBadge,
   NeoButton,
   NeoInput,
@@ -61,9 +62,7 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
         prioritas,
       }),
     onSuccess: async () => {
-      setSubjek('')
-      setDeskripsi('')
-      setFormOpen(false)
+      resetForm()
       setErrorMessage(null)
       await queryClient.invalidateQueries({ queryKey: queryKeys.tiket.list({ pekerjaanId }) })
     },
@@ -71,6 +70,14 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
       setErrorMessage(formatApiError(error, 'Gagal membuat tiket.'))
     },
   })
+
+  function resetForm() {
+    setSubjek('')
+    setDeskripsi('')
+    setKategori('lapangan')
+    setPrioritas('high')
+    setFormOpen(false)
+  }
 
   const tiketList = tiketQuery.data?.data ?? []
   const openCount = tiketList.filter((item) => `${item.status || 'open'}` !== 'closed').length
@@ -93,59 +100,11 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
       </View>
 
       <NeoSurface style={{ gap: 12 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <SectionHeader title="Buat tiket" description="Laporkan isu pekerjaan ini" />
-          <NeoButton label={formOpen ? 'Tutup' : 'Form'} variant="neutral" compact onPress={() => setFormOpen((v) => !v)} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <SectionHeader title="Daftar tiket" description={`${tiketList.length} tiket pekerjaan ini`} />
+          <NeoButton label="Buat tiket" onPress={() => setFormOpen(true)} compact />
         </View>
 
-        {formOpen ? (
-          <View style={{ gap: 12 }}>
-            <NeoInput label="Subjek" value={subjek} onChangeText={setSubjek} placeholder="Ringkas masalah" />
-            <NeoInput
-              label="Deskripsi"
-              value={deskripsi}
-              onChangeText={setDeskripsi}
-              placeholder="Detail lokasi / kondisi"
-              multiline
-            />
-            <Text style={{ fontWeight: '700', fontSize: 14 }}>Kategori</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {KATEGORI_OPTIONS.map((option) => (
-                <NeoButton
-                  key={option.value}
-                  label={option.label}
-                  variant={kategori === option.value ? 'primary' : 'neutral'}
-                  compact
-                  onPress={() => {
-                    setKategori(option.value)
-                    if (option.value === 'lapangan' || option.value === 'bug') setPrioritas('high')
-                  }}
-                />
-              ))}
-            </View>
-            <Text style={{ fontWeight: '700', fontSize: 14 }}>Prioritas</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              {PRIORITAS_OPTIONS.map((option) => (
-                <NeoButton
-                  key={option.value}
-                  label={option.label}
-                  variant={prioritas === option.value ? 'secondary' : 'neutral'}
-                  compact
-                  onPress={() => setPrioritas(option.value)}
-                />
-              ))}
-            </View>
-            <NeoButton
-              label={createMutation.isPending ? 'Mengirim...' : 'Buat tiket'}
-              onPress={() => createMutation.mutate()}
-              disabled={createMutation.isPending || !subjek.trim() || !deskripsi.trim()}
-            />
-          </View>
-        ) : null}
-      </NeoSurface>
-
-      <NeoSurface style={{ gap: 12 }}>
-        <SectionHeader title="Daftar tiket" description={`${tiketList.length} tiket pekerjaan ini`} />
         {tiketList.length === 0 ? (
           <EmptyState title="Belum ada tiket" description="Buat tiket pertama untuk pekerjaan ini." />
         ) : (
@@ -179,6 +138,60 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
           ))
         )}
       </NeoSurface>
+
+      <FormModal
+        visible={formOpen}
+        title="Buat tiket"
+        description="Laporkan isu pekerjaan ini"
+        onClose={resetForm}
+        footer={
+          <NeoButton
+            label={createMutation.isPending ? 'Mengirim...' : 'Buat tiket'}
+            onPress={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !subjek.trim() || !deskripsi.trim()}
+          />
+        }
+      >
+        <NeoInput label="Subjek" value={subjek} onChangeText={setSubjek} placeholder="Ringkas masalah" />
+        <NeoInput
+          label="Deskripsi"
+          value={deskripsi}
+          onChangeText={setDeskripsi}
+          placeholder="Detail lokasi / kondisi"
+          multiline
+        />
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14 }}>Kategori</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {KATEGORI_OPTIONS.map((option) => (
+              <NeoButton
+                key={option.value}
+                label={option.label}
+                variant={kategori === option.value ? 'primary' : 'neutral'}
+                compact
+                onPress={() => {
+                  setKategori(option.value)
+                  if (option.value === 'lapangan' || option.value === 'bug') setPrioritas('high')
+                }}
+              />
+            ))}
+          </View>
+        </View>
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14 }}>Prioritas</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {PRIORITAS_OPTIONS.map((option) => (
+              <NeoButton
+                key={option.value}
+                label={option.label}
+                variant={prioritas === option.value ? 'secondary' : 'neutral'}
+                compact
+                onPress={() => setPrioritas(option.value)}
+              />
+            ))}
+          </View>
+        </View>
+      </FormModal>
     </View>
   )
 }

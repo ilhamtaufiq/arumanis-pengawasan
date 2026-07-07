@@ -1,5 +1,6 @@
+import { Platform } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
-import { getApiBaseUrl, getMobileOAuthCallbackUrl } from '@/lib/config'
+import { getApiBaseUrl, getOAuthCallbackUrl } from '@/lib/config'
 
 WebBrowser.maybeCompleteAuthSession()
 
@@ -31,9 +32,14 @@ function parseOAuthCallbackUrl(url: string): OAuthCallbackResult {
   }
 }
 
-async function fetchGoogleAuthUrl() {
+async function fetchGoogleAuthUrl(callbackUrl: string) {
   const apiBase = getApiBaseUrl()
-  const response = await fetch(`${apiBase}/auth/google?platform=mobile`, {
+  const params = new URLSearchParams({
+    platform: 'mobile',
+    callback_url: callbackUrl,
+  })
+
+  const response = await fetch(`${apiBase}/auth/google?${params.toString()}`, {
     headers: { Accept: 'application/json' },
   })
 
@@ -55,14 +61,24 @@ async function fetchGoogleAuthUrl() {
 }
 
 /**
- * Buka OAuth Google via in-app browser; tangkap deep link pengawas://oauth-callback#token=...
- * Backend membedakan platform=mobile agar tidak masuk halaman web Arumanis/pengawas.
+ * OAuth Google untuk app pengawas.
+ * Native: in-app browser + deep link pengawas://oauth-callback
+ * Web: full redirect ke /oauth-callback di origin yang sama (bukan portal Arumanis)
  */
 export async function signInWithGoogle(): Promise<string> {
-  const redirectUrl = getMobileOAuthCallbackUrl()
-  const authUrl = await fetchGoogleAuthUrl()
+  const callbackUrl = getOAuthCallbackUrl()
+  const authUrl = await fetchGoogleAuthUrl(callbackUrl)
 
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl)
+  if (Platform.OS === 'web') {
+    if (typeof globalThis.window !== 'undefined') {
+      globalThis.window.location.assign(authUrl)
+    }
+    return new Promise<string>(() => {
+      // Halaman akan redirect; token diproses di /oauth-callback.
+    })
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(authUrl, callbackUrl)
 
   if (result.type === 'cancel' || result.type === 'dismiss') {
     throw new Error('Login Google dibatalkan')
@@ -83,4 +99,13 @@ export async function signInWithGoogle(): Promise<string> {
   }
 
   return token
+}
+
+export function parseOAuthCallbackFromLocation(): OAuthCallbackResult {
+  if (Platform.OS !== 'web' || typeof globalThis.window === 'undefined') {
+    return {}
+  }
+
+  const { href } = globalThis.window.location
+  return parseOAuthCallbackUrl(href)
 }

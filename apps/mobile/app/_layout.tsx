@@ -46,6 +46,7 @@ function AppShell() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="oauth-callback" options={{ headerShown: false }} />
         <Stack.Screen name="pekerjaan" options={{ headerShown: false }} />
         <Stack.Screen name="notifikasi" options={{ headerShown: false }} />
       </Stack>
