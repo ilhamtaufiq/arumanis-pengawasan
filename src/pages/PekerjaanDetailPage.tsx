@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, History, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import {
   createOutput,
   createPenerima,
@@ -16,6 +16,7 @@ import {
   getPekerjaanDetail,
   getPekerjaanProgressEstimasi,
   getTiketList,
+  updateFoto,
   updateOutput,
   updatePenerima,
   validateKoordinat,
@@ -188,6 +189,10 @@ export function PekerjaanDetailPage() {
   const [penerimaFormOpen, setPenerimaFormOpen] = useState(false)
   const [tiketFormOpen, setTiketFormOpen] = useState(false)
   const [tiketAttachment, setTiketAttachment] = useState<File | null>(null)
+  const [attachFotoTarget, setAttachFotoTarget] = useState<Foto | null>(null)
+  const [attachKomponenId, setAttachKomponenId] = useState('')
+  const [attachPenerimaId, setAttachPenerimaId] = useState('')
+  const [attachErrorMessage, setAttachErrorMessage] = useState<string | null>(null)
 
   const penerimaForm = useForm({
     resolver: zodResolver(penerimaSchema),
@@ -468,6 +473,38 @@ export function PekerjaanDetailPage() {
     return matrix
   }, [fotoList, outputList, penerimaList])
 
+  const orphanFotos = useMemo(() => {
+    const knownOutputIds = new Set(outputList.map((output) => output.id))
+    return fotoList.filter((foto) => {
+      const komponenId = Number(foto.komponen_id ?? 0)
+      return !komponenId || !knownOutputIds.has(komponenId)
+    })
+  }, [fotoList, outputList])
+
+  const attachTargetOutput = useMemo(
+    () => outputList.find((output) => String(output.id) === attachKomponenId),
+    [outputList, attachKomponenId],
+  )
+  const attachNeedsPenerima = Boolean(attachTargetOutput && !attachTargetOutput.penerima_is_optional)
+
+  function openAttachFoto(foto: Foto) {
+    if (outputList.length === 0) {
+      setAttachErrorMessage('Belum ada komponen tersedia. Tambahkan output dulu di tab Output.')
+      return
+    }
+    setAttachErrorMessage(null)
+    setAttachFotoTarget(foto)
+    setAttachKomponenId(String(outputList[0]?.id ?? ''))
+    setAttachPenerimaId('')
+  }
+
+  function closeAttachFoto() {
+    setAttachFotoTarget(null)
+    setAttachKomponenId('')
+    setAttachPenerimaId('')
+    setAttachErrorMessage(null)
+  }
+
   function resetPenerimaForm() {
     setEditingPenerimaId(null)
     resetPenerimaFormHook(EMPTY_PENERIMA_FORM)
@@ -737,6 +774,69 @@ export function PekerjaanDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
   })
+
+  const attachFotoMutation = useMutation({
+    mutationFn: async (payload: {
+      foto: Foto
+      komponenId: number
+      penerimaId: number | null
+    }) => {
+      const formData = new FormData()
+      formData.append('komponen_id', String(payload.komponenId))
+      if (payload.penerimaId != null && payload.penerimaId > 0) {
+        formData.append('penerima_id', String(payload.penerimaId))
+      } else {
+        formData.append('penerima_id', '')
+      }
+      if (payload.foto.keterangan) {
+        formData.append('keterangan', payload.foto.keterangan)
+      }
+      if (payload.foto.koordinat) {
+        formData.append('koordinat', payload.foto.koordinat)
+      }
+      if (payload.foto.unit_index != null) {
+        formData.append('unit_index', String(payload.foto.unit_index))
+      }
+      return updateFoto(payload.foto.id, formData)
+    },
+    onSuccess: async () => {
+      closeAttachFoto()
+      closePhotoPreview()
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+    onError: (error) => {
+      setAttachErrorMessage(formatApiError(error, 'Gagal melampirkan foto ke komponen.'))
+    },
+  })
+
+  function handleAttachFotoSubmit() {
+    if (!attachFotoTarget) return
+    if (!attachKomponenId) {
+      setAttachErrorMessage('Pilih komponen tujuan.')
+      return
+    }
+    const targetOutput = outputList.find((output) => String(output.id) === attachKomponenId)
+    if (!targetOutput) {
+      setAttachErrorMessage('Komponen tujuan tidak valid.')
+      return
+    }
+    if (!targetOutput.penerima_is_optional) {
+      if (penerimaList.length === 0) {
+        setAttachErrorMessage('Komponen non-komunal memerlukan penerima. Tambahkan penerima dulu.')
+        return
+      }
+      if (!attachPenerimaId) {
+        setAttachErrorMessage('Pilih penerima untuk komponen ini.')
+        return
+      }
+    }
+    setAttachErrorMessage(null)
+    attachFotoMutation.mutate({
+      foto: attachFotoTarget,
+      komponenId: targetOutput.id,
+      penerimaId: targetOutput.penerima_is_optional ? null : Number(attachPenerimaId),
+    })
+  }
 
   function handlePrintPDF() {
     if (!fotoList.length) {
@@ -1427,7 +1527,7 @@ export function PekerjaanDetailPage() {
                 }}
                 onSlotUpload={(output, slot, penerima) => openUploadTarget(output, slot, penerima)}
               />
-            ) : fotoList.length ? (
+            ) : fotoList.length && orphanFotos.length === 0 ? (
               <div className="foto-fallback-grid">
                 {fotoList.map((foto, idx) => (
                   <button
@@ -1458,9 +1558,54 @@ export function PekerjaanDetailPage() {
                   </button>
                 ))}
               </div>
-            ) : (
+            ) : !orphanFotos.length ? (
               <EmptyState title="Belum ada foto" description="Belum ada dokumentasi yang tersimpan untuk pekerjaan ini." />
-            )}
+            ) : null}
+
+            {orphanFotos.length > 0 ? (
+              <div className="detail-section-full" style={{ marginTop: 16 }}>
+                <div className="detail-tab-header">
+                  <div className="detail-tab-header-left">
+                    <h2>Foto orphan ({orphanFotos.length})</h2>
+                    <p>
+                      Foto terikat ke komponen yang sudah dihapus/tidak tersedia. Lampirkan ke komponen yang masih
+                      ada agar masuk matriks progress.
+                    </p>
+                  </div>
+                </div>
+                <div className="foto-fallback-grid">
+                  {orphanFotos.map((foto, idx) => (
+                    <div key={`orphan-foto-${foto.id}-${idx}`} className="neo-surface foto-card">
+                      <button
+                        type="button"
+                        className="foto-card-media-btn"
+                        onClick={() => openPhotoPreview([foto], 0)}
+                        style={{ display: 'block', width: '100%', padding: 0, border: 0, background: 'transparent', cursor: 'pointer' }}
+                      >
+                        <img
+                          src={foto.foto_thumb_url || foto.foto_url || ''}
+                          alt={foto.keterangan || 'Foto orphan'}
+                          className="foto-card-img"
+                        />
+                      </button>
+                      <div className="foto-card-body">
+                        <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
+                        <div className="foto-card-meta">
+                          Komponen: {foto.komponen?.komponen || stringValue(foto.komponen_id) || 'Tanpa komponen'}
+                        </div>
+                        <div className="foto-card-meta">{formatDateTime(foto.created_at)}</div>
+                        <div style={{ marginTop: 8 }}>
+                          <Button type="button" variant="secondary" size="sm" onClick={() => openAttachFoto(foto)}>
+                            <Link2 size={14} />
+                            <span>Lampirkan ke komponen</span>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1754,6 +1899,9 @@ export function PekerjaanDetailPage() {
                       <div>
                         <span className="preview-detail-muted">Output:</span>{' '}
                         <strong>{currentPreviewFoto.komponen?.komponen || stringValue(currentPreviewFoto.komponen_id)}</strong>
+                        {orphanFotos.some((f) => f.id === currentPreviewFoto.id) ? (
+                          <span className="preview-detail-muted"> (orphan)</span>
+                        ) : null}
                       </div>
                       <div>
                         <span className="preview-detail-muted">Slot:</span> <strong>{currentPreviewFoto.keterangan || '-'}</strong>
@@ -1782,24 +1930,39 @@ export function PekerjaanDetailPage() {
                   </div>
 
                   <div className="preview-actions">
-                    <Button
-                      type="button"
-                      variant="neutral"
-                      onClick={() => {
-                        const relatedOutput = outputList.find((output) => output.id === currentPreviewFoto.komponen_id)
-                        if (relatedOutput) {
-                          setUploadTarget({
-                            output: relatedOutput,
-                            slot: currentPreviewFoto.keterangan || '0%',
-                          })
-                          setUploadFile(null)
+                    {orphanFotos.some((f) => f.id === currentPreviewFoto.id) ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          const foto = currentPreviewFoto
                           closePhotoPreview()
-                        }
-                      }}
-                    >
-                      <Upload size={16} />
-                      <span>Ganti foto</span>
-                    </Button>
+                          openAttachFoto(foto)
+                        }}
+                      >
+                        <Link2 size={16} />
+                        <span>Lampirkan ke komponen</span>
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="neutral"
+                        onClick={() => {
+                          const relatedOutput = outputList.find((output) => output.id === currentPreviewFoto.komponen_id)
+                          if (relatedOutput) {
+                            setUploadTarget({
+                              output: relatedOutput,
+                              slot: currentPreviewFoto.keterangan || '0%',
+                            })
+                            setUploadFile(null)
+                            closePhotoPreview()
+                          }
+                        }}
+                      >
+                        <Upload size={16} />
+                        <span>Ganti foto</span>
+                      </Button>
+                    )}
 
                     <Button
                       type="button"
@@ -1811,6 +1974,89 @@ export function PekerjaanDetailPage() {
                     >
                       <Trash2 size={16} />
                       <span>Hapus foto</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {attachFotoTarget ? (
+        <div className="upload-modal-backdrop" onClick={closeAttachFoto}>
+          <div onClick={(event) => event.stopPropagation()}>
+            <div className="neo-surface neo-surface--shadow upload-modal-shell">
+              <div className="modal-header-row">
+                <div>
+                  <div className="modal-eyebrow modal-eyebrow--upload">Lampirkan foto</div>
+                  <div className="modal-title">Pindahkan ke komponen tersedia</div>
+                  <div className="modal-subcopy">
+                    Slot {attachFotoTarget.keterangan || '-'} · dari{' '}
+                    {attachFotoTarget.komponen?.komponen || stringValue(attachFotoTarget.komponen_id) || 'tanpa komponen'}
+                  </div>
+                </div>
+                <Button type="button" variant="neutral" onClick={closeAttachFoto}>
+                  <X size={16} />
+                </Button>
+              </div>
+
+              <div className="upload-modal-content">
+                <div className="neo-form" style={{ display: 'grid', gap: 12 }}>
+                  <FieldGroup label="Komponen tujuan">
+                    <select
+                      className="neo-input"
+                      value={attachKomponenId}
+                      onChange={(event) => {
+                        setAttachKomponenId(event.target.value)
+                        setAttachPenerimaId('')
+                      }}
+                    >
+                      {outputList.map((output) => (
+                        <option key={output.id} value={String(output.id)}>
+                          {output.komponen}
+                          {output.penerima_is_optional ? ' (Komunal)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </FieldGroup>
+
+                  {attachNeedsPenerima ? (
+                    <FieldGroup label="Penerima">
+                      {penerimaList.length === 0 ? (
+                        <span className="hint-text">Belum ada penerima. Tambahkan di tab Penerima dulu.</span>
+                      ) : (
+                        <select
+                          className="neo-input"
+                          value={attachPenerimaId}
+                          onChange={(event) => setAttachPenerimaId(event.target.value)}
+                        >
+                          <option value="">Pilih penerima</option>
+                          {penerimaList.map((penerima) => (
+                            <option key={penerima.id} value={String(penerima.id)}>
+                              {penerima.nama}
+                              {penerima.is_komunal ? ' (Komunal)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </FieldGroup>
+                  ) : null}
+
+                  {attachErrorMessage ? <div className="form-error">{attachErrorMessage}</div> : null}
+
+                  <div className="detail-inline-controls" style={{ justifyContent: 'flex-end', gap: 8 }}>
+                    <Button type="button" variant="neutral" onClick={closeAttachFoto} disabled={attachFotoMutation.isPending}>
+                      Batal
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleAttachFotoSubmit}
+                      disabled={attachFotoMutation.isPending || !attachKomponenId}
+                    >
+                      {attachFotoMutation.isPending ? <Spinner /> : <Link2 size={16} />}
+                      <span>{attachFotoMutation.isPending ? 'Menyimpan...' : 'Lampirkan'}</span>
                     </Button>
                   </div>
                 </div>

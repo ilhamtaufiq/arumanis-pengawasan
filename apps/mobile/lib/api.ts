@@ -1,7 +1,7 @@
 import { ApiError, createApiClient, formatApiError, unwrapEntity } from '@pengawas/api-client'
 import type { AuthUser } from '@pengawas/shared'
 import { signInWithGoogle } from './google-auth'
-import { getApiBaseUrl } from './config'
+import { formatNetworkFailureMessage, getApiBaseUrl } from './config'
 import {
   clearSessionToken,
   ensureSessionToken,
@@ -10,19 +10,22 @@ import {
   setSessionTokenSync,
 } from './session'
 
-const apiBase = getApiBaseUrl()
-
 void ensureSessionToken()
 
-export const api = createApiClient({
-  apiPrefix: apiBase,
-  bffPrefix: apiBase,
-  credentials: 'omit',
-  getAuthHeader: async () => {
-    const token = getSessionTokenSync() ?? (await ensureSessionToken())
-    return token ? `Bearer ${token}` : undefined
-  },
-})
+function createMobileApiClient() {
+  const apiBase = getApiBaseUrl()
+  return createApiClient({
+    apiPrefix: apiBase,
+    bffPrefix: apiBase,
+    credentials: 'omit',
+    getAuthHeader: async () => {
+      const token = getSessionTokenSync() ?? (await ensureSessionToken())
+      return token ? `Bearer ${token}` : undefined
+    },
+  })
+}
+
+export const api = createMobileApiClient()
 
 export { getSessionTokenSync, setSessionTokenSync }
 
@@ -49,14 +52,21 @@ function extractToken(payload: unknown) {
  * Token disimpan lokal (SecureStore / sessionStorage web), bukan httpOnly cookie.
  */
 export async function mobileLogin(input: { email: string; password: string }) {
-  const response = await fetch(`${apiBase}/auth/login`, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(input),
-  })
+  const apiBase = getApiBaseUrl()
+  let response: Response
+
+  try {
+    response = await fetch(`${apiBase}/auth/login`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    })
+  } catch (error) {
+    throw new Error(formatNetworkFailureMessage(error, 'Login') ?? 'Login gagal')
+  }
 
   const payload = await response.json().catch(() => null)
 

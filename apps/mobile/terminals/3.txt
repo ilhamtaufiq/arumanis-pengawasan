@@ -1,0 +1,18 @@
+---
+pid: 31836
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"cd C:\\laragon\\www\\pengawas\\apps\\mobile; npx eas-cli@latest config --json 2>&1 | Select-Object -First 20\""
+started_at: 2026-07-07T10:22:03.481Z
+running_for_ms: 215002   
+---
+node.exe : npm warn exec The following package was not found and will be installed: eas-cli@20.5.1
+At line:1 char:1
++ & "C:\laragon\bin\nodejs/node.exe" "C:\laragon\bin\nodejs/node_module ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn exec T... eas-cli@20.5.1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache 
+if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and power
+ful.
+npm warn deprecated lodash.get@4.4.2: This package is deprecated. Use the optional chaining (?.) operator instead.

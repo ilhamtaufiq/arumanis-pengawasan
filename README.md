@@ -246,75 +246,40 @@ tests/                    # Unit test (Bun test)
 
 ## Aplikasi Mobile (Expo)
 
-Aplikasi native **`apps/mobile`** untuk pengawas lapangan. Auth langsung ke APIAMIS (Bearer + SecureStore), tanpa BFF web.
+Aplikasi native **`apps/mobile`** (**Arumanis Pengawasan**) untuk pengawas lapangan di Android/iOS. Auth langsung ke APIAMIS (Bearer + SecureStore), tanpa BFF web.
 
-### Prasyarat
+**Panduan lengkap:** [apps/mobile/README.md](apps/mobile/README.md) — setup developer, panduan penggunaan lapangan, offline, GPS, foto, dan OTA.
 
-| Kebutuhan | Catatan |
+### Ringkasan fitur mobile
+
+| Fitur | Keterangan |
 |---|---|
-| Bun 1.2+ | Sama dengan monorepo root |
-| Expo Go / emulator | Untuk development |
-| APIAMIS dapat diakses | `http://apiamis.test/api` (dev) |
+| Dashboard & daftar pekerjaan | Hanya paket yang diawasi akun login |
+| Detail pekerjaan 6 tab | Ringkasan, Output, Penerima, Foto, Progress, Tiket |
+| Upload foto + koordinat | EXIF / GPS / seluler; antrean saat offline |
+| Mode offline | Cache 24 jam untuk detail & tab yang pernah dibuka online |
+| GPS wajib | Pelacakan background + presence ke server |
+| OTA update | Pembaruan JS tanpa instal ulang APK |
 
-### Setup cepat
+### Setup cepat (developer)
 
 ```bash
-# Dari root monorepo
 bun install
-
-# Salin env mobile
 cp apps/mobile/.env.example apps/mobile/.env
-
-# Edit EXPO_PUBLIC_APIAMIS_BASE_URL dan Reverb (opsional)
-# Jalankan
+# Edit EXPO_PUBLIC_APIAMIS_BASE_URL (IP LAN untuk device fisik)
 bun run mobile
 ```
 
-**Device fisik:** gunakan IP LAN PC, bukan `localhost` / `apiamis.test`, kecuali DNS Laragon sudah diarahkan di jaringan yang sama.
+### Panduan penggunaan (pengawas lapangan)
 
-### Environment (`apps/mobile/.env`)
+1. **Login** — email/password atau Google; izinkan GPS & lokasi *Selalu*.
+2. **Dashboard / Pekerjaan** — tap kartu untuk buka detail.
+3. **Tab Foto** — pilih slot %, kamera/galeri, unggah (koordinat otomatis).
+4. **Tab Progress** — catat rencana/realisasi per tanggal.
+5. **Offline** — buka pekerjaan & tab yang dibutuhkan saat masih online; data tersimpan 24 jam di HP.
+6. **Profil** (ikon header) — status GPS, logout.
 
-```env
-EXPO_PUBLIC_APIAMIS_BASE_URL=http://apiamis.test/api
-
-# Reverb (kosongkan jika tidak dipakai)
-EXPO_PUBLIC_REVERB_APP_KEY=
-EXPO_PUBLIC_REVERB_HOST=apiamis.test
-EXPO_PUBLIC_REVERB_PORT=8080
-EXPO_PUBLIC_REVERB_SCHEME=http
-```
-
-Production: salin `apps/mobile/.env.production.example` → `.env.production` sebelum build APK.
-
-### Build Android (VPS)
-
-```bash
-# Di VPS dengan Android SDK + JDK 17 + Bun
-chmod +x scripts/build-android.sh
-./scripts/build-android.sh
-```
-
-Script otomatis: `git pull` → bump versi → `expo prebuild` → `assembleRelease` → salin APK ke `dist/`.
-
-### EAS Build (opsional)
-
-Profil di `apps/mobile/eas.json` (`development`, `preview`, `production`). Contoh:
-
-```bash
-cd apps/mobile
-bunx eas build --platform android --profile preview
-```
-
-### Struktur mobile
-
-```text
-apps/mobile/
-├── app/                 # Expo Router (tabs, login, pekerjaan, notifikasi)
-├── components/          # UI neobrutalism + tab pekerjaan
-├── hooks/               # Query, realtime, antrean foto
-├── lib/                 # API, auth, upload, presence
-└── assets/arumanis.png  # Icon & splash
-```
+Detail langkah demi langkah, troubleshooting, dan build APK: **[apps/mobile/README.md](apps/mobile/README.md)**.
 
 ---
 
@@ -362,8 +327,9 @@ Portal utama Arumanis mengarahkan pengawas ke aplikasi ini melalui `VITE_PENGAWA
 
 | Dokumen | Isi |
 |---|---|
-| [USER_GUIDE.md](USER_GUIDE.md) | Panduan lengkap fitur, alur kerja, FAQ, dan referensi API |
-| [TUTORIAL-PANDUAN.md](TUTORIAL-PANDUAN.md) | Tutorial visual langkah demi langkah |
+| [apps/mobile/README.md](apps/mobile/README.md) | **Panduan aplikasi mobile** — login, tab pekerjaan, foto, offline, GPS, OTA |
+| [USER_GUIDE.md](USER_GUIDE.md) | Panduan panel web `/pengawasan` — fitur, alur kerja, FAQ |
+| [TUTORIAL-PANDUAN.md](TUTORIAL-PANDUAN.md) | Tutorial visual langkah demi langkah (web) |
 
 ---
 

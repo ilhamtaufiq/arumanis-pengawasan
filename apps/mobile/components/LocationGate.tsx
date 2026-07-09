@@ -12,10 +12,6 @@ type LocationGateProps = {
 }
 
 export function LocationGate({ visible, readiness, checking, onRetry, onOpenSettings }: LocationGateProps) {
-  if (!visible) {
-    return null
-  }
-
   const title =
     readiness?.reason === 'services_disabled'
       ? 'GPS belum aktif'
@@ -28,7 +24,13 @@ export function LocationGate({ visible, readiness, checking, onRetry, onOpenSett
     'Aplikasi pengawasan membutuhkan GPS aktif dan izin lokasi untuk mencatat koordinat lapangan.'
 
   return (
-    <Modal visible transparent animationType="fade" statusBarTranslucent presentationStyle="overFullScreen">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+    >
       <View
         style={{
           flex: 1,
@@ -53,12 +55,7 @@ export function LocationGate({ visible, readiness, checking, onRetry, onOpenSett
               onPress={onRetry}
               disabled={checking}
             />
-            <NeoButton
-              label="Buka pengaturan"
-              variant="neutral"
-              onPress={onOpenSettings}
-              disabled={checking}
-            />
+            <NeoButton label="Buka pengaturan" variant="neutral" onPress={onOpenSettings} />
           </View>
         </NeoSurface>
       </View>

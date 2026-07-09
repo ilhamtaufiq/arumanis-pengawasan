@@ -1,0 +1,12 @@
+---
+pid: 9852
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"Set-Location 'C:\\laragon\\www\\pengawas\\apps\\mobile'; bun run update:preview -- --message 'Fix status bar Android dan defer OTA reload'\""
+started_at: 2026-07-07T17:46:11.881Z
+running_for_ms: 34895007 
+---
+$ bun run scripts/publish-eas-update.ts preview --message "Fix status bar Android dan defer OTA reload"
+Unexpected arguments: status, bar, Android, dan, defer, OTA, reload
+See more help with --help
+    Error: update command failed.
+error: script "update:preview" exited with code 1

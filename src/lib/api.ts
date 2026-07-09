@@ -60,6 +60,7 @@ export const {
   updateOutput,
   deleteOutput,
   createFoto,
+  updateFoto,
   validateKoordinat,
   deleteFoto,
   getProgressReport,

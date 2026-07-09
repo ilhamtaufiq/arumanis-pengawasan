@@ -34,6 +34,21 @@ export function buildLocationAttempts(preferCellularNetwork: boolean): LocationA
   ]
 }
 
+/** Urutan lebih cepat untuk upload foto — hindari high-accuracy GPS yang lama. */
+export function buildPhotoUploadLocationAttempts(preferCellularNetwork: boolean): LocationAttemptPlan[] {
+  if (preferCellularNetwork) {
+    return [
+      { level: 'balanced', source: 'network' },
+      { level: 'low', source: 'network' },
+    ]
+  }
+
+  return [
+    { level: 'balanced', source: 'gps' },
+    { level: 'low', source: 'network' },
+  ]
+}
+
 export function buildResultMessage(source: KoordinatSource, network: NetworkConnectivity): string {
   if (source === 'last_known') {
     return 'Koordinat dari cache lokasi terakhir perangkat.'

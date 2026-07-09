@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Image, Pressable, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -15,7 +15,7 @@ type AppHeaderProps = {
   onBack?: () => void
 }
 
-export function AppHeader({ title, subtitle, showBack = false, onBack }: AppHeaderProps) {
+export const AppHeader = memo(function AppHeader({ title, subtitle, showBack = false, onBack }: AppHeaderProps) {
   const insets = useSafeAreaInsets()
   const { user, canFetch } = useAuth()
   const [panelOpen, setPanelOpen] = useState(false)
@@ -160,7 +160,7 @@ export function AppHeader({ title, subtitle, showBack = false, onBack }: AppHead
         </View>
       </View>
 
-      <NotificationPanel visible={panelOpen} onClose={() => setPanelOpen(false)} />
+      {panelOpen ? <NotificationPanel visible onClose={() => setPanelOpen(false)} /> : null}
     </>
   )
-}
+})

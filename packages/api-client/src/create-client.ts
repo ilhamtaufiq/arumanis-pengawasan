@@ -246,6 +246,19 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<Foto>(payload)
     },
 
+    async updateFoto(fotoId: number | string, input: FormData) {
+      // Laravel multipart update: POST + _method=PUT
+      if (!input.has('_method')) {
+        input.append('_method', 'PUT')
+      }
+      const payload = await requestApi<ApiEnvelope<Foto>>(`/foto/${fotoId}`, {
+        method: 'POST',
+        body: input,
+      })
+
+      return unwrapEntity<Foto>(payload)
+    },
+
     async validateKoordinat(pekerjaanId: number | string, koordinat: string) {
       const payload = await requestApi<ApiEnvelope<KoordinatValidationResult> | KoordinatValidationResult>(
         '/koordinat/validate',

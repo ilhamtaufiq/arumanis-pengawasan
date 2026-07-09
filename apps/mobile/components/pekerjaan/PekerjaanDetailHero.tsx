@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Text, View } from 'react-native'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { formatCurrency, formatDate, formatNumber, formatPercent } from '@pengawas/shared/format'
@@ -43,7 +44,10 @@ function HeroKpi({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function PekerjaanDetailHero({ pekerjaan, progressValue }: PekerjaanDetailHeroProps) {
+export const PekerjaanDetailHero = memo(function PekerjaanDetailHero({
+  pekerjaan,
+  progressValue,
+}: PekerjaanDetailHeroProps) {
   const { isCompact, contentPadding } = useResponsive()
   const statusFoto = resolveFotoStatus(pekerjaan)
 
@@ -172,4 +176,4 @@ export function PekerjaanDetailHero({ pekerjaan, progressValue }: PekerjaanDetai
       </Text>
     </NeoSurface>
   )
-}
+})

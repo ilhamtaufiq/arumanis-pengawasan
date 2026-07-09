@@ -4,46 +4,37 @@ import exifr from 'exifr'
 import { Platform } from 'react-native'
 import { formatKoordinat } from '@pengawas/shared/koordinat'
 import type { PickedImageAsset } from './foto-upload-meta'
+import { parseCoordinatesFromPickerExif } from './image-gps-parse'
 
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
+export { parseCoordinatesFromPickerExif } from './image-gps-parse'
+
+export const EXIF_EXTRACT_TIMEOUT_MS = 3_500
+export const MAX_EXIF_FILE_BYTES = 4 * 1024 * 1024
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs)
+      }),
+    ])
+  } catch {
+    return null
+  } finally {
+    if (timer) clearTimeout(timer)
   }
-  return null
-}
-
-function formatGpsPair(latitude: number, longitude: number) {
-  const lat = latitude > 0 && latitude < 8 ? -latitude : latitude
-  return formatKoordinat(lat, longitude)
-}
-
-export function parseCoordinatesFromPickerExif(exif: Record<string, unknown> | null | undefined): string | null {
-  if (!exif) return null
-
-  const directLat = toNumber(exif.GPSLatitude ?? exif.latitude ?? exif.Latitude)
-  const directLng = toNumber(exif.GPSLongitude ?? exif.longitude ?? exif.Longitude)
-  if (directLat != null && directLng != null) {
-    return formatGpsPair(directLat, directLng)
-  }
-
-  const gpsBlock = (exif.GPS ?? exif['{GPS}']) as Record<string, unknown> | undefined
-  if (gpsBlock) {
-    const lat = toNumber(gpsBlock.Latitude ?? gpsBlock.GPSLatitude ?? gpsBlock.latitude)
-    const lng = toNumber(gpsBlock.Longitude ?? gpsBlock.GPSLongitude ?? gpsBlock.longitude)
-    if (lat != null && lng != null) {
-      return formatGpsPair(lat, lng)
-    }
-  }
-
-  return null
 }
 
 async function readUriAsArrayBuffer(uri: string): Promise<ArrayBuffer | null> {
   try {
     const info = await FileSystem.getInfoAsync(uri)
     if (!info.exists) return null
+    if (typeof info.size === 'number' && info.size > MAX_EXIF_FILE_BYTES) {
+      return null
+    }
 
     const base64 = await FileSystem.readAsStringAsync(uri, {
       encoding: FileSystem.EncodingType.Base64,
@@ -64,7 +55,8 @@ async function extractGpsWithExifr(source: Blob | ArrayBuffer | File) {
   try {
     const gps = await exifr.gps(source)
     if (gps?.latitude != null && gps?.longitude != null) {
-      return formatGpsPair(gps.latitude, gps.longitude)
+      const lat = gps.latitude > 0 && gps.latitude < 8 ? -gps.latitude : gps.latitude
+      return formatKoordinat(lat, gps.longitude)
     }
   } catch {
     return null
@@ -72,12 +64,17 @@ async function extractGpsWithExifr(source: Blob | ArrayBuffer | File) {
   return null
 }
 
-export async function extractCoordinatesFromAsset(asset: PickedImageAsset): Promise<string | null> {
-  const fromPickerExif = parseCoordinatesFromPickerExif(asset.exif ?? null)
-  if (fromPickerExif) {
-    return fromPickerExif
-  }
+/** Cepat: hanya metadata EXIF dari image picker (tanpa baca file). */
+export function getQuickCoordinatesFromAsset(asset: PickedImageAsset): string | null {
+  return parseCoordinatesFromPickerExif(asset.exif ?? null)
+}
 
+/** Dalam: parse file dengan batas ukuran & timeout agar galeri tidak menggantung. */
+export async function extractDeepCoordinatesFromAsset(asset: PickedImageAsset): Promise<string | null> {
+  return withTimeout(extractDeepCoordinatesFromAssetInner(asset), EXIF_EXTRACT_TIMEOUT_MS)
+}
+
+async function extractDeepCoordinatesFromAssetInner(asset: PickedImageAsset): Promise<string | null> {
   try {
     if (asset.file) {
       const fromFile = await extractGpsWithExifr(asset.file)
@@ -95,12 +92,21 @@ export async function extractCoordinatesFromAsset(asset: PickedImageAsset): Prom
     const response = await fetch(asset.uri)
     if (response.ok) {
       const blob = await response.blob()
-      const fromBlob = await extractGpsWithExifr(blob)
-      if (fromBlob) return fromBlob
+      if (blob.size <= MAX_EXIF_FILE_BYTES) {
+        const fromBlob = await extractGpsWithExifr(blob)
+        if (fromBlob) return fromBlob
+      }
     }
   } catch {
     return null
   }
 
   return null
+}
+
+/** @deprecated Pakai getQuickCoordinatesFromAsset + extractDeepCoordinatesFromAsset. */
+export async function extractCoordinatesFromAsset(asset: PickedImageAsset): Promise<string | null> {
+  const quick = getQuickCoordinatesFromAsset(asset)
+  if (quick) return quick
+  return extractDeepCoordinatesFromAsset(asset)
 }

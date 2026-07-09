@@ -7,6 +7,7 @@ import { formatDateTime } from '@pengawas/shared/format'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { createPenerima, deletePenerima, getPenerimaByPekerjaan, updatePenerima } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { shouldShowInitialQuerySpinner, shouldShowQueryEmptyFallback } from '@/lib/query-ui'
 import { pickText } from '@/lib/pekerjaan-helpers'
 import { DEFAULT_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagination'
 import {
@@ -62,6 +63,8 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
     queryFn: () => getPenerimaByPekerjaan(pekerjaanId, { page, per_page: DEFAULT_PAGE_SIZE }),
     enabled: canFetch && pekerjaanId > 0,
     retry: false,
+    networkMode: 'offlineFirst',
+    placeholderData: () => ({ data: fallbackList }),
   })
 
   const { pageItems, pagination } = useMemo(() => {
@@ -172,7 +175,9 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
     setFormOpen(true)
   }
 
-  const listBusy = penerimaQuery.isLoading || deleteMutation.isPending
+  const showInitialSpinner = shouldShowInitialQuerySpinner(penerimaQuery)
+  const showQueryFallback = shouldShowQueryEmptyFallback(penerimaQuery)
+  const listBusy = showInitialSpinner || deleteMutation.isPending
 
   return (
     <View style={{ gap: 16 }}>
@@ -190,9 +195,18 @@ export function PenerimaTab({ pekerjaanId, pekerjaan }: PenerimaTabProps) {
           description={`${pagination.total} tersimpan · ${DEFAULT_PAGE_SIZE} per halaman`}
         />
 
-        {penerimaQuery.isLoading ? <Spinner label="Memuat penerima..." /> : null}
+        {showInitialSpinner ? <Spinner label="Memuat penerima..." /> : null}
 
-        {!penerimaQuery.isLoading && pageItems.length === 0 ? (
+        {showQueryFallback || (penerimaQuery.isError && pageItems.length === 0) ? (
+          <EmptyState
+            title="Gagal memuat penerima"
+            description="Data penerima belum tersimpan di perangkat. Buka tab ini sekali saat online agar tersimpan untuk mode offline."
+            actionLabel="Coba lagi"
+            onAction={() => void penerimaQuery.refetch()}
+          />
+        ) : null}
+
+        {!showInitialSpinner && !showQueryFallback && !penerimaQuery.isError && pageItems.length === 0 ? (
           <EmptyState
             title="Belum ada penerima"
             description="Tambahkan penerima manfaat pertama untuk pekerjaan ini."

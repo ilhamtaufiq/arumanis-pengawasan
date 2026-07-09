@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { buildLocationAttempts } from '../apps/mobile/lib/location-strategy'
+import { buildLocationAttempts, buildPhotoUploadLocationAttempts } from '../apps/mobile/lib/location-strategy'
 import {
   assessNetworkConnectivity,
   shouldPreferCellularLocation,
@@ -40,5 +40,11 @@ describe('device-location attempts', () => {
   test('prefers GPS first when internet is available', () => {
     const attempts = buildLocationAttempts(false)
     expect(attempts.map((item) => item.source)).toEqual(['gps', 'network', 'network'])
+  })
+
+  test('photo upload attempts avoid slow high-accuracy GPS first', () => {
+    const attempts = buildPhotoUploadLocationAttempts(false)
+    expect(attempts.map((item) => item.level)).toEqual(['balanced', 'low'])
+    expect(attempts[0]?.source).toBe('gps')
   })
 })

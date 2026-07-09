@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Image, Pressable, Text, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AppState, Image, Platform, Pressable, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Foto, Output, PekerjaanDetail, Penerima } from '@pengawas/shared'
@@ -64,6 +64,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   } | null>(null)
   const [slotActions, setSlotActions] = useState<SlotActions | null>(null)
   const [matrixPage, setMatrixPage] = useState(1)
+  const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
 
   const fotoList = pekerjaan.foto ?? []
   const outputList = pekerjaan.output ?? []
@@ -217,38 +218,59 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     }
   }
 
-  async function launchCamera(): Promise<PickedImageAsset | null> {
-    const permission = await ImagePicker.requestCameraPermissionsAsync()
-    if (!permission.granted) {
-      setErrorMessage('Izin kamera diperlukan untuk mengambil foto.')
-      return null
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsEditing: false,
-      exif: true,
-    })
-
-    return assetFromResult(result)
+  const pickerOptions: ImagePicker.ImagePickerOptions = {
+    mediaTypes: ['images'],
+    quality: 0.85,
+    allowsEditing: false,
+    exif: true,
   }
 
-  async function launchGallery(): Promise<PickedImageAsset | null> {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
-    if (!permission.granted) {
-      setErrorMessage('Izin galeri diperlukan untuk memilih foto.')
-      return null
+  async function ensurePickerPermissions() {
+    const [camera, gallery] = await Promise.all([
+      ImagePicker.requestCameraPermissionsAsync(),
+      ImagePicker.requestMediaLibraryPermissionsAsync(),
+    ])
+
+    return {
+      cameraGranted: camera.granted,
+      galleryGranted: gallery.granted,
     }
+  }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsEditing: false,
-      exif: true,
-    })
+  function handlePickerResult(request: SourceRequest, result: ImagePicker.ImagePickerResult) {
+    pendingPickerRequestRef.current = null
+    const asset = assetFromResult(result)
+    if (!asset) return
+    openUploadModal(request, asset)
+  }
 
-    return assetFromResult(result)
+  function handlePickerFailure(message: string) {
+    pendingPickerRequestRef.current = null
+    setErrorMessage(message)
+  }
+
+  function launchCameraNow(request: SourceRequest) {
+    pendingPickerRequestRef.current = request
+    setSourceRequest(null)
+    setErrorMessage(null)
+
+    void ImagePicker.launchCameraAsync(pickerOptions)
+      .then((result) => handlePickerResult(request, result))
+      .catch((error) => {
+        handlePickerFailure(error instanceof Error ? error.message : 'Gagal membuka kamera.')
+      })
+  }
+
+  function launchGalleryNow(request: SourceRequest) {
+    pendingPickerRequestRef.current = request
+    setSourceRequest(null)
+    setErrorMessage(null)
+
+    void ImagePicker.launchImageLibraryAsync(pickerOptions)
+      .then((result) => handlePickerResult(request, result))
+      .catch((error) => {
+        handlePickerFailure(error instanceof Error ? error.message : 'Gagal membuka galeri.')
+      })
   }
 
   function openUploadModal(request: SourceRequest, asset: PickedImageAsset) {
@@ -262,17 +284,31 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     })
   }
 
-  async function pickFromCamera(request: SourceRequest) {
-    const asset = await launchCamera()
-    if (!asset) return
-    openUploadModal(request, asset)
-  }
+  useEffect(() => {
+    if (Platform.OS === 'web') return
 
-  async function pickFromGallery(request: SourceRequest) {
-    const asset = await launchGallery()
-    if (!asset) return
-    openUploadModal(request, asset)
-  }
+    const recoverPendingPickerResult = () => {
+      const request = pendingPickerRequestRef.current
+      if (!request) return
+
+      void ImagePicker.getPendingResultAsync()
+        .then((pending) => {
+          const latest = pending.at(-1)
+          if (!latest || !('assets' in latest)) return
+          handlePickerResult(request, latest)
+        })
+        .catch(() => undefined)
+    }
+
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        recoverPendingPickerResult()
+      }
+    })
+
+    recoverPendingPickerResult()
+    return () => subscription.remove()
+  }, [])
 
   function submitUpload(koordinat: string) {
     if (!pendingUpload) return
@@ -285,6 +321,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }
 
   function startUpload(target: UploadTarget, replaceFotoId?: number) {
+    void ensurePickerPermissions()
     setSourceRequest({ target, replaceFotoId })
   }
 
@@ -487,16 +524,20 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         options={[
           {
             label: 'Kamera',
+            variant: 'primary',
             onPress: () => {
-              if (!sourceRequest) return
-              void pickFromCamera(sourceRequest)
+              const request = sourceRequest
+              if (!request) return
+              launchCameraNow(request)
             },
           },
           {
             label: 'Galeri',
+            variant: 'neutral',
             onPress: () => {
-              if (!sourceRequest) return
-              void pickFromGallery(sourceRequest)
+              const request = sourceRequest
+              if (!request) return
+              launchGalleryNow(request)
             },
           },
         ]}

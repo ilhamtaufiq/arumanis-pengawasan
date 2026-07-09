@@ -3,23 +3,28 @@ import { Image, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { hasParsableKoordinat, isManualOrEmptyKoordinat } from '@pengawas/shared/koordinat'
 import { validateKoordinat } from '@/lib/api'
-import { resolveDeviceKoordinat } from '@/lib/device-location'
+import { resolvePhotoUploadKoordinat } from '@/lib/device-location'
 import { useIsOnline } from '@/hooks/useIsOnline'
 import type { PickedImageAsset } from '@/lib/foto-upload-meta'
-import { extractCoordinatesFromAsset } from '@/lib/image-gps'
+import {
+  extractDeepCoordinatesFromAsset,
+  getQuickCoordinatesFromAsset,
+} from '@/lib/image-gps'
 import { NeoButton, NeoInput, NeoSurface } from '@/components/ui'
+import {
+  buildKoordinatValidationApiFailure,
+  buildKoordinatValidationFromApi,
+  buildKoordinatValidationOffline,
+  canUploadFotoWithKoordinat,
+  koordinatValidationTone,
+  type KoordinatValidationUi,
+} from '@/lib/koordinat-upload-policy'
 import { colors } from '@/theme/tokens'
 
 type UploadTarget = {
   output: { id: number; komponen: string; volume?: string | number | null; satuan?: string | null }
   slot: string
   penerima?: { id: number; nama: string }
-}
-
-type KoordinatValidationState = {
-  valid: boolean
-  message: string
-  loading: boolean
 }
 
 type FotoUploadModalProps = {
@@ -48,7 +53,7 @@ export function FotoUploadModal({
 
   const [koordinat, setKoordinat] = useState('')
   const [extractionStatus, setExtractionStatus] = useState<string | null>(null)
-  const [validation, setValidation] = useState<KoordinatValidationState | null>(null)
+  const [validation, setValidation] = useState<KoordinatValidationUi | null>(null)
   const [isLocating, setIsLocating] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const isOnline = useIsOnline()
@@ -70,12 +75,9 @@ export function FotoUploadModal({
     let cancelled = false
 
     async function resolveKoordinat() {
-      setExtractionStatus('Mencari koordinat dari foto...')
-      const fromPhoto = await extractCoordinatesFromAsset(asset!)
-      if (cancelled) return
-
-      if (fromPhoto) {
-        setKoordinat(fromPhoto)
+      const quick = getQuickCoordinatesFromAsset(asset!)
+      if (quick) {
+        setKoordinat(quick)
         setExtractionStatus('Koordinat berhasil diekstrak dari foto.')
         return
       }
@@ -84,9 +86,39 @@ export function FotoUploadModal({
         isOnline ? 'Mengambil lokasi GPS perangkat...' : 'Mengambil lokasi via jaringan seluler...',
       )
       setIsLocating(true)
+
+      const devicePromise = resolvePhotoUploadKoordinat()
+      const deepExifPromise = extractDeepCoordinatesFromAsset(asset!)
+
       try {
-        const fromDevice = await resolveDeviceKoordinat()
+        const winner = await Promise.race([
+          devicePromise.then((result) => ({ kind: 'device' as const, result })),
+          deepExifPromise.then((result) => ({ kind: 'exif' as const, result })),
+        ])
+
         if (cancelled) return
+
+        if (winner.kind === 'exif' && winner.result) {
+          setKoordinat(winner.result)
+          setExtractionStatus('Koordinat berhasil diekstrak dari foto.')
+          return
+        }
+
+        if (winner.kind === 'device') {
+          setKoordinat(winner.result.koordinat)
+          setExtractionStatus(winner.result.message)
+          return
+        }
+
+        const [fromDevice, fromExif] = await Promise.all([devicePromise, deepExifPromise])
+        if (cancelled) return
+
+        if (fromExif) {
+          setKoordinat(fromExif)
+          setExtractionStatus('Koordinat berhasil diekstrak dari foto.')
+          return
+        }
+
         setKoordinat(fromDevice.koordinat)
         setExtractionStatus(fromDevice.message)
       } catch (error) {
@@ -115,34 +147,27 @@ export function FotoUploadModal({
     }
 
     if (!isOnline) {
-      setValidation({
-        valid: true,
-        message: 'Offline — validasi server ditunda. Koordinat siap dipakai untuk antrean upload.',
-        loading: false,
-      })
+      setValidation(buildKoordinatValidationOffline())
       return
     }
 
     let cancelled = false
-    setValidation({ valid: false, message: 'Memvalidasi koordinat...', loading: true })
+    setValidation({
+      valid: false,
+      message: 'Memvalidasi koordinat...',
+      loading: true,
+      allowUpload: false,
+    })
 
     const timer = setTimeout(() => {
       void validateKoordinat(pekerjaanId, koordinat.trim())
         .then((result) => {
           if (cancelled) return
-          setValidation({
-            valid: Boolean(result.validasi_koordinat),
-            message: result.validasi_koordinat_message || 'Validasi selesai.',
-            loading: false,
-          })
+          setValidation(buildKoordinatValidationFromApi(result))
         })
         .catch(() => {
           if (cancelled) return
-          setValidation({
-            valid: false,
-            message: 'Gagal memvalidasi koordinat.',
-            loading: false,
-          })
+          setValidation(buildKoordinatValidationApiFailure())
         })
     }, 400)
 
@@ -152,13 +177,23 @@ export function FotoUploadModal({
     }
   }, [visible, koordinat, pekerjaanId, isOnline])
 
-  const canUpload =
-    Boolean(asset) &&
-    hasParsableKoordinat(koordinat) &&
-    validation?.loading === false &&
-    validation?.valid === true &&
-    !isUploading &&
-    !isLocating
+  const canUpload = canUploadFotoWithKoordinat({
+    hasAsset: Boolean(asset),
+    koordinat,
+    isUploading,
+    isLocating,
+    validation,
+  })
+
+  const validationTone = koordinatValidationTone(validation)
+  const validationColor =
+    validationTone === 'success'
+      ? colors.accent
+      : validationTone === 'warning'
+        ? colors.foreground
+        : validationTone === 'danger'
+          ? colors.danger
+          : colors.mutedForeground
 
   async function handleDeviceLocation() {
     setLocalError(null)
@@ -166,7 +201,7 @@ export function FotoUploadModal({
     setExtractionStatus('Mendapatkan lokasi dari perangkat...')
 
     try {
-      const result = await resolveDeviceKoordinat()
+      const result = await resolvePhotoUploadKoordinat()
       setKoordinat(result.koordinat)
       setExtractionStatus(result.message)
     } catch (error) {
@@ -184,8 +219,8 @@ export function FotoUploadModal({
       setLocalError('Koordinat wajib diisi dengan format lat, lng.')
       return
     }
-    if (!validation?.valid) {
-      setLocalError(validation?.message || 'Koordinat belum valid untuk pekerjaan ini.')
+    if (!canUpload) {
+      setLocalError(validation?.message || 'Tunggu validasi koordinat selesai.')
       return
     }
     setLocalError(null)
@@ -249,7 +284,7 @@ export function FotoUploadModal({
                 <Text style={{ fontWeight: '800', fontSize: 15 }}>Koordinat GPS (wajib)</Text>
                 <NeoInput
                   label="Koordinat"
-                  placeholder="Menunggu GPS..."
+                  placeholder={isLocating ? 'Mengambil GPS...' : 'lat, lng'}
                   value={koordinat}
                   onChangeText={setKoordinat}
                   autoCapitalize="none"
@@ -270,10 +305,15 @@ export function FotoUploadModal({
                       fontSize: 13,
                       fontWeight: '700',
                       lineHeight: 18,
-                      color: validation.loading ? colors.mutedForeground : validation.valid ? colors.accent : colors.danger,
+                      color: validationColor,
                     }}
                   >
                     {validation.message}
+                  </Text>
+                ) : null}
+                {validation && !validation.loading && !validation.valid && validation.allowUpload ? (
+                  <Text style={{ fontSize: 12, color: colors.mutedForeground, lineHeight: 18 }}>
+                    Foto tetap bisa diunggah. Status koordinat disimpan sebagai catatan di server.
                   </Text>
                 ) : null}
                 {localError ? (
@@ -290,7 +330,11 @@ export function FotoUploadModal({
                 <NeoButton label="Batal" variant="neutral" onPress={onClose} disabled={isUploading} />
                 {!canUpload && !isUploading && !isLocating ? (
                   <Text style={{ fontSize: 12, color: colors.mutedForeground, textAlign: 'center' }}>
-                    Tunggu koordinat valid sebelum unggah.
+                    {validation?.loading
+                      ? 'Memvalidasi koordinat...'
+                      : !hasParsableKoordinat(koordinat)
+                        ? 'Isi koordinat GPS terlebih dahulu.'
+                        : 'Tunggu validasi koordinat selesai.'}
                   </Text>
                 ) : null}
               </View>

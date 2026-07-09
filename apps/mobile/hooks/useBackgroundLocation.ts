@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '@/lib/auth'
 import {
   getBackgroundLocationEnabled,
   setBackgroundLocationEnabled,
@@ -9,11 +8,9 @@ import {
   isBackgroundLocationTrackingActive,
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
-  syncBackgroundLocationTracking,
 } from '@/lib/background-location'
 
 export function useBackgroundLocation() {
-  const { canFetch } = useAuth()
   const [enabled, setEnabled] = useState(false)
   const [active, setActive] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -41,13 +38,7 @@ export function useBackgroundLocation() {
     void refresh()
   }, [refresh])
 
-  useEffect(() => {
-    if (!canFetch || !supported) {
-      return
-    }
-
-    void syncBackgroundLocationTracking().then(() => refresh())
-  }, [canFetch, refresh, supported])
+  // Pelacakan diaktifkan lewat useLocationEnforcement agar tidak bentrok dengan gate izin.
 
   const enable = useCallback(async () => {
     setError(null)

@@ -1,20 +1,16 @@
 import { useEffect, useRef } from 'react'
-import { AppState, type AppStateStatus } from 'react-native'
-import { resolveDeviceKoordinat } from '@/lib/device-location'
+import { AppState, Platform, type AppStateStatus } from 'react-native'
+import { isBackgroundLocationPlatformSupported, isBackgroundLocationTrackingActive } from '@/lib/background-location'
 import { sendPresenceHeartbeat } from '@/lib/presence'
 import { useAuth } from '@/lib/auth'
 
-async function getQuickKoordinat(): Promise<string | undefined> {
-  try {
-    const result = await resolveDeviceKoordinat()
-    return result.koordinat
-  } catch {
-    return undefined
-  }
-}
-
 export const PRESENCE_HEARTBEAT_INTERVAL_MS = 60_000
 
+/**
+ * Fallback presence saat pelacakan GPS background tidak aktif (mis. web).
+ * Di Android/iOS, koordinat + heartbeat dikirim oleh background-location-task —
+ * jangan duplikasi di foreground agar tidak membebani UI thread.
+ */
 export function usePresenceHeartbeat() {
   const { canFetch } = useAuth()
   const appState = useRef<AppStateStatus>(AppState.currentState)
@@ -22,14 +18,21 @@ export function usePresenceHeartbeat() {
   useEffect(() => {
     if (!canFetch) return
 
+    if (Platform.OS !== 'web' && isBackgroundLocationPlatformSupported()) {
+      return
+    }
+
     let cancelled = false
     let timer: ReturnType<typeof setInterval> | null = null
 
     const ping = async () => {
       if (cancelled || appState.current !== 'active') return
       try {
-        const koordinat = await getQuickKoordinat()
-        await sendPresenceHeartbeat(koordinat)
+        if (Platform.OS !== 'web') {
+          const trackingActive = await isBackgroundLocationTrackingActive()
+          if (trackingActive) return
+        }
+        await sendPresenceHeartbeat()
       } catch {
         // Best-effort presence; abaikan kegagalan sementara.
       }
@@ -37,7 +40,6 @@ export function usePresenceHeartbeat() {
 
     const startTimer = () => {
       if (timer) return
-      void ping()
       timer = setInterval(() => {
         void ping()
       }, PRESENCE_HEARTBEAT_INTERVAL_MS)
@@ -52,6 +54,7 @@ export function usePresenceHeartbeat() {
     const handleAppState = (next: AppStateStatus) => {
       appState.current = next
       if (next === 'active') {
+        void ping()
         startTimer()
       } else {
         stopTimer()
@@ -59,6 +62,7 @@ export function usePresenceHeartbeat() {
     }
 
     if (appState.current === 'active') {
+      void ping()
       startTimer()
     }
 

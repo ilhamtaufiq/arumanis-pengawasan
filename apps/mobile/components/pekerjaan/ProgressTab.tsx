@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Alert, Text, View } from 'react-native'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Alert, Text, View, type DimensionValue, type LayoutChangeEvent } from 'react-native'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { ProgressEstimasiSection, ProgressHistoryEntry } from '@pengawas/shared'
@@ -8,11 +8,14 @@ import { formatDate, formatPercent, progressTone } from '@pengawas/shared/format
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { getPekerjaanProgressEstimasi, savePekerjaanProgressEstimasi } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { shouldShowInitialQuerySpinner, shouldShowQueryEmptyFallback } from '@/lib/query-ui'
 import {
   type FormHistories,
   type HistoryDraft,
   type ProgressJenis,
+  createEmptyProgressEstimasiResponse,
   emptyDraft,
+  emptyHistories,
   emptyProgressSection,
   formatPercentValue,
   historiesFromResponse,
@@ -21,6 +24,7 @@ import {
   sortEntries,
 } from '@/lib/progress-estimasi'
 import { EmptyState, MetricCard, NeoBadge, NeoButton, NeoInput, NeoSurface, SectionHeader, Spinner } from '@/components/ui'
+import { useResponsive } from '@/lib/responsive'
 import { colors, radius } from '@/theme/tokens'
 
 type ProgressTabProps = {
@@ -52,6 +56,10 @@ function ProgressFill({ percent }: { percent: number }) {
   )
 }
 
+function SummaryMetricSlot({ children, width }: { children: ReactNode; width: DimensionValue }) {
+  return <View style={{ width, minWidth: 0, flexGrow: 1, maxWidth: '100%' }}>{children}</View>
+}
+
 function SummaryStrip({
   section,
   accentTone,
@@ -59,22 +67,114 @@ function SummaryStrip({
   section: ProgressEstimasiSection
   accentTone: 'warning' | 'success'
 }) {
+  const { isNarrow, isCompact } = useResponsive()
   const deviasi = section.deviasi
   const deviasiTone = deviasi !== null && deviasi < 0 ? 'secondary' : 'accent'
+  const slotWidth = isNarrow ? '100%' : isCompact ? '48%' : '31%'
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-      <MetricCard label="Rencana terakhir" value={`${formatPercentValue(section.latest_rencana)}%`} tone="card" />
-      <MetricCard
-        label="Realisasi terakhir"
-        value={`${formatPercentValue(section.latest_realisasi)}%`}
-        tone={accentTone === 'warning' ? 'main' : 'accent'}
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+      <SummaryMetricSlot width={slotWidth}>
+        <MetricCard label="Rencana terakhir" value={`${formatPercentValue(section.latest_rencana)}%`} tone="card" />
+      </SummaryMetricSlot>
+      <SummaryMetricSlot width={slotWidth}>
+        <MetricCard
+          label="Realisasi terakhir"
+          value={`${formatPercentValue(section.latest_realisasi)}%`}
+          tone={accentTone === 'warning' ? 'main' : 'accent'}
+        />
+      </SummaryMetricSlot>
+      <SummaryMetricSlot width={slotWidth}>
+        <MetricCard
+          label="Deviasi"
+          value={`${formatPercentValue(deviasi)}%`}
+          tone={deviasiTone}
+          hint={deviasi !== null && deviasi < 0 ? 'Di bawah rencana' : 'Sesuai/ di atas rencana'}
+        />
+      </SummaryMetricSlot>
+    </View>
+  )
+}
+
+function ProgressAddForm({
+  draft,
+  isSaving,
+  onDraftChange,
+  onAdd,
+}: {
+  draft: HistoryDraft
+  isSaving: boolean
+  onDraftChange: (draft: HistoryDraft) => void
+  onAdd: () => void
+}) {
+  const [containerWidth, setContainerWidth] = useState(0)
+  const useRowLayout = containerWidth >= 400
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width)
+    setContainerWidth((current) => (current === nextWidth ? current : nextWidth))
+  }
+
+  if (useRowLayout) {
+    return (
+      <View
+        onLayout={handleLayout}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', width: '100%', minWidth: 0 }}
+      >
+        <View style={{ flex: 1, minWidth: 140, maxWidth: '100%' }}>
+          <NeoInput
+            label="Tanggal"
+            placeholder="YYYY-MM-DD"
+            value={draft.tanggal}
+            onChangeText={(tanggal) => onDraftChange({ ...draft, tanggal })}
+            editable={!isSaving}
+          />
+        </View>
+        <View style={{ width: 112, minWidth: 88, maxWidth: '100%', flexShrink: 0 }}>
+          <NeoInput
+            label="Nilai (%)"
+            placeholder="0-100"
+            keyboardType="decimal-pad"
+            value={draft.persen}
+            onChangeText={(persen) => onDraftChange({ ...draft, persen: sanitizePercentInput(persen) })}
+            editable={!isSaving}
+          />
+        </View>
+        <View style={{ minWidth: 96, flexGrow: 1, flexBasis: 96, maxWidth: '100%' }}>
+          <NeoButton
+            label={isSaving ? 'Menyimpan...' : 'Tambah'}
+            compact
+            fullWidth
+            onPress={onAdd}
+            disabled={isSaving}
+          />
+        </View>
+      </View>
+    )
+  }
+
+  return (
+    <View onLayout={handleLayout} style={{ gap: 10, width: '100%', minWidth: 0 }}>
+      <NeoInput
+        label="Tanggal"
+        placeholder="YYYY-MM-DD"
+        value={draft.tanggal}
+        onChangeText={(tanggal) => onDraftChange({ ...draft, tanggal })}
+        editable={!isSaving}
       />
-      <MetricCard
-        label="Deviasi"
-        value={`${formatPercentValue(deviasi)}%`}
-        tone={deviasiTone}
-        hint={deviasi !== null && deviasi < 0 ? 'Di bawah rencana' : 'Sesuai/ di atas rencana'}
+      <NeoInput
+        label="Nilai (%)"
+        placeholder="0-100"
+        keyboardType="decimal-pad"
+        value={draft.persen}
+        onChangeText={(persen) => onDraftChange({ ...draft, persen: sanitizePercentInput(persen) })}
+        editable={!isSaving}
+      />
+      <NeoButton
+        label={isSaving ? 'Menyimpan...' : 'Tambah'}
+        fullWidth
+        onPress={onAdd}
+        disabled={isSaving}
       />
     </View>
   )
@@ -106,41 +206,35 @@ function HistoryColumn({
   const badgeMap = { warning: 'warning' as const, success: 'success' as const, info: 'info' as const }
 
   return (
-    <NeoSurface style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-        <SectionHeader title={title} description={description} />
+    <NeoSurface style={{ gap: 12, width: '100%', minWidth: 0, alignSelf: 'stretch' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 8,
+          width: '100%',
+        }}
+      >
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.foreground }}>{title}</Text>
+          <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>{description}</Text>
+        </View>
         <NeoBadge tone={badgeMap[badgeTone]}>{`${sorted.length} catatan`}</NeoBadge>
       </View>
 
-      <NeoInput
-        label="Tanggal"
-        placeholder="YYYY-MM-DD"
-        value={draft.tanggal}
-        onChangeText={(tanggal) => onDraftChange({ ...draft, tanggal })}
-        editable={!isSaving}
-      />
-      <NeoInput
-        label="Nilai (%)"
-        placeholder="0-100"
-        keyboardType="decimal-pad"
-        value={draft.persen}
-        onChangeText={(persen) => onDraftChange({ ...draft, persen: sanitizePercentInput(persen) })}
-        editable={!isSaving}
-      />
-      <NeoButton
-        label={isSaving ? 'Menyimpan...' : 'Tambah'}
-        compact
-        onPress={onAdd}
-        disabled={isSaving}
-      />
+      <ProgressAddForm draft={draft} isSaving={isSaving} onDraftChange={onDraftChange} onAdd={onAdd} />
 
       {sorted.length === 0 ? (
         <EmptyState title="Belum ada riwayat" description="Tambahkan catatan dari 0% menuju 100%." />
       ) : (
-        <View style={{ gap: 10 }}>
-          <View style={{ gap: 6 }}>
+        <View style={{ gap: 10, width: '100%' }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, width: '100%' }}>
             <Text style={{ fontWeight: '700', fontSize: 13 }}>Capaian terakhir</Text>
-            <ProgressFill percent={latestPercent} />
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <ProgressFill percent={latestPercent} />
+            </View>
             <Text style={{ fontWeight: '800' }}>{formatPercentValue(latestPercent)}%</Text>
           </View>
 
@@ -152,16 +246,26 @@ function HistoryColumn({
                 borderColor: colors.border,
                 borderRadius: radius,
                 padding: 12,
-                gap: 8,
+                gap: 10,
                 backgroundColor: colors.card,
+                width: '100%',
               }}
             >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
-                <View style={{ flex: 1 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  width: '100%',
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 120 }}>
                   <Text style={{ fontWeight: '800' }}>{formatDate(entry.tanggal)}</Text>
                   <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Pencatatan #{index + 1}</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                   <Text style={{ fontWeight: '800', fontSize: 16 }}>{formatPercentValue(entry.persen)}%</Text>
                   <NeoBadge tone={progressTone(entry.persen) as 'danger' | 'warning' | 'success'}>
                     {formatPercent(entry.persen)}
@@ -172,6 +276,7 @@ function HistoryColumn({
                 label="Hapus"
                 variant="danger"
                 compact
+                fullWidth
                 disabled={isSaving}
                 onPress={() => onRemove(index)}
               />
@@ -204,31 +309,47 @@ function ProgressTypePanel({
   onAdd: (tipe: 'rencana' | 'realisasi') => void
   onRemove: (tipe: 'rencana' | 'realisasi', index: number) => void
 }) {
+  const { isTablet } = useResponsive()
+  const columnStyle = isTablet ? { flex: 1, minWidth: 0 } : { width: '100%' as const }
+
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: 16, width: '100%', minWidth: 0 }}>
       <SummaryStrip section={section} accentTone={accentTone} />
-      <HistoryColumn
-        title="Rencana"
-        description={`Target ${jenis} per tanggal`}
-        entries={histories.rencana}
-        draft={drafts.rencana}
-        badgeTone="warning"
-        isSaving={isSaving}
-        onDraftChange={(draft) => onDraftChange('rencana', draft)}
-        onAdd={() => onAdd('rencana')}
-        onRemove={(index) => onRemove('rencana', index)}
-      />
-      <HistoryColumn
-        title="Realisasi"
-        description={`Capaian ${jenis} per tanggal`}
-        entries={histories.realisasi}
-        draft={drafts.realisasi}
-        badgeTone={accentTone}
-        isSaving={isSaving}
-        onDraftChange={(draft) => onDraftChange('realisasi', draft)}
-        onAdd={() => onAdd('realisasi')}
-        onRemove={(index) => onRemove('realisasi', index)}
-      />
+      <View
+        style={{
+          flexDirection: isTablet ? 'row' : 'column',
+          alignItems: 'stretch',
+          gap: 12,
+          width: '100%',
+        }}
+      >
+        <View style={columnStyle}>
+          <HistoryColumn
+            title="Rencana"
+            description={`Target ${jenis} per tanggal`}
+            entries={histories.rencana}
+            draft={drafts.rencana}
+            badgeTone="warning"
+            isSaving={isSaving}
+            onDraftChange={(draft) => onDraftChange('rencana', draft)}
+            onAdd={() => onAdd('rencana')}
+            onRemove={(index) => onRemove('rencana', index)}
+          />
+        </View>
+        <View style={columnStyle}>
+          <HistoryColumn
+            title="Realisasi"
+            description={`Capaian ${jenis} per tanggal`}
+            entries={histories.realisasi}
+            draft={drafts.realisasi}
+            badgeTone={accentTone}
+            isSaving={isSaving}
+            onDraftChange={(draft) => onDraftChange('realisasi', draft)}
+            onAdd={() => onAdd('realisasi')}
+            onRemove={(index) => onRemove('realisasi', index)}
+          />
+        </View>
+      </View>
     </View>
   )
 }
@@ -236,6 +357,7 @@ function ProgressTypePanel({
 export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
   const queryClient = useQueryClient()
   const { canFetch } = useAuth()
+  const { isCompact } = useResponsive()
   const tahun = tahunAnggaran > 0 ? tahunAnggaran : new Date().getFullYear()
   const [activeJenis, setActiveJenis] = useState<ProgressJenis>('fisik')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -245,11 +367,27 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
   })
   const [histories, setHistories] = useState<FormHistories | null>(null)
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const emptyResponse = useMemo(
+    () => createEmptyProgressEstimasiResponse(pekerjaanId, tahun),
+    [pekerjaanId, tahun],
+  )
+
+  const progressQuery = useQuery({
     queryKey: queryKeys.pekerjaan.progressEstimasi(pekerjaanId, tahun),
     queryFn: () => getPekerjaanProgressEstimasi(pekerjaanId, tahun),
     enabled: canFetch && pekerjaanId > 0,
+    retry: false,
+    networkMode: 'offlineFirst',
+    placeholderData: () => emptyResponse,
   })
+
+  const { data, isError, refetch } = progressQuery
+
+  const cachedHistories = useMemo(
+    () => historiesFromResponse(data?.data ?? emptyResponse.data),
+    [data, emptyResponse.data],
+  )
+  const activeHistories = histories ?? cachedHistories ?? emptyHistories()
 
   useEffect(() => {
     if (!data?.data) return
@@ -291,7 +429,7 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
   }
 
   const handleAdd = (section: ProgressJenis, tipe: 'rencana' | 'realisasi') => {
-    if (!histories) return
+    if (!activeHistories) return
 
     const draft = drafts[section][tipe]
     const persen = parsePercent(draft.persen)
@@ -307,10 +445,10 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
     }
 
     const nextHistories: FormHistories = {
-      ...histories,
+      ...activeHistories,
       [section]: {
-        ...histories[section],
-        [tipe]: sortEntries([...histories[section][tipe], { tanggal: draft.tanggal.trim(), persen }]),
+        ...activeHistories[section],
+        [tipe]: sortEntries([...activeHistories[section][tipe], { tanggal: draft.tanggal.trim(), persen }]),
       },
     }
 
@@ -324,7 +462,7 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
   }
 
   const handleRemove = (section: ProgressJenis, tipe: 'rencana' | 'realisasi', index: number) => {
-    if (!histories) return
+    if (!activeHistories) return
 
     Alert.alert('Hapus catatan', 'Catatan progress ini akan dihapus.', [
       { text: 'Batal', style: 'cancel' },
@@ -332,11 +470,11 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
         text: 'Hapus',
         style: 'destructive',
         onPress: () => {
-          const sorted = sortEntries(histories[section][tipe])
+          const sorted = sortEntries(activeHistories[section][tipe])
           const nextHistories: FormHistories = {
-            ...histories,
+            ...activeHistories,
             [section]: {
-              ...histories[section],
+              ...activeHistories[section],
               [tipe]: sorted.filter((_, itemIndex) => itemIndex !== index),
             },
           }
@@ -347,15 +485,15 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
     ])
   }
 
-  if (isLoading || !histories) {
+  if (shouldShowInitialQuerySpinner(progressQuery)) {
     return <Spinner label="Memuat riwayat progress..." />
   }
 
-  if (isError) {
+  if (shouldShowQueryEmptyFallback(progressQuery)) {
     return (
       <EmptyState
         title="Gagal memuat progress"
-        description="Data progress estimasi tidak tersedia."
+        description="Data progress estimasi belum tersimpan di perangkat. Buka tab ini sekali saat online agar tersimpan untuk mode offline."
         actionLabel="Coba lagi"
         onAction={() => void refetch()}
       />
@@ -365,7 +503,16 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
   const puspenItems = data?.puspen_progress_fisik ?? []
 
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ gap: 16, width: '100%', minWidth: 0, alignSelf: 'stretch' }}>
+      {isError ? (
+        <NeoSurface tone="secondary" style={{ gap: 8, padding: 12 }}>
+          <Text style={{ fontWeight: '700' }}>
+            Gagal memuat data terbaru. Menampilkan data tersimpan atau kosong.
+          </Text>
+          <NeoButton label="Coba lagi" variant="neutral" compact onPress={() => void refetch()} />
+        </NeoSurface>
+      ) : null}
+
       {errorMessage ? (
         <NeoSurface tone="secondary" style={{ padding: 12 }}>
           <Text style={{ fontWeight: '700' }}>{errorMessage}</Text>
@@ -390,26 +537,32 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
         </NeoSurface>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <NeoButton
-          label="Progress Fisik"
-          variant={activeJenis === 'fisik' ? 'primary' : 'neutral'}
-          compact
-          onPress={() => setActiveJenis('fisik')}
-        />
-        <NeoButton
-          label="Progress Keuangan"
-          variant={activeJenis === 'keuangan' ? 'primary' : 'neutral'}
-          compact
-          onPress={() => setActiveJenis('keuangan')}
-        />
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%' }}>
+        <View style={{ flex: 1, minWidth: isCompact ? 140 : 160 }}>
+          <NeoButton
+            label="Progress Fisik"
+            variant={activeJenis === 'fisik' ? 'primary' : 'neutral'}
+            compact
+            fullWidth
+            onPress={() => setActiveJenis('fisik')}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: isCompact ? 140 : 160 }}>
+          <NeoButton
+            label="Progress Keuangan"
+            variant={activeJenis === 'keuangan' ? 'primary' : 'neutral'}
+            compact
+            fullWidth
+            onPress={() => setActiveJenis('keuangan')}
+          />
+        </View>
       </View>
 
       {activeJenis === 'fisik' ? (
         <ProgressTypePanel
           jenis="fisik"
           section={data?.data.fisik ?? emptyProgressSection}
-          histories={histories.fisik}
+          histories={activeHistories.fisik}
           drafts={drafts.fisik}
           accentTone="warning"
           isSaving={saveMutation.isPending}
@@ -421,7 +574,7 @@ export function ProgressTab({ pekerjaanId, tahunAnggaran }: ProgressTabProps) {
         <ProgressTypePanel
           jenis="keuangan"
           section={data?.data.keuangan ?? emptyProgressSection}
-          histories={histories.keuangan}
+          histories={activeHistories.keuangan}
           drafts={drafts.keuangan}
           accentTone="success"
           isSaving={saveMutation.isPending}

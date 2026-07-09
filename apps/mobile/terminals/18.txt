@@ -1,0 +1,85 @@
+---
+pid: 30628
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"cd C:\\laragon\\www\\pengawas\\apps\\mobile; bun run update:preview -- --message 'Fix detail pekerjaan tab lag - keep-alive panels and isolated tab shell'\""
+started_at: 2026-07-08T02:57:30.832Z
+running_for_ms: 1825007  
+---
+$ bun run scripts/publish-eas-update.ts preview --message "Fix detail pekerjaan tab lag - keep-alive panels and isolated tab shell"
+No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.
+
+- Exporting...
+[expo-cli] Starting Metro Bundler
+[expo-cli] warning: Bundler cache is empty, rebuilding (this may take a minute)
+[expo-cli] | (node:28624) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:21108) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:8144) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:13592) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:14264) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:30092) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:24084) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:27348) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:24476) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] | (node:33716) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[expo-cli] | (Use `node --trace-warnings ...` to show where the warning was created)
+[expo-cli] iOS Bundled 85785ms node_modules\expo-router\entry.js (3124 modules)
+[expo-cli] Android Bundled 93782ms node_modules\expo-router\entry.js (3123 modules)
+[expo-cli] Creating asset map
+[expo-cli] 
+[expo-cli] › Assets (31):
+[expo-cli] ..\..\node_modules\@react-navigation\elements\lib\module\assets\back-icon-mask.png (653 B)
+[expo-cli] ..\..\node_modules\@react-navigation\elements\lib\module\assets\back-icon.png (8 variations | 359 B)
+[expo-cli] ..\..\node_modules\@react-navigation\elements\lib\module\assets\clear-icon.png (4 variations | 425 B)
+[expo-cli] ..\..\node_modules\@react-navigation\elements\lib\module\assets\close-icon.png (4 variations | 235 B)
+[expo-cli] ..\..\node_modules\@react-navigation\elements\lib\module\assets\search-icon.png (7 variations | 592 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\error.png (469 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\file.png (138 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\forward.png (188 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\pkg.png (364 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\sitemap.png (465 B)
+[expo-cli] ..\..\node_modules\expo-router\assets\unmatched.png (4.75 kB)
+[expo-cli] assets\arumanis.png (42.5 kB)
+[expo-cli] 
+[expo-cli] › ios bundles (2):
+[expo-cli] _expo/static/js/ios/entry-f16a883e310332430cb1e85e1d9198dc.hbc (3.96 MB)
+[expo-cli] _expo/static/js/ios/entry-f16a883e310332430cb1e85e1d9198dc.hbc.map (11.7 MB)
+[expo-cli] › android bundles (2):
+[expo-cli] _expo/static/js/android/entry-ce0c5e4e79467239fda0b4fb1786116f.hbc (3.96 MB)
+[expo-cli] _expo/static/js/android/entry-ce0c5e4e79467239fda0b4fb1786116f.hbc.map (11.7 MB)
+[expo-cli] › Files (2):
+[expo-cli] assetmap.json (10.1 kB)
+[expo-cli] metadata.json (3.57 kB)
+[expo-cli] Exported: dist
+✔ Exported bundle(s)
+- Uploading...
+- Uploading assetmap.json (0 / 9.9 KB)
+✔ Uploaded assetmap.json 
+√ Uploaded 2 app bundles
+√ Uploading assets skipped - no new assets found
+i 27 iOS assets, 27 Android assets (maximum: 2000 total per update). Learn more about asset limits: https://expo.fyi/eas-update-asset-limits
+- Computing project fingerprints
+⌛️ Computing the project fingerprints is taking longer than expected...
+⏩ To skip this step, set the environment variable: EAS_SKIP_AUTO_FINGERPRINT=1
+✔ Computed project fingerprints
+- Publishing...
+✔ Published!
+
+Branch             preview
+Runtime version    0.1.0
+Platform           android, ios
+Update group ID    a1ff5a7e-84e3-438f-ad01-7313dc8b4bf1
+Android update ID  019f3fac-1e45-78cf-92ff-1020437bc612
+iOS update ID      019f3fac-1e45-7a52-975a-c45c86a3cc3c
+Message            Fix detail pekerjaan tab lag - keep-alive panels and isolated tab shell
+Commit             f138d254d30e164201ed05077a85e0b87a90c687*
+EAS Dashboard      https://expo.dev/accounts/olobor/projects/pengawas-mobile/updates/a1ff5a7e-84e3-438f-ad01-7313dc8b4bf1
+

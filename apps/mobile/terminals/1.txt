@@ -1,0 +1,34 @@
+---
+pid: 37108
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"Set-Location 'C:\\laragon\\www\\pengawas\\apps\\mobile'; bunx expo-doctor\""
+started_at: 2026-07-06T14:25:46.967Z
+running_for_ms: 2410011  
+---
+Resolving dependencies
+Resolved, downloaded and extracted [4]
+Saved lockfile
+env: load .env
+env: export EXPO_PUBLIC_APIAMIS_BASE_URL
+Running 18 checks on your project...
+15/18 checks passed. 3 checks failed. Possible issues detected:
+3 checks failed, indicating possible issues with the project.
+Use the --verbose flag to see more details about passed checks.
+
+✖ Check for common project setup issues
+The .expo directory is not ignored by Git. It contains machine-specific device history and development server settings and should not be committed.
+Advice:
+Add ".expo/" to your .gitignore to avoid committing local Expo state.
+
+✖ Check for lock file
+Multiple lock files detected (package-lock.json, bun.lock). This may result in unexpected behavior in CI environments, such as EAS Build, which infer the package manager from the lock file.
+Advice:
+Remove any lock files for package managers you are not using.
+
+✖ Check for issues with Metro config
+- "watchFolders" does not contain all entries from Expo's defaults
+- "resolver.disableHierarchicalLookup" mismatch. Expected false, got: true
+Advice:
+Modifying the "metro.config.js" is dangerous and may lead to unintended consequences.
+Unless you know what these overrides do, remove them and adopt the recommended values from "expo/metro-config".
+

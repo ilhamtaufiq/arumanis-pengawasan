@@ -1,0 +1,10 @@
+---
+pid: 13596
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"Set-Location 'C:\\laragon\\www\\pengawas\\apps\\mobile'; bun run scripts/publish-production-update.ts -- --message 'Hardcode production API URL di release'\""
+started_at: 2026-07-07T16:28:27.098Z
+running_for_ms: 910004   
+---
+Unexpected arguments: production, API, URL, di, release
+See more help with --help
+    Error: update command failed.

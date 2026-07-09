@@ -1,7 +1,20 @@
 import Constants from 'expo-constants'
 import { Platform } from 'react-native'
+import {
+  DEVELOPMENT_API_BASE,
+  PRODUCTION_API_BASE,
+  formatNetworkFailureMessage as formatNetworkFailure,
+  resolveApiBaseUrl,
+} from '@/lib/api-endpoints'
 
-const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined
+export { DEVELOPMENT_API_BASE, PRODUCTION_API_BASE, isDevApiUrl } from '@/lib/api-endpoints'
+
+type ExpoExtra = { apiBaseUrl?: string }
+
+function readExpoExtra(): ExpoExtra | undefined {
+  const config = Constants.expoConfig ?? (Constants as { manifest2?: { extra?: ExpoExtra } }).manifest2
+  return config?.extra as ExpoExtra | undefined
+}
 
 /**
  * Base URL Laravel API (sama upstream dengan www/bun BFF).
@@ -9,16 +22,15 @@ const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined
  * Production: https://apiamis.cianjur.space/api
  */
 export function getApiBaseUrl() {
-  const fromEnv = process.env.EXPO_PUBLIC_APIAMIS_BASE_URL
-  if (fromEnv && fromEnv.trim()) {
-    return fromEnv.replace(/\/$/, '')
-  }
+  return resolveApiBaseUrl({
+    devMode: __DEV__,
+    envUrl: process.env.EXPO_PUBLIC_APIAMIS_BASE_URL,
+    extraUrl: readExpoExtra()?.apiBaseUrl,
+  })
+}
 
-  if (extra?.apiBaseUrl) {
-    return extra.apiBaseUrl.replace(/\/$/, '')
-  }
-
-  return 'http://apiamis.test/api'
+export function formatNetworkFailureMessage(error: unknown, action = 'Terhubung ke server') {
+  return formatNetworkFailure(error, getApiBaseUrl(), action)
 }
 
 /**

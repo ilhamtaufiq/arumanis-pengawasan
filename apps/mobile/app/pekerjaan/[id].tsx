@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { ScrollView, Text, View } from 'react-native'
+import { useMemo, type ReactNode } from 'react'
+import { View } from 'react-native'
 import { useResponsive } from '@/lib/responsive'
 import { useLocalSearchParams } from 'expo-router'
 import { colors } from '@/theme/tokens'
@@ -9,17 +9,10 @@ import { usePekerjaanRealtime } from '@/hooks/usePekerjaanRealtime'
 import { useIsOnline } from '@/hooks/useIsOnline'
 import { useAuth } from '@/lib/auth'
 import { getPekerjaanDetail } from '@/lib/api'
-import { type DetailTabId } from '@/lib/pekerjaan-helpers'
-import { DetailTabBar } from '@/components/pekerjaan/DetailTabBar'
-import { FotoTab } from '@/components/pekerjaan/FotoTab'
-import { OutputTab } from '@/components/pekerjaan/OutputTab'
-import { PenerimaTab } from '@/components/pekerjaan/PenerimaTab'
+import { DetailTabShell } from '@/components/pekerjaan/DetailTabShell'
 import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
-import { ProgressTab } from '@/components/pekerjaan/ProgressTab'
-import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
-import { TiketTab } from '@/components/pekerjaan/TiketTab'
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary'
-import { EmptyState, NeoSurface, Spinner } from '@/components/ui'
+import { EmptyState, Spinner } from '@/components/ui'
 
 function resolveRouteId(value: string | string[] | undefined) {
   const raw = Array.isArray(value) ? value[0] : value
@@ -38,7 +31,6 @@ export default function PekerjaanDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>()
   const id = resolveRouteId(params.id)
   const pekerjaanId = Number(id)
-  const [activeTab, setActiveTab] = useState<DetailTabId>('ringkasan')
   const { contentPadding, isTablet, maxContentWidth } = useResponsive()
   const { canFetch, isLoading: authLoading } = useAuth()
   const isRestoring = useIsRestoring()
@@ -108,7 +100,6 @@ export default function PekerjaanDetailScreen() {
         extra={{
           pekerjaanId,
           routeId: id,
-          activeTab,
           namaPaket: item.nama_paket,
         }}
       >
@@ -121,36 +112,13 @@ export default function PekerjaanDetailScreen() {
         >
           <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1, minHeight: 0 }}>
             <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
-            <DetailTabBar active={activeTab} onChange={setActiveTab} />
-
-            <ScrollView
-              style={{ flex: 1, minHeight: 0 }}
-              contentContainerStyle={{
-                flexGrow: 1,
-                padding: contentPadding,
-                paddingTop: 8,
-                gap: 16,
-                paddingBottom: 32,
-              }}
-              keyboardShouldPersistTaps="handled"
-            >
-              {!isOnline ? (
-                <NeoSurface tone="main" style={{ gap: 4, padding: 12 }}>
-                  <Text style={{ fontWeight: '800', color: colors.foreground }}>Mode offline</Text>
-                  <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-                    Menampilkan data tersimpan di perangkat. Data akan diperbarui otomatis saat koneksi kembali.
-                  </Text>
-                </NeoSurface>
-              ) : null}
-              {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={item} /> : null}
-              {activeTab === 'output' ? <OutputTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
-              {activeTab === 'penerima' ? <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
-              {activeTab === 'progress' ? (
-                <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
-              ) : null}
-              {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={item} /> : null}
-              {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
-            </ScrollView>
+            <DetailTabShell
+              pekerjaan={item}
+              pekerjaanId={pekerjaanId}
+              tahunAnggaran={tahunAnggaran}
+              isOnline={isOnline}
+              contentPadding={contentPadding}
+            />
           </View>
         </View>
       </ScreenErrorBoundary>

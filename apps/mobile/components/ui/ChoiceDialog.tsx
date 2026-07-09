@@ -1,12 +1,13 @@
 import { Modal, Pressable, Text, View } from 'react-native'
 import { NeoButton } from './NeoButton'
 import { NeoSurface } from './NeoSurface'
-import { colors, radius } from '@/theme/tokens'
+import { colors } from '@/theme/tokens'
 
 export type ChoiceDialogOption = {
   label: string
   onPress: () => void
   destructive?: boolean
+  variant?: 'primary' | 'secondary' | 'neutral' | 'danger'
 }
 
 type ChoiceDialogProps = {
@@ -19,7 +20,14 @@ type ChoiceDialogProps = {
 
 export function ChoiceDialog({ visible, title, message, options, onClose }: ChoiceDialogProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      presentationStyle="overFullScreen"
+    >
       <Pressable
         style={{
           flex: 1,
@@ -39,37 +47,18 @@ export function ChoiceDialog({ visible, title, message, options, onClose }: Choi
             </View>
             <View style={{ gap: 8 }}>
               {options.map((option) => (
-                <Pressable
+                <NeoButton
                   key={option.label}
+                  label={option.label}
+                  fullWidth
+                  variant={option.variant ?? (option.destructive ? 'danger' : 'neutral')}
                   onPress={() => {
                     option.onPress()
-                    onClose()
                   }}
-                  style={{
-                    minHeight: 44,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderWidth: 2,
-                    borderColor: colors.border,
-                    borderRadius: radius,
-                    backgroundColor: option.destructive ? colors.danger : colors.card,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontWeight: '700',
-                      fontSize: 15,
-                      color: option.destructive ? '#ffffff' : colors.foreground,
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                </Pressable>
+                />
               ))}
             </View>
-            <NeoButton label="Batal" variant="ghost" onPress={onClose} />
+            <NeoButton label="Batal" variant="ghost" fullWidth onPress={onClose} />
           </NeoSurface>
         </Pressable>
       </Pressable>

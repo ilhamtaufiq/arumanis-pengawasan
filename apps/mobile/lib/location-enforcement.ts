@@ -2,6 +2,7 @@ import * as Location from 'expo-location'
 import { Linking, Platform } from 'react-native'
 import {
   isBackgroundLocationPlatformSupported,
+  isBackgroundLocationTrackingActive,
   requestBackgroundLocationPermissions,
   startBackgroundLocationTracking,
 } from '@/lib/background-location'
@@ -112,6 +113,45 @@ async function ensureDeviceLocationServicesEnabled(): Promise<boolean> {
   }
 
   return Location.hasServicesEnabledAsync()
+}
+
+/**
+ * Sinkronkan pelacakan bila izin sudah ada — tanpa memunculkan dialog izin.
+ * Dipakai saat app dibuka / kembali dari pengaturan.
+ */
+export async function reconcileLocationAccess(): Promise<LocationReadiness> {
+  if (isWeb()) {
+    return assessLocationReadiness()
+  }
+
+  if (!isBackgroundLocationPlatformSupported()) {
+    return assessLocationReadiness()
+  }
+
+  const readiness = await assessLocationReadiness()
+  if (!readiness.ready) {
+    return readiness
+  }
+
+  const alreadyActive = await isBackgroundLocationTrackingActive()
+  if (alreadyActive) {
+    return readiness
+  }
+
+  await setBackgroundLocationEnabled(true)
+  const tracking = await startBackgroundLocationTracking({ skipPermissionRequest: true })
+  if (!tracking.ok) {
+    return {
+      ready: false,
+      reason: 'tracking_failed',
+      message: tracking.message ?? 'Gagal mengaktifkan pelacakan GPS.',
+      servicesEnabled: readiness.servicesEnabled,
+      foregroundGranted: readiness.foregroundGranted,
+      backgroundGranted: readiness.backgroundGranted,
+    }
+  }
+
+  return assessLocationReadiness()
 }
 
 /**

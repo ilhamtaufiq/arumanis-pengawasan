@@ -1,4 +1,9 @@
-import type { ProgressEstimasiSection, ProgressHistoryEntry } from '@pengawas/shared'
+import type {
+  PekerjaanProgressEstimasi,
+  PekerjaanProgressEstimasiResponse,
+  ProgressEstimasiSection,
+  ProgressHistoryEntry,
+} from '@pengawas/shared'
 
 export type HistoryDraft = { tanggal: string; persen: string }
 
@@ -16,13 +21,45 @@ export type ProgressJenis = 'fisik' | 'keuangan'
 
 export const emptyDraft = (): HistoryDraft => ({ tanggal: '', persen: '' })
 
-export function historiesFromResponse(data: {
-  fisik: ProgressEstimasiSection
-  keuangan: ProgressEstimasiSection
-}): FormHistories {
+export function emptyHistories(): FormHistories {
   return {
-    fisik: { rencana: data.fisik.rencana, realisasi: data.fisik.realisasi },
-    keuangan: { rencana: data.keuangan.rencana, realisasi: data.keuangan.realisasi },
+    fisik: { rencana: [], realisasi: [] },
+    keuangan: { rencana: [], realisasi: [] },
+  }
+}
+
+export function createEmptyProgressEstimasi(
+  pekerjaanId: number,
+  tahunAnggaran: number,
+): PekerjaanProgressEstimasi {
+  return {
+    pekerjaan_id: pekerjaanId,
+    tahun_anggaran: tahunAnggaran,
+    fisik: emptyProgressSection,
+    keuangan: emptyProgressSection,
+    updated_at: null,
+  }
+}
+
+export function createEmptyProgressEstimasiResponse(
+  pekerjaanId: number,
+  tahunAnggaran: number,
+): PekerjaanProgressEstimasiResponse {
+  return {
+    data: createEmptyProgressEstimasi(pekerjaanId, tahunAnggaran),
+    puspen_progress_fisik: [],
+  }
+}
+
+export function historiesFromResponse(
+  data: Partial<Pick<PekerjaanProgressEstimasi, 'fisik' | 'keuangan'>>,
+): FormHistories {
+  const fisik = data.fisik ?? emptyProgressSection
+  const keuangan = data.keuangan ?? emptyProgressSection
+
+  return {
+    fisik: { rencana: fisik.rencana ?? [], realisasi: fisik.realisasi ?? [] },
+    keuangan: { rencana: keuangan.rencana ?? [], realisasi: keuangan.realisasi ?? [] },
   }
 }
 

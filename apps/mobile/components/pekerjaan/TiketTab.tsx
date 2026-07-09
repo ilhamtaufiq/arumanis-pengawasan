@@ -6,6 +6,7 @@ import { formatDateTime, formatNumber } from '@pengawas/shared/format'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { createTiket, getTiketList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { shouldShowInitialQuerySpinner, shouldShowQueryEmptyFallback } from '@/lib/query-ui'
 import {
   EmptyState,
   FormModal,
@@ -51,6 +52,9 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
     queryKey: queryKeys.tiket.list({ pekerjaanId }),
     queryFn: () => getTiketList({ pekerjaan_id: pekerjaanId, per_page: 20 }),
     enabled: canFetch && pekerjaanId > 0,
+    retry: false,
+    networkMode: 'offlineFirst',
+    placeholderData: () => ({ data: [] }),
   })
 
   const createMutation = useMutation({
@@ -83,8 +87,19 @@ export function TiketTab({ pekerjaanId }: TiketTabProps) {
   const tiketList = tiketQuery.data?.data ?? []
   const openCount = tiketList.filter((item) => `${item.status || 'open'}` !== 'closed').length
 
-  if (tiketQuery.isLoading) {
+  if (shouldShowInitialQuerySpinner(tiketQuery)) {
     return <Spinner label="Memuat tiket..." />
+  }
+
+  if (shouldShowQueryEmptyFallback(tiketQuery) || (tiketQuery.isError && !tiketQuery.data)) {
+    return (
+      <EmptyState
+        title="Gagal memuat tiket"
+        description="Data tiket belum tersimpan di perangkat. Buka tab ini sekali saat online untuk mode offline."
+        actionLabel="Coba lagi"
+        onAction={() => void tiketQuery.refetch()}
+      />
+    )
   }
 
   return (

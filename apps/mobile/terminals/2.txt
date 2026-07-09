@@ -1,0 +1,8 @@
+---
+pid: 21248
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"cd C:\\laragon\\www\\pengawas; git push origin main\""
+started_at: 2026-07-07T10:18:19.981Z
+running_for_ms: 440005   
+---
+fatal: unable to access 'https://github.com/ilhamtaufiq/arumanis-pengawasan.git/': Failed to connect to github.com port 443 after 21095 ms: Couldn't connect to server

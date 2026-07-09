@@ -12,13 +12,14 @@ export const NeoInput = forwardRef<TextInput, NeoInputProps>(function NeoInput(
   ref,
 ) {
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 6, width: '100%', minWidth: 0, alignSelf: 'stretch' }}>
       {label ? <Text style={{ fontWeight: '700', fontSize: 14, color: colors.foreground }}>{label}</Text> : null}
       <TextInput
         ref={ref}
         placeholderTextColor={colors.mutedForeground}
         style={[
           {
+            width: '100%',
             minHeight: 44,
             borderWidth: 2,
             borderColor: colors.border,

@@ -1,0 +1,44 @@
+---
+pid: 12440
+cwd: "C:\laragon\www\pengawas\apps\mobile"
+command: "rtk powershell -Command \"$env:EXPO_PUBLIC_APIAMIS_BASE_URL='https://apiamis.cianjur.space/api'; $env:EXPO_PUBLIC_REVERB_HOST='apiamis.cianjur.space'; $env:EXPO_PUBLIC_REVERB_PORT='443'; $env:EXPO_PUBLIC_REVERB_SCHEME='https'; Set-Location 'C:\\laragon\\www\\pengawas\\apps\\mobile'; bunx eas update --channel preview --environment preview --message 'Fix-status-bar-defer-ota-reload' --non-interactive\""
+started_at: 2026-07-07T17:47:12.123Z
+running_for_ms: 34835010 
+---
+=https://apiamis.cianjur.space/api : The term '=https://apiamis.cianjur.space/api' is not recognized as the name of a c
+mdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify th
+at the path is correct and try again.
+At line:1 char:1
++ ='https://apiamis.cianjur.space/api'; ='apiamis.cianjur.space'; ='443 ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=https://apiamis.cianjur.space/api:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=apiamis.cianjur.space : The term '=apiamis.cianjur.space' is not recognized as the name of a cmdlet, function, script 
+file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct a
+nd try again.
+At line:1 char:39
++ ... 'https://apiamis.cianjur.space/api'; ='apiamis.cianjur.space'; ='443' ...
++                                          ~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=apiamis.cianjur.space:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=443 : The term '=443' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the
+ spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:65
++ ... /apiamis.cianjur.space/api'; ='apiamis.cianjur.space'; ='443'; ='http ...
++                                                            ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=443:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+=https : The term '=https' is not recognized as the name of a cmdlet, function, script file, or operable program. Check
+ the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:73
++ ... ianjur.space/api'; ='apiamis.cianjur.space'; ='443'; ='https'; Set-Lo ...
++                                                          ~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (=https:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+No environment variables with visibility "Plain text" and "Sensitive" found for the "preview" environment on EAS.
+
+- Exporting...

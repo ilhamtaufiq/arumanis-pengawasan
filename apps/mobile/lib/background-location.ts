@@ -33,33 +33,86 @@ export async function isBackgroundLocationTrackingActive(): Promise<boolean> {
   }
 }
 
-export async function startBackgroundLocationTracking(): Promise<{ ok: boolean; message?: string }> {
+const START_TRACKING_TIMEOUT_MS = 15_000
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+async function hasBackgroundLocationPermissions(): Promise<boolean> {
+  const [foreground, background] = await Promise.all([
+    Location.getForegroundPermissionsAsync(),
+    Location.getBackgroundPermissionsAsync(),
+  ])
+
+  return foreground.status === 'granted' && background.status === 'granted'
+}
+
+type StartBackgroundLocationOptions = {
+  /** Lewati dialog izin; hanya mulai pelacakan bila izin sudah diberikan. */
+  skipPermissionRequest?: boolean
+}
+
+export async function startBackgroundLocationTracking(
+  options?: StartBackgroundLocationOptions,
+): Promise<{ ok: boolean; message?: string }> {
   if (!isBackgroundLocationPlatformSupported()) {
     return { ok: false, message: 'Pelacakan GPS latar belakang hanya tersedia di Android/iOS.' }
   }
 
-  const granted = await requestBackgroundLocationPermissions()
-  if (!granted) {
-    return {
-      ok: false,
-      message: 'Izin lokasi "Selalu" diperlukan agar koordinat tetap terkirim saat aplikasi tidak dibuka.',
+  if (options?.skipPermissionRequest) {
+    const permitted = await hasBackgroundLocationPermissions()
+    if (!permitted) {
+      return {
+        ok: false,
+        message: 'Izin lokasi belum diberikan.',
+      }
+    }
+  } else {
+    const granted = await requestBackgroundLocationPermissions()
+    if (!granted) {
+      return {
+        ok: false,
+        message: 'Izin lokasi "Selalu" diperlukan agar koordinat tetap terkirim saat aplikasi tidak dibuka.',
+      }
     }
   }
 
   const alreadyActive = await isBackgroundLocationTrackingActive()
   if (!alreadyActive) {
-    await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      timeInterval: 60_000,
-      distanceInterval: 75,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: 'Arumanis Pengawasan',
-        notificationBody: 'Mengirim koordinat GPS untuk pengawasan lapangan.',
-        notificationColor: '#ffcc00',
-      },
-    })
+    try {
+      await withTimeout(
+        Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 60_000,
+          distanceInterval: 75,
+          pausesUpdatesAutomatically: false,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'Arumanis Pengawasan',
+            notificationBody: 'Mengirim koordinat GPS untuk pengawasan lapangan.',
+            notificationColor: '#ffcc00',
+          },
+        }),
+        START_TRACKING_TIMEOUT_MS,
+      )
+    } catch {
+      return {
+        ok: false,
+        message: 'Gagal memulai pelacakan GPS. Periksa izin lokasi "Selalu" di pengaturan.',
+      }
+    }
   }
 
   await setBackgroundLocationEnabled(true)

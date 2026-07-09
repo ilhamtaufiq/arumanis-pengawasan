@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native'
+import { memo, useCallback } from 'react'
+import { Pressable, Text, View } from 'react-native'
 import {
   Camera,
   FileText,
@@ -26,7 +27,7 @@ const DETAIL_TAB_CONFIG: Array<{ id: DetailTabId; label: string; Icon: LucideIco
   { id: 'tiket', label: 'Tiket', Icon: MessageSquareText },
 ]
 
-function TabPill({
+const TabPill = memo(function TabPill({
   label,
   Icon,
   selected,
@@ -45,12 +46,14 @@ function TabPill({
       accessibilityLabel={label}
       accessibilityState={{ selected }}
       onPress={onPress}
+      hitSlop={8}
+      android_ripple={{ color: 'transparent' }}
       style={({ pressed }) => [
         {
-          minHeight: 48,
-          minWidth: compact ? 96 : 108,
-          paddingHorizontal: compact ? 10 : 12,
-          paddingVertical: 10,
+          minHeight: 44,
+          minWidth: compact ? 88 : 100,
+          paddingHorizontal: compact ? 8 : 10,
+          paddingVertical: 8,
           borderWidth: 2,
           borderColor: colors.border,
           borderRadius: radius,
@@ -59,17 +62,17 @@ function TabPill({
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'row',
-          gap: compact ? 5 : 7,
+          gap: compact ? 4 : 6,
         },
         !pressed && !selected ? shadows.sm : null,
       ]}
     >
-      <Icon size={compact ? 15 : 16} color={colors.foreground} strokeWidth={2.5} />
+      <Icon size={compact ? 14 : 15} color={colors.foreground} strokeWidth={2.5} />
       <Text
         numberOfLines={1}
         style={{
           fontWeight: '800',
-          fontSize: compact ? 12 : 13,
+          fontSize: compact ? 11 : 12,
           color: colors.foreground,
           textAlign: 'center',
         }}
@@ -78,37 +81,49 @@ function TabPill({
       </Text>
     </Pressable>
   )
-}
+})
 
-export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
-  const { width } = useWindowDimensions()
+export const DetailTabBar = memo(function DetailTabBar({ active, onChange }: DetailTabBarProps) {
   const { contentPadding, isCompact } = useResponsive()
 
-  const horizontalPadding = contentPadding
-  const containerStyle = {
-    marginHorizontal: horizontalPadding,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderRadius: radius,
-    backgroundColor: colors.background,
-    ...shadows.sm,
+  const handleRingkasan = useCallback(() => onChange('ringkasan'), [onChange])
+  const handleOutput = useCallback(() => onChange('output'), [onChange])
+  const handlePenerima = useCallback(() => onChange('penerima'), [onChange])
+  const handleFoto = useCallback(() => onChange('foto'), [onChange])
+  const handleProgress = useCallback(() => onChange('progress'), [onChange])
+  const handleTiket = useCallback(() => onChange('tiket'), [onChange])
+
+  const handlers: Record<DetailTabId, () => void> = {
+    ringkasan: handleRingkasan,
+    output: handleOutput,
+    penerima: handlePenerima,
+    foto: handleFoto,
+    progress: handleProgress,
+    tiket: handleTiket,
   }
 
   return (
-    <View style={containerStyle}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ flexGrow: 0 }}
-        contentContainerStyle={{
+    <View
+      style={{
+        marginHorizontal: contentPadding,
+        marginTop: 8,
+        marginBottom: 4,
+        paddingVertical: 6,
+        paddingHorizontal: 6,
+        borderWidth: 2,
+        borderColor: colors.border,
+        borderRadius: radius,
+        backgroundColor: colors.background,
+        ...shadows.sm,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
           gap: isCompact ? 6 : 8,
           alignItems: 'center',
-          paddingHorizontal: 2,
-          minWidth: width - horizontalPadding * 2 - 16,
+          justifyContent: 'center',
         }}
       >
         {DETAIL_TAB_CONFIG.map((tab) => (
@@ -117,11 +132,11 @@ export function DetailTabBar({ active, onChange }: DetailTabBarProps) {
             label={tab.label}
             Icon={tab.Icon}
             selected={tab.id === active}
-            onPress={() => onChange(tab.id)}
+            onPress={handlers[tab.id]}
             compact={isCompact}
           />
         ))}
-      </ScrollView>
+      </View>
     </View>
   )
-}
+})

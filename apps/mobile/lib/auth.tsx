@@ -22,6 +22,12 @@ import {
 } from '@/lib/api'
 import { pauseBackgroundLocationTracking } from '@/lib/background-location'
 import { disconnectEcho } from '@/lib/echo'
+import {
+  AUTH_ME_STALE_TIME_MS,
+  isSessionInvalidError,
+  QUERY_RESTORE_TIMEOUT_MS,
+  readCachedAuthUser,
+} from '@/lib/auth-session'
 import { removePersistedQueryCache } from '@/lib/query-persist'
 import { clearSessionToken } from '@/lib/session'
 
@@ -45,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isRestoring = useIsRestoring()
   const [bootstrapped, setBootstrapped] = useState(false)
   const [hasToken, setHasToken] = useState(false)
+  const [restoreTimedOut, setRestoreTimedOut] = useState(false)
 
   useEffect(() => {
     hydrateSessionToken()
@@ -55,18 +62,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setBootstrapped(true))
   }, [])
 
+  useEffect(() => {
+    if (!isRestoring) {
+      setRestoreTimedOut(false)
+      return
+    }
+
+    const timer = setTimeout(() => setRestoreTimedOut(true), QUERY_RESTORE_TIMEOUT_MS)
+    return () => clearTimeout(timer)
+  }, [isRestoring])
+
   const meQuery = useQuery({
     queryKey: queryKeys.auth.me(),
     queryFn: me,
-    enabled: bootstrapped && hasToken && !isRestoring,
+    enabled: bootstrapped && hasToken && (!isRestoring || restoreTimedOut),
     retry: false,
     networkMode: 'offlineFirst',
+    staleTime: AUTH_ME_STALE_TIME_MS,
+    placeholderData: () => readCachedAuthUser(queryClient) ?? undefined,
   })
 
-  const isAuthenticated = Boolean(meQuery.data)
+  const cachedUser = meQuery.data ?? readCachedAuthUser(queryClient)
+  const waitingForRestore = isRestoring && !restoreTimedOut
+  const waitingForMe =
+    hasToken &&
+    !cachedUser &&
+    !meQuery.isError &&
+    (meQuery.isPending || meQuery.isFetching)
+
+  const isAuthenticated = Boolean(cachedUser)
   const canFetch = bootstrapped && hasToken && isAuthenticated
-  const isLoading =
-    !bootstrapped || isRestoring || (hasToken && meQuery.isPending && !meQuery.data)
+  const isLoading = !bootstrapped || waitingForRestore || waitingForMe
 
   useEffect(() => {
     if (!canFetch) return
@@ -81,18 +107,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [canFetch, queryClient])
 
   useEffect(() => {
-    if (!bootstrapped || meQuery.isLoading) return
+    if (isLoading) return
 
     const inAuthGroup = segments[0] === 'login'
     const meError = meQuery.isError ? meQuery.error : null
-    const meErrorStatus = meError instanceof ApiError ? meError.status : null
+    const offlineCachedUser = readCachedAuthUser(queryClient)
 
     if (meQuery.isError) {
-      if (meErrorStatus === 401 || meErrorStatus === 403) {
+      if (isSessionInvalidError(meError)) {
         void clearSessionToken()
         setSessionTokenSync(null)
         setHasToken(false)
         if (!inAuthGroup) router.replace('/login')
+        return
+      }
+
+      if (offlineCachedUser) {
+        return
+      }
+
+      if (!inAuthGroup) {
+        router.replace('/login')
       }
       return
     }
@@ -102,28 +137,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (hasToken && !meQuery.data && !inAuthGroup) {
+    if (hasToken && !cachedUser && !meQuery.isFetching) {
+      void clearSessionToken()
+      setSessionTokenSync(null)
+      setHasToken(false)
+      if (!inAuthGroup) {
+        router.replace('/login')
+      }
       return
     }
 
-    if (meQuery.data && inAuthGroup) {
+    if (cachedUser && inAuthGroup) {
       router.replace('/(tabs)')
     }
-  }, [bootstrapped, hasToken, meQuery.data, meQuery.isError, meQuery.isLoading, meQuery.error, router, segments])
+  }, [
+    cachedUser,
+    hasToken,
+    isLoading,
+    meQuery.error,
+    meQuery.isError,
+    meQuery.isFetching,
+    queryClient,
+    router,
+    segments,
+  ])
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
-      await mobileLogin(input)
+      const user = await mobileLogin(input)
       setHasToken(true)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all })
+      queryClient.setQueryData(queryKeys.auth.me(), user)
     },
     [queryClient],
   )
 
   const loginWithGoogle = useCallback(async () => {
-    await mobileGoogleLogin()
+    const user = await mobileGoogleLogin()
     setHasToken(true)
-    await queryClient.invalidateQueries({ queryKey: queryKeys.auth.all })
+    queryClient.setQueryData(queryKeys.auth.me(), user)
   }, [queryClient])
 
   const logout = useCallback(async () => {
@@ -138,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      user: meQuery.data ?? null,
+      user: cachedUser,
       isLoading,
       isAuthenticated,
       canFetch,
@@ -146,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithGoogle,
       logout,
     }),
-    [canFetch, isAuthenticated, isLoading, login, loginWithGoogle, logout, meQuery.data],
+    [cachedUser, canFetch, isAuthenticated, isLoading, login, loginWithGoogle, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
