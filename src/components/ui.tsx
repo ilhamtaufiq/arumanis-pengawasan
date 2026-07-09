@@ -242,17 +242,21 @@ export type PhotoMatrixEntry = {
 export function PhotoSlotCard({
   slot,
   foto,
+  selected = false,
+  onToggleSelect,
   onClick,
   onUpload,
 }: {
   slot: string
   foto?: Foto | undefined
+  selected?: boolean
+  onToggleSelect?: (checked: boolean) => void
   onClick: () => void
   onUpload: () => void
 }) {
   return (
     <div
-      className="neo-surface photo-slot"
+      className={cn('neo-surface photo-slot', selected && 'photo-slot--selected')}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -262,9 +266,20 @@ export function PhotoSlotCard({
           onClick()
         }
       }}
+      style={selected ? { outline: '2px solid var(--neo-primary, #2563eb)', outlineOffset: 2 } : undefined}
     >
       <div className="photo-slot-header">
         <span>{slot}</span>
+        {foto && onToggleSelect ? (
+          <label onClick={(event) => event.stopPropagation()} style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(event) => onToggleSelect(event.target.checked)}
+              aria-label={`Pilih foto ${slot}`}
+            />
+          </label>
+        ) : null}
       </div>
       <div className="photo-slot-body">
         {foto ? (
@@ -305,14 +320,19 @@ export function PhotoMatrix({
   formatVolume,
   onSlotClick,
   onSlotUpload,
+  selectedFotoIds,
+  onToggleFotoSelect,
   className,
 }: {
   entries: PhotoMatrixEntry[]
   formatVolume: (volume: Output['volume'], satuan?: string | null) => ReactNode
   onSlotClick: (output: Output, slot: string, foto: Foto | undefined, penerima?: Penerima) => void
   onSlotUpload: (output: Output, slot: string, penerima?: Penerima) => void
+  selectedFotoIds?: number[]
+  onToggleFotoSelect?: (fotoId: number, checked: boolean) => void
   className?: string
 }) {
+  const selected = selectedFotoIds ?? []
   return (
     <div className={cn('stack stack--compact', className)}>
       {entries.map(({ output, slots, count, penerima, showPenerimaWarning }, idx) => (
@@ -353,15 +373,33 @@ export function PhotoMatrix({
           </div>
 
           <div className="detail-foto-slots">
-            {slots.map(({ slot, foto }, sIdx) => (
-              <PhotoSlotCard
-                key={`${output.id}-${penerima?.id || '0'}-${slot}-${sIdx}`}
-                slot={slot}
-                foto={foto}
-                onClick={() => onSlotClick(output, slot, foto, penerima)}
-                onUpload={() => onSlotUpload(output, slot, penerima)}
-              />
-            ))}
+            {slots.map(({ slot, foto }, sIdx) => {
+              const slotProps: {
+                slot: string
+                foto?: Foto
+                selected?: boolean
+                onToggleSelect?: (checked: boolean) => void
+                onClick: () => void
+                onUpload: () => void
+              } = {
+                slot,
+                onClick: () => onSlotClick(output, slot, foto, penerima),
+                onUpload: () => onSlotUpload(output, slot, penerima),
+              }
+              if (foto) {
+                slotProps.foto = foto
+                slotProps.selected = selected.includes(foto.id)
+                if (onToggleFotoSelect) {
+                  slotProps.onToggleSelect = (checked) => onToggleFotoSelect(foto.id, checked)
+                }
+              }
+              return (
+                <PhotoSlotCard
+                  key={`${output.id}-${penerima?.id || '0'}-${slot}-${sIdx}`}
+                  {...slotProps}
+                />
+              )
+            })}
           </div>
         </div>
       ))}

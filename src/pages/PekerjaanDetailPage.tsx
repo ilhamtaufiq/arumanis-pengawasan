@@ -175,6 +175,10 @@ export function PekerjaanDetailPage() {
   const currentPreviewFoto = previewPhotos[previewIndex] || null
   const [deleteFotoTarget, setDeleteFotoTarget] = useState<Foto | null>(null)
   const [deletePenerimaTarget, setDeletePenerimaTarget] = useState<Penerima | null>(null)
+  const [selectedPenerimaIds, setSelectedPenerimaIds] = useState<number[]>([])
+  const [selectedFotoIds, setSelectedFotoIds] = useState<number[]>([])
+  const [bulkDeletePenerimaOpen, setBulkDeletePenerimaOpen] = useState(false)
+  const [bulkDeleteFotoOpen, setBulkDeleteFotoOpen] = useState(false)
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadKoordinat, setUploadKoordinat] = useState('')
@@ -661,6 +665,22 @@ export function PekerjaanDetailPage() {
     mutationFn: (penerimaId: number) => deletePenerima(penerimaId),
     onSuccess: async () => {
       setDeletePenerimaTarget(null)
+      setSelectedPenerimaIds((current) =>
+        deletePenerimaTarget ? current.filter((id) => id !== deletePenerimaTarget.id) : current,
+      )
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+  })
+
+  const bulkDeletePenerimaMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deletePenerima(id)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      return { ok: results.length - failed, failed }
+    },
+    onSuccess: async () => {
+      setBulkDeletePenerimaOpen(false)
+      setSelectedPenerimaIds([])
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
   })
@@ -770,10 +790,57 @@ export function PekerjaanDetailPage() {
     mutationFn: (fotoId: number) => deleteFoto(fotoId),
     onSuccess: async () => {
       setDeleteFotoTarget(null)
+      setSelectedFotoIds((current) =>
+        deleteFotoTarget ? current.filter((id) => id !== deleteFotoTarget.id) : current,
+      )
       closePhotoPreview()
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
   })
+
+  const bulkDeleteFotoMutation = useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => deleteFoto(id)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      return { ok: results.length - failed, failed }
+    },
+    onSuccess: async () => {
+      setBulkDeleteFotoOpen(false)
+      setSelectedFotoIds([])
+      closePhotoPreview()
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+  })
+
+  function togglePenerimaSelection(id: number, checked: boolean) {
+    setSelectedPenerimaIds((current) => {
+      if (checked) return current.includes(id) ? current : [...current, id]
+      return current.filter((x) => x !== id)
+    })
+  }
+
+  function toggleAllPenerima(checked: boolean) {
+    if (!checked) {
+      setSelectedPenerimaIds([])
+      return
+    }
+    setSelectedPenerimaIds(penerimaList.map((item) => item.id))
+  }
+
+  function toggleFotoSelection(id: number, checked: boolean) {
+    setSelectedFotoIds((current) => {
+      if (checked) return current.includes(id) ? current : [...current, id]
+      return current.filter((x) => x !== id)
+    })
+  }
+
+  function toggleAllFotos(checked: boolean) {
+    if (!checked) {
+      setSelectedFotoIds([])
+      return
+    }
+    setSelectedFotoIds(fotoList.map((item) => item.id))
+  }
 
   const attachFotoMutation = useMutation({
     mutationFn: async (payload: {
@@ -1414,6 +1481,28 @@ export function PekerjaanDetailPage() {
                 <h2>Daftar penerima</h2>
                 <p>{formatNumber(totalPenerima)} penerima tersimpan</p>
               </div>
+              <div className="detail-inline-controls">
+                {selectedPenerimaIds.length > 0 ? (
+                  <>
+                    <StatusChip>
+                      <strong>{selectedPenerimaIds.length}</strong> terpilih
+                    </StatusChip>
+                    <Button type="button" variant="neutral" size="sm" onClick={() => setSelectedPenerimaIds([])}>
+                      Batal
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setBulkDeletePenerimaOpen(true)}
+                      disabled={bulkDeletePenerimaMutation.isPending}
+                    >
+                      <Trash2 size={14} />
+                      <span>Hapus terpilih</span>
+                    </Button>
+                  </>
+                ) : null}
+              </div>
             </div>
 
             {penerimaList.length ? (
@@ -1421,6 +1510,25 @@ export function PekerjaanDetailPage() {
                 <table className="neo-table">
                   <thead>
                     <tr>
+                      <th style={{ width: 40 }}>
+                        <input
+                          type="checkbox"
+                          checked={
+                            penerimaList.length > 0 &&
+                            penerimaList.every((item) => selectedPenerimaIds.includes(item.id))
+                          }
+                          ref={(el) => {
+                            if (!el) return
+                            const some = penerimaList.some((item) => selectedPenerimaIds.includes(item.id))
+                            const all =
+                              penerimaList.length > 0 &&
+                              penerimaList.every((item) => selectedPenerimaIds.includes(item.id))
+                            el.indeterminate = some && !all
+                          }}
+                          onChange={(event) => toggleAllPenerima(event.target.checked)}
+                          aria-label="Pilih semua penerima"
+                        />
+                      </th>
                       <th>Nama</th>
                       <th>Tipe</th>
                       <th>Identitas</th>
@@ -1432,6 +1540,14 @@ export function PekerjaanDetailPage() {
                   <tbody>
                     {penerimaList.map((penerima, idx) => (
                       <tr key={`penerima-${penerima.id}-${idx}`}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedPenerimaIds.includes(penerima.id)}
+                            onChange={(event) => togglePenerimaSelection(penerima.id, event.target.checked)}
+                            aria-label={`Pilih ${penerima.nama}`}
+                          />
+                        </td>
                         <td>
                           <div className="table-title">{penerima.nama}</div>
                         </td>
@@ -1492,6 +1608,30 @@ export function PekerjaanDetailPage() {
                 <p>Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%</p>
               </div>
               <div className="detail-inline-controls">
+                {selectedFotoIds.length > 0 ? (
+                  <>
+                    <StatusChip>
+                      <strong>{selectedFotoIds.length}</strong> foto terpilih
+                    </StatusChip>
+                    <Button type="button" variant="neutral" size="sm" onClick={() => setSelectedFotoIds([])}>
+                      Batal
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setBulkDeleteFotoOpen(true)}
+                      disabled={bulkDeleteFotoMutation.isPending}
+                    >
+                      <Trash2 size={14} />
+                      <span>Hapus terpilih</span>
+                    </Button>
+                  </>
+                ) : fotoList.length > 0 ? (
+                  <Button type="button" variant="neutral" size="sm" onClick={() => toggleAllFotos(true)}>
+                    Pilih semua
+                  </Button>
+                ) : null}
                 <Button variant="secondary" size="sm" onClick={handlePrintPDF} disabled={fotoList.length === 0}>
                   <Printer size={14} />
                   <span>Cetak Foto</span>
@@ -1506,6 +1646,8 @@ export function PekerjaanDetailPage() {
                   showPenerimaWarning:
                     !entry.penerima && !entry.output.penerima_is_optional && penerimaList.length === 0,
                 }))}
+                selectedFotoIds={selectedFotoIds}
+                onToggleFotoSelect={toggleFotoSelection}
                 formatVolume={(volume, satuan) => (
                   <>
                     {formatNumber(volume)} {satuan}
@@ -1530,32 +1672,44 @@ export function PekerjaanDetailPage() {
             ) : fotoList.length && orphanFotos.length === 0 ? (
               <div className="foto-fallback-grid">
                 {fotoList.map((foto, idx) => (
-                  <button
-                    key={`foto-${foto.id}-${idx}`}
-                    type="button"
-                    className="neo-surface foto-card"
-                    onClick={() => {
-                      const slot = normalizeSlotLabel(foto.keterangan)
-                      const matching = fotoList.filter(
-                        (f) =>
-                          f.komponen_id === foto.komponen_id &&
-                          normalizeSlotLabel(f.keterangan) === slot &&
-                          f.penerima_id === foto.penerima_id,
-                      )
-                      const matchIdx = matching.findIndex((f) => f.id === foto.id)
-                      openPhotoPreview(matching.length ? matching : [foto], Math.max(0, matchIdx))
-                    }}
-                  >
-                    <img
-                      src={foto.foto_thumb_url || foto.foto_url || ''}
-                      alt={foto.keterangan || 'Foto pekerjaan'}
-                      className="foto-card-img"
-                    />
+                  <div key={`foto-${foto.id}-${idx}`} className="neo-surface foto-card" style={{ position: 'relative' }}>
+                    <label
+                      style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedFotoIds.includes(foto.id)}
+                        onChange={(event) => toggleFotoSelection(foto.id, event.target.checked)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="foto-card-media-btn"
+                      style={{ display: 'block', width: '100%', padding: 0, border: 0, background: 'transparent', cursor: 'pointer' }}
+                      onClick={() => {
+                        const slot = normalizeSlotLabel(foto.keterangan)
+                        const matching = fotoList.filter(
+                          (f) =>
+                            f.komponen_id === foto.komponen_id &&
+                            normalizeSlotLabel(f.keterangan) === slot &&
+                            f.penerima_id === foto.penerima_id,
+                        )
+                        const matchIdx = matching.findIndex((f) => f.id === foto.id)
+                        openPhotoPreview(matching.length ? matching : [foto], Math.max(0, matchIdx))
+                      }}
+                    >
+                      <img
+                        src={foto.foto_thumb_url || foto.foto_url || ''}
+                        alt={foto.keterangan || 'Foto pekerjaan'}
+                        className="foto-card-img"
+                      />
+                    </button>
                     <div className="foto-card-body">
                       <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
                       <div className="foto-card-meta">{formatDateTime(foto.created_at)}</div>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             ) : !orphanFotos.length ? (
@@ -1575,7 +1729,17 @@ export function PekerjaanDetailPage() {
                 </div>
                 <div className="foto-fallback-grid">
                   {orphanFotos.map((foto, idx) => (
-                    <div key={`orphan-foto-${foto.id}-${idx}`} className="neo-surface foto-card">
+                    <div key={`orphan-foto-${foto.id}-${idx}`} className="neo-surface foto-card" style={{ position: 'relative' }}>
+                      <label
+                        style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedFotoIds.includes(foto.id)}
+                          onChange={(event) => toggleFotoSelection(foto.id, event.target.checked)}
+                        />
+                      </label>
                       <button
                         type="button"
                         className="foto-card-media-btn"
@@ -1848,6 +2012,36 @@ export function PekerjaanDetailPage() {
         onConfirm={() => {
           if (deleteFotoTarget) {
             deleteFotoMutation.mutate(deleteFotoTarget.id)
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={bulkDeletePenerimaOpen}
+        title={`Hapus ${selectedPenerimaIds.length} penerima?`}
+        description="Penerima terpilih akan dihapus dari pekerjaan ini. Foto terkait tidak dihapus otomatis."
+        confirmLabel="Hapus terpilih"
+        confirmTone="danger"
+        isLoading={bulkDeletePenerimaMutation.isPending}
+        onCancel={() => setBulkDeletePenerimaOpen(false)}
+        onConfirm={() => {
+          if (selectedPenerimaIds.length > 0) {
+            bulkDeletePenerimaMutation.mutate(selectedPenerimaIds)
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={bulkDeleteFotoOpen}
+        title={`Hapus ${selectedFotoIds.length} foto?`}
+        description="Foto terpilih akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."
+        confirmLabel="Hapus terpilih"
+        confirmTone="danger"
+        isLoading={bulkDeleteFotoMutation.isPending}
+        onCancel={() => setBulkDeleteFotoOpen(false)}
+        onConfirm={() => {
+          if (selectedFotoIds.length > 0) {
+            bulkDeleteFotoMutation.mutate(selectedFotoIds)
           }
         }}
       />
