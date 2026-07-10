@@ -10,12 +10,13 @@ import {
   type LucideIcon,
 } from 'lucide-react-native'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
-import { useResponsive } from '@/lib/responsive'
 import { colors, radius, shadows } from '@/theme/tokens'
 
 type DetailTabBarProps = {
   active: DetailTabId
   onChange: (tab: DetailTabId) => void
+  contentPadding?: number
+  compact?: boolean
 }
 
 const DETAIL_TAB_CONFIG: Array<{ id: DetailTabId; label: string; Icon: LucideIcon }> = [
@@ -83,9 +84,12 @@ const TabPill = memo(function TabPill({
   )
 })
 
-export const DetailTabBar = memo(function DetailTabBar({ active, onChange }: DetailTabBarProps) {
-  const { contentPadding, isCompact } = useResponsive()
-
+export const DetailTabBar = memo(function DetailTabBar({
+  active,
+  onChange,
+  contentPadding = 12,
+  compact = true,
+}: DetailTabBarProps) {
   const handleRingkasan = useCallback(() => onChange('ringkasan'), [onChange])
   const handleOutput = useCallback(() => onChange('output'), [onChange])
   const handlePenerima = useCallback(() => onChange('penerima'), [onChange])
@@ -121,7 +125,7 @@ export const DetailTabBar = memo(function DetailTabBar({ active, onChange }: Det
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
-          gap: isCompact ? 6 : 8,
+          gap: compact ? 6 : 8,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -133,7 +137,7 @@ export const DetailTabBar = memo(function DetailTabBar({ active, onChange }: Det
             Icon={tab.Icon}
             selected={tab.id === active}
             onPress={handlers[tab.id]}
-            compact={isCompact}
+            compact={compact}
           />
         ))}
       </View>

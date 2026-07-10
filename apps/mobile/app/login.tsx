@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
+import { useMemo, useState } from 'react'
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
 import { useAuth } from '@/lib/auth'
+import { formatAppBuildSummary, getAppBuildInfo } from '@/lib/app-build-info'
 import { GoogleLoginButton } from '@/components/auth/GoogleLoginButton'
 import { NeoButton, NeoInput, NeoSurface, Spinner } from '@/components/ui'
 import { colors } from '@/theme/tokens'
@@ -15,6 +17,10 @@ export default function LoginScreen() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
+  const [copiedHint, setCopiedHint] = useState(false)
+
+  const buildInfo = useMemo(() => getAppBuildInfo(), [])
+  const buildSummary = useMemo(() => formatAppBuildSummary(buildInfo), [buildInfo])
 
   async function handleSubmit() {
     setError(null)
@@ -108,6 +114,54 @@ export default function LoginScreen() {
             disabled={submitting}
           />
         </NeoSurface>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Salin info build"
+          onPress={() => {
+            const lines = [
+              `App ${buildInfo.appVersion} (build ${buildInfo.nativeBuild})`,
+              `Channel ${buildInfo.channel}`,
+              `Runtime ${buildInfo.runtimeVersion}`,
+              `Source ${buildInfo.sourceLabel}`,
+              `OTA ${buildInfo.updateId}`,
+              buildInfo.updateCreatedAt ? `OTA at ${buildInfo.updateCreatedAt}` : null,
+              `Platform ${buildInfo.platform}`,
+            ]
+              .filter(Boolean)
+              .join('\n')
+            void Clipboard.setStringAsync(lines).then(() => {
+              setCopiedHint(true)
+              setTimeout(() => setCopiedHint(false), 1500)
+            })
+          }}
+          style={{
+            marginTop: 8,
+            padding: 12,
+            borderWidth: 2,
+            borderColor: colors.border,
+            borderRadius: 6,
+            backgroundColor: colors.card,
+            gap: 4,
+          }}
+        >
+          <Text style={{ fontSize: 11, fontWeight: '800', color: colors.mutedForeground, textTransform: 'uppercase' }}>
+            Info build {copiedHint ? '· disalin' : '· ketuk salin'}
+          </Text>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.foreground, fontVariant: ['tabular-nums'] }}>
+            {buildSummary}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 16 }}>
+            OTA id: {buildInfo.updateIdShort}
+            {buildInfo.updateCreatedAt ? ` · ${buildInfo.updateCreatedAt}` : ''}
+            {'\n'}
+            {buildInfo.isDev
+              ? 'Mode dev (Metro) — bukan binary production.'
+              : buildInfo.sourceLabel === 'ota'
+                ? 'Bundle OTA aktif — update JS sudah terpasang.'
+                : 'Embedded build — belum OTA / masih binary awal.'}
+          </Text>
+        </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
   )

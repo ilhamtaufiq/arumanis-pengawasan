@@ -450,6 +450,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
                         source={{ uri: foto.foto_thumb_url || foto.foto_url || '' }}
                         style={{ width: '100%', height: '100%' }}
                         resizeMode="cover"
+                        // Hindari decode async berat yang memblok frame saat buka tab.
+                        fadeDuration={0}
                       />
                     ) : (
                       <Text style={{ fontWeight: '800', fontSize: 13 }}>{isUploading ? '...' : '+'}</Text>

@@ -1,21 +1,25 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
+import { AppState, type AppStateStatus } from 'react-native'
 import { getEcho } from '@/lib/echo'
 import { invalidatePekerjaanRealtime, type PekerjaanUpdatedPayload } from '@/lib/realtime'
 import { isReverbEnabled } from '@/lib/reverb-config'
-import { useAuth } from '@/lib/auth'
 
 // Gabungkan burst event di channel detail agar UI tidak re-render setiap tick.
-const DETAIL_INVALIDATE_DEBOUNCE_MS = 1_200
+const DETAIL_INVALIDATE_DEBOUNCE_MS = 2_000
 
-export function usePekerjaanRealtime(pekerjaanId: number) {
+/**
+ * Subscribe channel detail pekerjaan.
+ * @param enabled — matikan saat layar tidak fokus / auth belum siap.
+ */
+export function usePekerjaanRealtime(pekerjaanId: number, enabled = true) {
   const queryClient = useQueryClient()
-  const { canFetch } = useAuth()
   const pendingPayloads = useRef<PekerjaanUpdatedPayload[]>([])
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const appState = useRef<AppStateStatus>(AppState.currentState)
 
   useEffect(() => {
-    if (!canFetch || !isReverbEnabled() || !Number.isFinite(pekerjaanId) || pekerjaanId <= 0) {
+    if (!enabled || !isReverbEnabled() || !Number.isFinite(pekerjaanId) || pekerjaanId <= 0) {
       return
     }
 
@@ -24,6 +28,12 @@ export function usePekerjaanRealtime(pekerjaanId: number) {
 
     const flushInvalidations = () => {
       flushTimer.current = null
+      // Jangan ganggu UI saat app di background.
+      if (appState.current !== 'active') {
+        pendingPayloads.current = []
+        return
+      }
+
       const payloads = pendingPayloads.current.splice(0)
       if (payloads.length === 0) return
 
@@ -47,7 +57,17 @@ export function usePekerjaanRealtime(pekerjaanId: number) {
       scheduleFlush()
     }
 
+    const onAppState = (next: AppStateStatus) => {
+      appState.current = next
+      if (next !== 'active' && flushTimer.current) {
+        clearTimeout(flushTimer.current)
+        flushTimer.current = null
+        pendingPayloads.current = []
+      }
+    }
+
     channel.listen('.pekerjaan.updated', handler)
+    const sub = AppState.addEventListener('change', onAppState)
 
     return () => {
       if (flushTimer.current) {
@@ -57,6 +77,7 @@ export function usePekerjaanRealtime(pekerjaanId: number) {
       pendingPayloads.current = []
       channel.stopListening('.pekerjaan.updated', handler)
       echo.leave(`private-${channelName}`)
+      sub.remove()
     }
-  }, [canFetch, pekerjaanId, queryClient])
+  }, [enabled, pekerjaanId, queryClient])
 }

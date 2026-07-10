@@ -1,7 +1,7 @@
-import { useMemo, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { View } from 'react-native'
+import { useFocusEffect, useLocalSearchParams } from 'expo-router'
 import { useResponsive } from '@/lib/responsive'
-import { useLocalSearchParams } from 'expo-router'
 import { colors } from '@/theme/tokens'
 import { useIsRestoring, useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
@@ -10,7 +10,6 @@ import { useIsOnline } from '@/hooks/useIsOnline'
 import { useAuth } from '@/lib/auth'
 import { getPekerjaanDetail } from '@/lib/api'
 import { DetailTabShell } from '@/components/pekerjaan/DetailTabShell'
-import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
 import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary'
 import { EmptyState, Spinner } from '@/components/ui'
 
@@ -35,7 +34,17 @@ export default function PekerjaanDetailScreen() {
   const { canFetch, isLoading: authLoading } = useAuth()
   const isRestoring = useIsRestoring()
   const isOnline = useIsOnline()
-  usePekerjaanRealtime(pekerjaanId)
+  const [screenFocused, setScreenFocused] = useState(true)
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true)
+      return () => setScreenFocused(false)
+    }, []),
+  )
+
+  // Realtime hanya saat layar fokus — hindari invalidate di background.
+  usePekerjaanRealtime(pekerjaanId, screenFocused && canFetch)
 
   const detailQuery = useQuery({
     queryKey: queryKeys.pekerjaan.detail(pekerjaanId),
@@ -43,10 +52,12 @@ export default function PekerjaanDetailScreen() {
     enabled: canFetch && Boolean(id) && Number.isFinite(pekerjaanId) && !isRestoring,
     retry: false,
     networkMode: 'offlineFirst',
-    // Detail memuat foto/penerima — jangan dianggap stale terlalu cepat.
-    staleTime: 60_000,
-    // Saat refetch realtime, biarkan data lama tampil (hindari flicker/jank tab).
+    staleTime: 90_000,
+    gcTime: 1000 * 60 * 30,
     placeholderData: (previous) => previous,
+    // Jangan refetch otomatis saat window focus — mobile tidak perlu.
+    refetchOnMount: false,
+    refetchOnReconnect: true,
   })
 
   const tahunAnggaran = useMemo(() => {
@@ -115,11 +126,11 @@ export default function PekerjaanDetailScreen() {
           }}
         >
           <View style={{ width: '100%', maxWidth: maxContentWidth, flex: 1, minHeight: 0 }}>
-            <PekerjaanDetailHero pekerjaan={item} progressValue={progressValue} />
             <DetailTabShell
               pekerjaan={item}
               pekerjaanId={pekerjaanId}
               tahunAnggaran={tahunAnggaran}
+              progressValue={progressValue}
               isOnline={isOnline}
               contentPadding={contentPadding}
             />
