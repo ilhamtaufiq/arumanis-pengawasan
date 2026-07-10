@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, type ComponentType, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import { InteractionManager, ScrollView, Text, View } from 'react-native'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
@@ -12,6 +12,7 @@ import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
 import { TiketTab } from '@/components/pekerjaan/TiketTab'
 import { NeoSurface, Spinner } from '@/components/ui'
 
+/** Tab dengan pohon UI berat — tunda mount sampai animasi/interaksi tab selesai. */
 const HEAVY_TABS = new Set<DetailTabId>(['foto', 'progress'])
 
 type DetailTabShellProps = {
@@ -22,145 +23,12 @@ type DetailTabShellProps = {
   contentPadding: number
 }
 
-type TabSlotProps = {
-  visible: boolean
-  pekerjaan: PekerjaanDetail
-  children: ReactNode
-}
-
-const TabSlot = memo(
-  function TabSlot({ visible, children }: TabSlotProps) {
-    return (
-      <View
-        collapsable={false}
-        pointerEvents={visible ? 'auto' : 'none'}
-        style={{
-          display: visible ? 'flex' : 'none',
-          width: '100%',
-          gap: 16,
-        }}
-      >
-        {children}
-      </View>
-    )
-  },
-  (prev, next) => {
-    if (!prev.visible && !next.visible && prev.pekerjaan === next.pekerjaan) {
-      return true
-    }
-    return prev.visible === next.visible && prev.pekerjaan === next.pekerjaan
-  },
-)
-
-type MountedTabProps = {
-  visible: boolean
-  pekerjaan: PekerjaanDetail
-  pekerjaanId: number
-  tahunAnggaran: number
-  Tab: ComponentType<{ pekerjaanId: number; pekerjaan: PekerjaanDetail }>
-}
-
-const MountedPekerjaanTab = memo(
-  function MountedPekerjaanTab({ visible, pekerjaan, pekerjaanId, Tab }: MountedTabProps) {
-    return (
-      <TabSlot visible={visible} pekerjaan={pekerjaan}>
-        <Tab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-      </TabSlot>
-    )
-  },
-  (prev, next) => {
-    if (!prev.visible && !next.visible && prev.pekerjaan === next.pekerjaan) {
-      return true
-    }
-    return (
-      prev.visible === next.visible &&
-      prev.pekerjaan === next.pekerjaan &&
-      prev.pekerjaanId === next.pekerjaanId
-    )
-  },
-)
-
-function MountedProgressTab({
-  visible,
-  pekerjaan,
-  pekerjaanId,
-  tahunAnggaran,
-}: {
-  visible: boolean
-  pekerjaan: PekerjaanDetail
-  pekerjaanId: number
-  tahunAnggaran: number
-}) {
-  return (
-    <TabSlot visible={visible} pekerjaan={pekerjaan}>
-      <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
-    </TabSlot>
-  )
-}
-
-const MountedProgressTabMemo = memo(MountedProgressTab, (prev, next) => {
-  if (!prev.visible && !next.visible && prev.pekerjaan === next.pekerjaan) {
-    return true
-  }
-  return (
-    prev.visible === next.visible &&
-    prev.pekerjaan === next.pekerjaan &&
-    prev.pekerjaanId === next.pekerjaanId &&
-    prev.tahunAnggaran === next.tahunAnggaran
-  )
-})
-
-const MountedRingkasanTab = memo(
-  function MountedRingkasanTab({ visible, pekerjaan }: { visible: boolean; pekerjaan: PekerjaanDetail }) {
-    return (
-      <TabSlot visible={visible} pekerjaan={pekerjaan}>
-        <RingkasanTab pekerjaan={pekerjaan} />
-      </TabSlot>
-    )
-  },
-  (prev, next) => {
-    if (!prev.visible && !next.visible && prev.pekerjaan === next.pekerjaan) {
-      return true
-    }
-    return prev.visible === next.visible && prev.pekerjaan === next.pekerjaan
-  },
-)
-
-const MountedTiketTab = memo(
-  function MountedTiketTab({
-    visible,
-    pekerjaan,
-    pekerjaanId,
-  }: {
-    visible: boolean
-    pekerjaan: PekerjaanDetail
-    pekerjaanId: number
-  }) {
-    return (
-      <TabSlot visible={visible} pekerjaan={pekerjaan}>
-        <TiketTab pekerjaanId={pekerjaanId} />
-      </TabSlot>
-    )
-  },
-  (prev, next) => {
-    if (!prev.visible && !next.visible && prev.pekerjaan === next.pekerjaan) {
-      return true
-    }
-    return (
-      prev.visible === next.visible &&
-      prev.pekerjaan === next.pekerjaan &&
-      prev.pekerjaanId === next.pekerjaanId
-    )
-  },
-)
-
-function mountTab(prev: Set<DetailTabId>, tab: DetailTabId): Set<DetailTabId> {
-  if (prev.has(tab)) return prev
-  const next = new Set(prev)
-  next.add(tab)
-  return next
-}
-
+/**
+ * Hanya merender tab aktif.
+ *
+ * Pola keep-alive (display:none untuk semua tab pernah dibuka) membuat JS + native
+ * menahan matriks foto / form progress di pohon, sehingga pindah tab terasa hang.
+ */
 export const DetailTabShell = memo(function DetailTabShell({
   pekerjaan,
   pekerjaanId,
@@ -169,36 +37,36 @@ export const DetailTabShell = memo(function DetailTabShell({
   contentPadding,
 }: DetailTabShellProps) {
   const [activeTab, setActiveTab] = useState<DetailTabId>('ringkasan')
-  const [mountedTabs, setMountedTabs] = useState<Set<DetailTabId>>(() => new Set(['ringkasan']))
-  const [mountingTab, setMountingTab] = useState<DetailTabId | null>(null)
+  /** null = konten tab berat belum siap; light tab selalu siap. */
+  const [heavyReadyTab, setHeavyReadyTab] = useState<DetailTabId | null>(null)
 
-  const scheduleMount = useCallback((tab: DetailTabId) => {
-    setMountingTab(tab)
-    InteractionManager.runAfterInteractions(() => {
-      setMountedTabs((prev) => mountTab(prev, tab))
-      setMountingTab((current) => (current === tab ? null : current))
-    })
+  const handleTabChange = useCallback((tab: DetailTabId) => {
+    setActiveTab(tab)
   }, [])
 
-  const handleTabChange = useCallback(
-    (tab: DetailTabId) => {
-      setActiveTab(tab)
+  useEffect(() => {
+    if (!HEAVY_TABS.has(activeTab)) {
+      setHeavyReadyTab(null)
+      return
+    }
 
-      setMountedTabs((prev) => {
-        if (prev.has(tab)) return prev
+    // Reset dulu agar spinner muncul; mount konten setelah interaksi UI (tap tab) selesai.
+    setHeavyReadyTab(null)
+    let cancelled = false
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!cancelled) {
+        setHeavyReadyTab(activeTab)
+      }
+    })
 
-        if (HEAVY_TABS.has(tab)) {
-          scheduleMount(tab)
-          return prev
-        }
+    return () => {
+      cancelled = true
+      task.cancel()
+    }
+  }, [activeTab])
 
-        return mountTab(prev, tab)
-      })
-    },
-    [scheduleMount],
-  )
-
-  const showMountSpinner = mountingTab === activeTab && !mountedTabs.has(activeTab)
+  const isHeavy = HEAVY_TABS.has(activeTab)
+  const showContent = !isHeavy || heavyReadyTab === activeTab
 
   return (
     <>
@@ -214,7 +82,8 @@ export const DetailTabShell = memo(function DetailTabShell({
           paddingBottom: 32,
         }}
         keyboardShouldPersistTaps="handled"
-        removeClippedSubviews={false}
+        // Hanya satu tab di pohon — clipping aman dan mengurangi node native.
+        removeClippedSubviews
       >
         {!isOnline ? (
           <NeoSurface tone="main" style={{ gap: 4, padding: 12 }}>
@@ -225,53 +94,23 @@ export const DetailTabShell = memo(function DetailTabShell({
           </NeoSurface>
         ) : null}
 
-        {showMountSpinner ? <Spinner label="Membuka tab..." /> : null}
+        {!showContent ? <Spinner label="Membuka tab..." /> : null}
 
-        {mountedTabs.has('ringkasan') ? (
-          <MountedRingkasanTab visible={activeTab === 'ringkasan'} pekerjaan={pekerjaan} />
-        ) : null}
-
-        {mountedTabs.has('output') ? (
-          <MountedPekerjaanTab
-            visible={activeTab === 'output'}
-            pekerjaan={pekerjaan}
-            pekerjaanId={pekerjaanId}
-            tahunAnggaran={tahunAnggaran}
-            Tab={OutputTab}
-          />
-        ) : null}
-
-        {mountedTabs.has('penerima') ? (
-          <MountedPekerjaanTab
-            visible={activeTab === 'penerima'}
-            pekerjaan={pekerjaan}
-            pekerjaanId={pekerjaanId}
-            tahunAnggaran={tahunAnggaran}
-            Tab={PenerimaTab}
-          />
-        ) : null}
-
-        {mountedTabs.has('progress') ? (
-          <MountedProgressTabMemo
-            visible={activeTab === 'progress'}
-            pekerjaan={pekerjaan}
-            pekerjaanId={pekerjaanId}
-            tahunAnggaran={tahunAnggaran}
-          />
-        ) : null}
-
-        {mountedTabs.has('foto') ? (
-          <MountedPekerjaanTab
-            visible={activeTab === 'foto'}
-            pekerjaan={pekerjaan}
-            pekerjaanId={pekerjaanId}
-            tahunAnggaran={tahunAnggaran}
-            Tab={FotoTab}
-          />
-        ) : null}
-
-        {mountedTabs.has('tiket') ? (
-          <MountedTiketTab visible={activeTab === 'tiket'} pekerjaan={pekerjaan} pekerjaanId={pekerjaanId} />
+        {showContent ? (
+          <View key={activeTab} style={{ width: '100%', gap: 16 }}>
+            {activeTab === 'ringkasan' ? <RingkasanTab pekerjaan={pekerjaan} /> : null}
+            {activeTab === 'output' ? (
+              <OutputTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+            ) : null}
+            {activeTab === 'penerima' ? (
+              <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+            ) : null}
+            {activeTab === 'foto' ? <FotoTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} /> : null}
+            {activeTab === 'progress' ? (
+              <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
+            ) : null}
+            {activeTab === 'tiket' ? <TiketTab pekerjaanId={pekerjaanId} /> : null}
+          </View>
         ) : null}
       </ScrollView>
     </>

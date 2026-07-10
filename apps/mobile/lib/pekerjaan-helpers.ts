@@ -71,58 +71,69 @@ export type FotoMatrixRow = {
   count: number
 }
 
+function fotoMatrixKey(komponenId: number, penerimaId: number | null | undefined, slot: string) {
+  return `${komponenId}:${penerimaId ?? 0}:${slot}`
+}
+
+function fotoCountKey(komponenId: number, penerimaId: number | null | undefined) {
+  return `${komponenId}:${penerimaId ?? 0}`
+}
+
+/**
+ * Bangun matriks foto O(fotos + outputs × penerima × slots) dengan lookup map,
+ * bukan O(outputs × penerima × slots × fotos) via Array.find berulang.
+ */
 export function buildFotoMatrix(outputs: Output[], fotos: Foto[], penerimaList: Penerima[]): FotoMatrixRow[] {
+  const bySlot = new Map<string, Foto>()
+  const counts = new Map<string, number>()
+
+  for (const foto of fotos) {
+    const komponenId = foto.komponen_id
+    if (komponenId == null) continue
+
+    const penerimaId = foto.penerima_id ?? null
+    const slot = normalizeSlotLabel(foto.keterangan)
+    if (slot) {
+      const key = fotoMatrixKey(komponenId, penerimaId, slot)
+      // Slot pertama menang — konsisten dengan find() sebelumnya
+      if (!bySlot.has(key)) {
+        bySlot.set(key, foto)
+      }
+    }
+
+    const cKey = fotoCountKey(komponenId, penerimaId)
+    counts.set(cKey, (counts.get(cKey) ?? 0) + 1)
+  }
+
   const matrix: FotoMatrixRow[] = []
 
-  outputs.forEach((output) => {
-    if (output.penerima_is_optional) {
+  for (const output of outputs) {
+    if (output.penerima_is_optional || penerimaList.length === 0) {
       const slots = FOTO_SLOTS.map((slot) => ({
         slot,
-        foto: fotos.find(
-          (item) => item.komponen_id === output.id && normalizeSlotLabel(item.keterangan) === slot && !item.penerima_id,
-        ),
+        foto: bySlot.get(fotoMatrixKey(output.id, null, slot)),
       }))
       matrix.push({
         output,
         slots,
-        count: fotos.filter((item) => item.komponen_id === output.id && !item.penerima_id).length,
+        count: counts.get(fotoCountKey(output.id, null)) ?? 0,
       })
-      return
+      continue
     }
 
-    if (penerimaList.length === 0) {
+    for (const penerima of penerimaList) {
       const slots = FOTO_SLOTS.map((slot) => ({
         slot,
-        foto: fotos.find(
-          (item) => item.komponen_id === output.id && normalizeSlotLabel(item.keterangan) === slot && !item.penerima_id,
-        ),
-      }))
-      matrix.push({
-        output,
-        slots,
-        count: fotos.filter((item) => item.komponen_id === output.id && !item.penerima_id).length,
-      })
-      return
-    }
-
-    penerimaList.forEach((penerima) => {
-      const slots = FOTO_SLOTS.map((slot) => ({
-        slot,
-        foto: fotos.find(
-          (item) =>
-            item.komponen_id === output.id &&
-            item.penerima_id === penerima.id &&
-            normalizeSlotLabel(item.keterangan) === slot,
-        ),
+        foto: bySlot.get(fotoMatrixKey(output.id, penerima.id, slot)),
       }))
       matrix.push({
         output,
         slots,
         penerima,
-        count: fotos.filter((item) => item.komponen_id === output.id && item.penerima_id === penerima.id).length,
+        count: counts.get(fotoCountKey(output.id, penerima.id)) ?? 0,
       })
-    })
-  })
+    }
+  }
 
   return matrix
 }
