@@ -1,12 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { queryKeys } from '@pengawas/shared/query-keys'
 import { useEffect, useRef } from 'react'
 import { getEcho } from '@/lib/echo'
 import { invalidatePekerjaanRealtime, type PekerjaanUpdatedPayload } from '@/lib/realtime'
 import { isReverbEnabled } from '@/lib/reverb-config'
 import { useAuth } from '@/lib/auth'
 
-const REALTIME_INVALIDATE_DEBOUNCE_MS = 400
+// Debounce lebih longgar: burst event (foto/progress) jangan spam re-render UI.
+const REALTIME_INVALIDATE_DEBOUNCE_MS = 1_200
 
 export function usePengawasRealtime() {
   const queryClient = useQueryClient()
@@ -38,11 +38,16 @@ export function usePengawasRealtime() {
         latestByPekerjaan.set(payload.pekerjaan_id, payload)
       }
 
-      if (needsGlobal || latestByPekerjaan.size > 1) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.pekerjaan.all })
-        void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all })
+      if (needsGlobal) {
+        invalidatePekerjaanRealtime(queryClient, {
+          pekerjaan_id: 0,
+          resource: 'pekerjaan',
+          action: 'updated',
+        }, { scope: 'global' })
       }
 
+      // Per pekerjaan — invalidate sempit (list aktif + detail aktif saja),
+      // bukan queryKeys.pekerjaan.all yang merefetch seluruh cache.
       for (const payload of latestByPekerjaan.values()) {
         invalidatePekerjaanRealtime(queryClient, payload, { scope: 'detail' })
       }

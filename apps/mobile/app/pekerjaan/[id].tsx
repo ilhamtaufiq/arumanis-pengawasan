@@ -43,6 +43,10 @@ export default function PekerjaanDetailScreen() {
     enabled: canFetch && Boolean(id) && Number.isFinite(pekerjaanId) && !isRestoring,
     retry: false,
     networkMode: 'offlineFirst',
+    // Detail memuat foto/penerima — jangan dianggap stale terlalu cepat.
+    staleTime: 60_000,
+    // Saat refetch realtime, biarkan data lama tampil (hindari flicker/jank tab).
+    placeholderData: (previous) => previous,
   })
 
   const tahunAnggaran = useMemo(() => {

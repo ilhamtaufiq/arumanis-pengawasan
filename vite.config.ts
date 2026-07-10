@@ -58,15 +58,31 @@ export default defineConfig({
     },
   ],
   resolve: {
-    alias: {
-      '@': resolve(process.cwd(), 'src'),
-      '@pengawas/shared': resolve(process.cwd(), 'packages/shared/src/index.ts'),
-      '@pengawas/shared/types': resolve(process.cwd(), 'packages/shared/src/types.ts'),
-      '@pengawas/shared/format': resolve(process.cwd(), 'packages/shared/src/format.ts'),
-      '@pengawas/shared/foto-status': resolve(process.cwd(), 'packages/shared/src/foto-status.ts'),
-      '@pengawas/shared/query-keys': resolve(process.cwd(), 'packages/shared/src/query-keys.ts'),
-      '@pengawas/api-client': resolve(process.cwd(), 'packages/api-client/src/index.ts'),
-    },
+    alias: [
+      // Map package roots to source directories (not index.ts files).
+      // Pointing at a file breaks subpath imports like `@pengawas/shared/notifications`
+      // → `.../index.ts/notifications` (ENOENT) during production build.
+      {
+        find: /^@pengawas\/shared$/,
+        replacement: resolve(process.cwd(), 'packages/shared/src/index.ts'),
+      },
+      {
+        find: /^@pengawas\/shared\/(.+)$/,
+        replacement: resolve(process.cwd(), 'packages/shared/src/$1.ts'),
+      },
+      {
+        find: /^@pengawas\/api-client$/,
+        replacement: resolve(process.cwd(), 'packages/api-client/src/index.ts'),
+      },
+      {
+        find: /^@pengawas\/api-client\/(.+)$/,
+        replacement: resolve(process.cwd(), 'packages/api-client/src/$1.ts'),
+      },
+      {
+        find: '@',
+        replacement: resolve(process.cwd(), 'src'),
+      },
+    ],
   },
   server: {
     host: '0.0.0.0',

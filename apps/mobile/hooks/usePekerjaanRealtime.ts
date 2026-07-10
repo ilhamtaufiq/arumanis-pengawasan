@@ -5,7 +5,8 @@ import { invalidatePekerjaanRealtime, type PekerjaanUpdatedPayload } from '@/lib
 import { isReverbEnabled } from '@/lib/reverb-config'
 import { useAuth } from '@/lib/auth'
 
-const DETAIL_INVALIDATE_DEBOUNCE_MS = 500
+// Gabungkan burst event di channel detail agar UI tidak re-render setiap tick.
+const DETAIL_INVALIDATE_DEBOUNCE_MS = 1_200
 
 export function usePekerjaanRealtime(pekerjaanId: number) {
   const queryClient = useQueryClient()

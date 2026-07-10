@@ -40,7 +40,12 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
     queryKey: fotoUploadQueueKey,
     queryFn: listQueuedFotoUploads,
     enabled,
-    refetchInterval: enabled ? 15_000 : false,
+    // Poll hanya saat ada antrean — hindari timer 15s yang terus jalan di background.
+    refetchInterval: (query) => {
+      if (!enabled) return false
+      const count = query.state.data?.length ?? 0
+      return count > 0 ? 15_000 : false
+    },
   })
 
   const invalidateQueue = useCallback(async () => {
