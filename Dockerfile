@@ -3,8 +3,18 @@
 FROM oven/bun:1.2.17-alpine AS deps
 WORKDIR /app
 
+# Root manifests
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+
+# Workspace package manifests must exist before `bun install` can resolve workspace:*
+# (root package.json lists packages/* and apps/*).
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/api-client/package.json ./packages/api-client/package.json
+COPY apps/mobile/package.json ./apps/mobile/package.json
+
+# Web image only needs root + local packages. Mobile stays in the workspace graph for
+# lockfile consistency, but we skip installing its Expo/native dependency tree.
+RUN bun install --frozen-lockfile --filter '.' --filter '@pengawas/shared' --filter '@pengawas/api-client'
 
 FROM oven/bun:1.2.17-alpine AS build
 WORKDIR /app
@@ -21,6 +31,8 @@ ARG VITE_REVERB_SCHEME=https
 ARG VITE_REVERB_APP_KEY=
 
 COPY --from=deps /app/node_modules ./node_modules
+
+# Full source for Vite build (workspace packages resolve via node_modules links)
 COPY . .
 
 RUN VITE_UMAMI_SCRIPT_URL="$VITE_UMAMI_SCRIPT_URL" \
@@ -46,6 +58,8 @@ ENV SESSION_COOKIE_SECURE=true
 ENV APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
 
 COPY --from=deps /app/node_modules ./node_modules
+# Workspace packages are source-linked from node_modules — copy real sources from build.
+COPY --from=build /app/packages ./packages
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/package.json ./package.json
