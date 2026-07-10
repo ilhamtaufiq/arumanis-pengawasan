@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppState, Image, Platform, Pressable, Text, View } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,8 +7,14 @@ import { formatApiError } from '@pengawas/api-client'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { deleteFoto } from '@/lib/api'
-import { appendFotoFileToFormData, type PickedImageAsset } from '@/lib/foto-upload'
+import { appendFotoFileToFormData, getUnsupportedFotoFormatReason, type PickedImageAsset } from '@/lib/foto-upload'
 import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
+import {
+  clearPendingFotoPickerSession,
+  readPendingFotoPickerSession,
+  savePendingFotoPickerSession,
+  type PendingFotoPickerSession,
+} from '@/lib/foto-picker-session'
 import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
 import { buildFotoMatrix } from '@/lib/pekerjaan-helpers'
@@ -64,6 +70,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   } | null>(null)
   const [slotActions, setSlotActions] = useState<SlotActions | null>(null)
   const [matrixPage, setMatrixPage] = useState(1)
+  /** Progress upload 0–100; null = indeterminate / idle. */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
 
   const fotoList = pekerjaan.foto ?? []
@@ -100,9 +108,20 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   const detailQueryKey = queryKeys.pekerjaan.detail(pekerjaanId)
 
-  const invalidate = async () => {
-    await queryClient.invalidateQueries({ queryKey: detailQueryKey })
-  }
+  const patchDetailFotos = useCallback(
+    (updater: (fotos: Foto[]) => Foto[]) => {
+      queryClient.setQueryData<PekerjaanDetail>(detailQueryKey, (previous) => {
+        if (!previous) return previous
+        const nextFotos = updater(previous.foto ?? [])
+        return {
+          ...previous,
+          foto: nextFotos,
+          foto_count: nextFotos.length,
+        }
+      })
+    },
+    [detailQueryKey, queryClient],
+  )
 
   const uploadMutation = useMutation({
     mutationFn: async (input: {
@@ -111,6 +130,11 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       koordinat: string
       replaceFotoId?: number
     }) => {
+      const formatError = getUnsupportedFotoFormatReason(input.asset)
+      if (formatError) {
+        throw new Error(formatError)
+      }
+
       if (input.replaceFotoId) {
         await deleteFoto(input.replaceFotoId)
       }
@@ -125,19 +149,48 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       }
 
       await appendFotoFileToFormData(formData, input.asset)
+      setUploadProgress(0)
 
-      return uploadFotoWithRetry(formData)
+      return uploadFotoWithRetry(formData, {
+        onProgress: (progress) => {
+          if (progress.percent != null) {
+            setUploadProgress(progress.percent)
+          }
+        },
+      })
     },
-    onSuccess: async () => {
+    onSuccess: (created, variables) => {
+      // Patch cache lokal — hindari refetch detail penuh (jank + payload gemuk).
+      const localUri = variables.asset.uri
+      const nextFoto: Foto = {
+        ...created,
+        pekerjaan_id: created.pekerjaan_id ?? pekerjaanId,
+        komponen_id: created.komponen_id ?? variables.target.output.id,
+        penerima_id: created.penerima_id ?? variables.target.penerima?.id ?? null,
+        keterangan: created.keterangan ?? variables.target.slot,
+        koordinat: created.koordinat ?? variables.koordinat,
+        foto_url: created.foto_url || localUri,
+        foto_thumb_url: created.foto_thumb_url || created.foto_url || localUri,
+      }
+
+      patchDetailFotos((fotos) => {
+        const withoutReplaced = variables.replaceFotoId
+          ? fotos.filter((item) => item.id !== variables.replaceFotoId)
+          : fotos
+        const withoutDup = withoutReplaced.filter((item) => item.id !== nextFoto.id)
+        return [...withoutDup, nextFoto]
+      })
+
       setUploadingTarget(null)
       setPendingUpload(null)
       setPreviewFoto(null)
       setPreviewTarget(null)
       setSourceRequest(null)
       setErrorMessage(null)
-      await invalidate()
+      setUploadProgress(null)
     },
     onError: async (error, variables) => {
+      setUploadProgress(null)
       if (shouldQueueAfterFailedUpload(error)) {
         try {
           await enqueueFotoUpload({
@@ -184,17 +237,18 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         queryClient.setQueryData<PekerjaanDetail>(detailQueryKey, {
           ...previous,
           foto: (previous.foto ?? []).filter((item) => item.id !== fotoId),
+          foto_count: Math.max(0, (previous.foto ?? []).filter((item) => item.id !== fotoId).length),
         })
       }
       return { previous }
     },
-    onSuccess: async () => {
+    onSuccess: () => {
+      // Cache sudah di-patch di onMutate — tidak perlu refetch detail penuh.
       setPendingDelete(null)
       setPreviewFoto(null)
       setPreviewTarget(null)
       setSlotActions(null)
       setErrorMessage(null)
-      await invalidate()
     },
     onError: (error, _fotoId, context) => {
       if (context?.previous) {
@@ -209,9 +263,17 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   function assetFromResult(result: ImagePicker.ImagePickerResult): PickedImageAsset | null {
     if (result.canceled || !result.assets[0]) return null
     const asset = result.assets[0]
+    // Beberapa galeri Android mengembalikan image/jpg (non-standard) atau HEIC.
+    // Meta di-normalize ke jpeg/png saat FormData; di sini jaga mime agar tidak kosong.
+    const rawMime = (asset.mimeType || 'image/jpeg').toLowerCase()
+    const mimeType =
+      rawMime.includes('png') ? 'image/png' : rawMime.includes('jpeg') || rawMime.includes('jpg')
+        ? 'image/jpeg'
+        : 'image/jpeg'
+
     return {
       uri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
+      mimeType,
       fileName: asset.fileName ?? undefined,
       file: asset.file ?? undefined,
       exif: (asset.exif as Record<string, unknown> | null | undefined) ?? null,
@@ -220,60 +282,50 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   const pickerOptions: ImagePicker.ImagePickerOptions = {
     mediaTypes: ['images'],
-    quality: 0.85,
+    // Jangan re-encode agresif: quality < 1 di beberapa device menghapus EXIF GPS dari file.
+    // EXIF masih dibaca dari asset.exif, tapi deep parse file butuh GPS di binary.
+    quality: 1,
     allowsEditing: false,
     exif: true,
+    // iOS: paksa representasi kompatibel (hindari HEIC yang ditolak API mimes jpg/png).
+    ...(Platform.OS === 'ios' && ImagePicker.UIImagePickerPreferredAssetRepresentationMode
+      ? {
+          preferredAssetRepresentationMode:
+            ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+        }
+      : {}),
   }
 
-  async function ensurePickerPermissions() {
-    const [camera, gallery] = await Promise.all([
-      ImagePicker.requestCameraPermissionsAsync(),
-      ImagePicker.requestMediaLibraryPermissionsAsync(),
-    ])
-
+  function requestToSession(request: SourceRequest): Omit<PendingFotoPickerSession, 'createdAt'> {
     return {
-      cameraGranted: camera.granted,
-      galleryGranted: gallery.granted,
+      pekerjaanId,
+      komponenId: request.target.output.id,
+      slot: request.target.slot,
+      penerimaId: request.target.penerima?.id,
+      replaceFotoId: request.replaceFotoId,
     }
   }
 
-  function handlePickerResult(request: SourceRequest, result: ImagePicker.ImagePickerResult) {
-    pendingPickerRequestRef.current = null
-    const asset = assetFromResult(result)
-    if (!asset) return
-    openUploadModal(request, asset)
+  function resolveRequestFromSession(session: PendingFotoPickerSession): SourceRequest | null {
+    const output = outputList.find((item) => item.id === session.komponenId)
+    if (!output) return null
+
+    const penerima =
+      session.penerimaId != null
+        ? penerimaList.find((item) => item.id === session.penerimaId)
+        : undefined
+
+    const target: UploadTarget = penerima
+      ? { output, slot: session.slot, penerima }
+      : { output, slot: session.slot }
+
+    return {
+      target,
+      replaceFotoId: session.replaceFotoId,
+    }
   }
 
-  function handlePickerFailure(message: string) {
-    pendingPickerRequestRef.current = null
-    setErrorMessage(message)
-  }
-
-  function launchCameraNow(request: SourceRequest) {
-    pendingPickerRequestRef.current = request
-    setSourceRequest(null)
-    setErrorMessage(null)
-
-    void ImagePicker.launchCameraAsync(pickerOptions)
-      .then((result) => handlePickerResult(request, result))
-      .catch((error) => {
-        handlePickerFailure(error instanceof Error ? error.message : 'Gagal membuka kamera.')
-      })
-  }
-
-  function launchGalleryNow(request: SourceRequest) {
-    pendingPickerRequestRef.current = request
-    setSourceRequest(null)
-    setErrorMessage(null)
-
-    void ImagePicker.launchImageLibraryAsync(pickerOptions)
-      .then((result) => handlePickerResult(request, result))
-      .catch((error) => {
-        handlePickerFailure(error instanceof Error ? error.message : 'Gagal membuka galeri.')
-      })
-  }
-
-  function openUploadModal(request: SourceRequest, asset: PickedImageAsset) {
+  const openUploadModal = useCallback((request: SourceRequest, asset: PickedImageAsset) => {
     setSourceRequest(null)
     setSlotActions(null)
     setUploadingTarget(request.target)
@@ -282,33 +334,133 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       asset,
       replaceFotoId: request.replaceFotoId,
     })
+  }, [])
+
+  const handlePickerResult = useCallback(
+    (request: SourceRequest, result: ImagePicker.ImagePickerResult) => {
+      pendingPickerRequestRef.current = null
+      void clearPendingFotoPickerSession()
+      const asset = assetFromResult(result)
+      if (!asset) {
+        // User cancel — jangan tampilkan error.
+        if (!result.canceled) {
+          setErrorMessage('Tidak ada foto yang dipilih.')
+        }
+        return
+      }
+
+      const unsupported = getUnsupportedFotoFormatReason(asset)
+      if (unsupported) {
+        setErrorMessage(unsupported)
+        return
+      }
+
+      openUploadModal(request, asset)
+    },
+    [openUploadModal],
+  )
+
+  async function handlePickerFailure(message: string) {
+    pendingPickerRequestRef.current = null
+    await clearPendingFotoPickerSession()
+    setErrorMessage(message)
+  }
+
+  async function persistAndLaunch(
+    request: SourceRequest,
+    launch: () => Promise<ImagePicker.ImagePickerResult>,
+    failLabel: string,
+  ) {
+    pendingPickerRequestRef.current = request
+    setSourceRequest(null)
+    setErrorMessage(null)
+
+    try {
+      await savePendingFotoPickerSession(requestToSession(request))
+      const result = await launch()
+      handlePickerResult(request, result)
+    } catch (error) {
+      await handlePickerFailure(error instanceof Error ? error.message : failLabel)
+    }
+  }
+
+  async function launchCameraNow(request: SourceRequest) {
+    const camera = await ImagePicker.requestCameraPermissionsAsync()
+    if (!camera.granted) {
+      setSourceRequest(null)
+      setErrorMessage('Izin kamera ditolak. Aktifkan di pengaturan perangkat untuk mengambil foto.')
+      return
+    }
+
+    await persistAndLaunch(
+      request,
+      () => ImagePicker.launchCameraAsync(pickerOptions),
+      'Gagal membuka kamera.',
+    )
+  }
+
+  async function launchGalleryNow(request: SourceRequest) {
+    const gallery = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!gallery.granted) {
+      setSourceRequest(null)
+      setErrorMessage('Izin galeri ditolak. Aktifkan di pengaturan perangkat untuk memilih foto.')
+      return
+    }
+
+    await persistAndLaunch(
+      request,
+      () => ImagePicker.launchImageLibraryAsync(pickerOptions),
+      'Gagal membuka galeri.',
+    )
   }
 
   useEffect(() => {
     if (Platform.OS === 'web') return
 
-    const recoverPendingPickerResult = () => {
-      const request = pendingPickerRequestRef.current
-      if (!request) return
+    let cancelled = false
 
-      void ImagePicker.getPendingResultAsync()
-        .then((pending) => {
-          const latest = pending.at(-1)
-          if (!latest || !('assets' in latest)) return
-          handlePickerResult(request, latest)
-        })
-        .catch(() => undefined)
+    const recoverPendingPickerResult = async () => {
+      try {
+        // 1) Context in-memory (app tidak di-kill)
+        let request = pendingPickerRequestRef.current
+
+        // 2) Context persisten (Android process death saat kamera/galeri)
+        if (!request) {
+          const session = await readPendingFotoPickerSession(pekerjaanId)
+          if (session) {
+            request = resolveRequestFromSession(session)
+            if (!request) {
+              // Output/penerima belum di cache — biarkan session sampai data ready.
+              return
+            }
+            pendingPickerRequestRef.current = request
+          }
+        }
+
+        if (!request || cancelled) return
+
+        const pending = await ImagePicker.getPendingResultAsync()
+        const latest = pending.at(-1)
+        if (!latest || !('assets' in latest) || cancelled) return
+
+        handlePickerResult(request, latest)
+      } catch {
+        // Recovery best-effort.
+      }
     }
 
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'active') {
-        recoverPendingPickerResult()
+        void recoverPendingPickerResult()
       }
     })
 
-    recoverPendingPickerResult()
-    return () => subscription.remove()
-  }, [])
+    void recoverPendingPickerResult()
+    return () => {
+      cancelled = true
+      subscription.remove()
+    }
+  }, [pekerjaanId, outputList, penerimaList, handlePickerResult])
 
   function submitUpload(koordinat: string) {
     if (!pendingUpload) return
@@ -321,7 +473,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }
 
   function startUpload(target: UploadTarget, replaceFotoId?: number) {
-    void ensurePickerPermissions()
+    setErrorMessage(null)
     setSourceRequest({ target, replaceFotoId })
   }
 
@@ -389,7 +541,17 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         </Text>
       ) : null}
 
-      {isBusy ? <Spinner label={uploadMutation.isPending ? 'Mengunggah foto...' : 'Menghapus foto...'} /> : null}
+      {isBusy ? (
+        <Spinner
+          label={
+            uploadMutation.isPending
+              ? uploadProgress != null
+                ? `Mengunggah foto... ${uploadProgress}%`
+                : 'Mengunggah foto...'
+              : 'Menghapus foto...'
+          }
+        />
+      ) : null}
 
       {pagedMatrix.map((row, index) => (
         <NeoSurface key={`${row.output.id}-${row.penerima?.id ?? 'komunal'}-${index}`} style={{ gap: 12 }}>
@@ -510,9 +672,11 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           if (isBusy) return
           setPendingUpload(null)
           setUploadingTarget(null)
+          setUploadProgress(null)
         }}
         onUpload={submitUpload}
         isUploading={uploadMutation.isPending}
+        uploadProgress={uploadProgress}
       />
 
       <ChoiceDialog
@@ -530,7 +694,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
             onPress: () => {
               const request = sourceRequest
               if (!request) return
-              launchCameraNow(request)
+              // Tutup dialog dulu agar tidak numpuk di atas camera intent.
+              setSourceRequest(null)
+              void launchCameraNow(request)
             },
           },
           {
@@ -539,7 +705,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
             onPress: () => {
               const request = sourceRequest
               if (!request) return
-              launchGalleryNow(request)
+              setSourceRequest(null)
+              void launchGalleryNow(request)
             },
           },
         ]}

@@ -5,7 +5,7 @@ import {
   isRetriableUploadError,
   shouldQueueAfterFailedUpload,
 } from '@pengawas/shared/foto-upload-resilience'
-import { createFoto } from '@/lib/api'
+import { createFotoWithProgress, type CreateFotoProgress } from '@/lib/create-foto-with-progress'
 
 export {
   backoffDelayMs,
@@ -25,6 +25,7 @@ export async function uploadFotoWithRetry(
   options?: {
     maxAttempts?: number
     onAttempt?: (attempt: number) => void
+    onProgress?: (progress: CreateFotoProgress) => void
   },
 ): Promise<Foto> {
   const maxAttempts = options?.maxAttempts ?? DEFAULT_UPLOAD_MAX_ATTEMPTS
@@ -34,11 +35,13 @@ export async function uploadFotoWithRetry(
     options?.onAttempt?.(attempt)
 
     try {
-      return await createFoto(formData)
+      return await createFotoWithProgress(formData, options?.onProgress)
     } catch (error) {
       lastError = error
       const canRetry = isRetriableUploadError(error) && attempt < maxAttempts
       if (!canRetry) break
+      // Reset progress visual between retries
+      options?.onProgress?.({ percent: 0, loaded: 0, total: null })
       await sleep(backoffDelayMs(attempt))
     }
   }

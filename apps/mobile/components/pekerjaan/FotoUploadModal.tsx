@@ -35,6 +35,8 @@ type FotoUploadModalProps = {
   onClose: () => void
   onUpload: (koordinat: string) => void
   isUploading?: boolean
+  /** Progress upload 0–100 (opsional). */
+  uploadProgress?: number | null
 }
 
 export function FotoUploadModal({
@@ -45,6 +47,7 @@ export function FotoUploadModal({
   onClose,
   onUpload,
   isUploading = false,
+  uploadProgress = null,
 }: FotoUploadModalProps) {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
@@ -322,8 +325,39 @@ export function FotoUploadModal({
               </NeoSurface>
 
               <View style={{ gap: 10 }}>
+                {isUploading ? (
+                  <View style={{ gap: 6 }}>
+                    <View
+                      style={{
+                        height: 10,
+                        borderWidth: 2,
+                        borderColor: colors.border,
+                        borderRadius: 6,
+                        backgroundColor: colors.muted,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: '100%',
+                          width: `${uploadProgress != null ? Math.max(4, uploadProgress) : 30}%`,
+                          backgroundColor: colors.main,
+                        }}
+                      />
+                    </View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground, textAlign: 'center' }}>
+                      {uploadProgress != null ? `Mengunggah... ${uploadProgress}%` : 'Mengunggah...'}
+                    </Text>
+                  </View>
+                ) : null}
                 <NeoButton
-                  label={isUploading ? 'Mengunggah...' : 'Unggah foto'}
+                  label={
+                    isUploading
+                      ? uploadProgress != null
+                        ? `Mengunggah... ${uploadProgress}%`
+                        : 'Mengunggah...'
+                      : 'Unggah foto'
+                  }
                   onPress={handleUpload}
                   disabled={!canUpload}
                 />
