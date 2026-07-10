@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ImportPenerimaDialog } from '@/components/ImportPenerimaDialog'
 import {
   createOutput,
   createPenerima,
@@ -179,6 +180,7 @@ export function PekerjaanDetailPage() {
   const [selectedFotoIds, setSelectedFotoIds] = useState<number[]>([])
   const [bulkDeletePenerimaOpen, setBulkDeletePenerimaOpen] = useState(false)
   const [bulkDeleteFotoOpen, setBulkDeleteFotoOpen] = useState(false)
+  const [importPenerimaOpen, setImportPenerimaOpen] = useState(false)
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadKoordinat, setUploadKoordinat] = useState('')
@@ -1404,6 +1406,16 @@ export function PekerjaanDetailPage() {
                 <p>Gunakan mode komunal untuk penerima kelompok</p>
               </div>
               <div className="detail-inline-controls">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setImportPenerimaOpen(true)}
+                  disabled={outputList.length === 0}
+                >
+                  <FileUp size={14} />
+                  <span>Impor Excel</span>
+                </Button>
                 {editingPenerimaId ? (
                   <Button type="button" variant="neutral" size="sm" onClick={resetPenerimaForm}>Reset form</Button>
                 ) : null}
@@ -1501,7 +1513,18 @@ export function PekerjaanDetailPage() {
                       <span>Hapus terpilih</span>
                     </Button>
                   </>
-                ) : null}
+                ) : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setImportPenerimaOpen(true)}
+                    disabled={outputList.length === 0}
+                  >
+                    <FileUp size={14} />
+                    <span>Impor Excel</span>
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -1632,6 +1655,16 @@ export function PekerjaanDetailPage() {
                     Pilih semua
                   </Button>
                 ) : null}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setImportPenerimaOpen(true)}
+                  disabled={outputList.length === 0}
+                >
+                  <FileUp size={14} />
+                  <span>Impor Excel</span>
+                </Button>
                 <Button variant="secondary" size="sm" onClick={handlePrintPDF} disabled={fotoList.length === 0}>
                   <Printer size={14} />
                   <span>Cetak Foto</span>
@@ -2043,6 +2076,16 @@ export function PekerjaanDetailPage() {
           if (selectedFotoIds.length > 0) {
             bulkDeleteFotoMutation.mutate(selectedFotoIds)
           }
+        }}
+      />
+
+      <ImportPenerimaDialog
+        open={importPenerimaOpen}
+        onClose={() => setImportPenerimaOpen(false)}
+        pekerjaanId={pekerjaanId}
+        outputs={outputList}
+        onSuccess={() => {
+          void queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
         }}
       />
 

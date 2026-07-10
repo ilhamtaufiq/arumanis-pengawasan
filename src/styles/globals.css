@@ -1470,6 +1470,70 @@ button {
   flex-wrap: wrap;
 }
 
+.import-penerima-modal-shell {
+  width: min(920px, 100%);
+  max-height: min(90vh, 900px);
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+}
+
+.import-penerima-body {
+  overflow: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.import-penerima-section {
+  padding: 12px;
+}
+
+.import-penerima-preview {
+  max-height: 280px;
+}
+
+.import-penerima-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.import-penerima-feedback--success {
+  background: #ecfdf5;
+  border-color: #059669;
+  color: #065f46;
+}
+
+.import-penerima-feedback--warning {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #92400e;
+}
+
+.import-penerima-feedback--danger {
+  background: #fef2f2;
+  border-color: #dc2626;
+  color: #991b1b;
+}
+
+.import-penerima-feedback--info {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1e40af;
+}
+
+.import-penerima-progress {
+  margin: 0 auto 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+}
+
 .welcome-modal-backdrop {
   padding: 20px;
 }
