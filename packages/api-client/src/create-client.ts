@@ -1,6 +1,7 @@
 import type {
   ApiEnvelope,
   AuthUser,
+  Berkas,
   ChecklistMatrixResponse,
   DashboardStats,
   Foto,
@@ -436,6 +437,41 @@ export function createApiClient(config: ApiClientConfig) {
       })
 
       return unwrapEntity<KontrakAddendum>(payload)
+    },
+
+    /**
+     * List berkas pekerjaan. Gunakan mine=true agar hanya file upload akun login.
+     */
+    async getBerkasList(params: {
+      pekerjaan_id: number | string
+      mine?: boolean
+      per_page?: number
+      page?: number
+    }) {
+      const search = new URLSearchParams()
+      search.set('pekerjaan_id', String(params.pekerjaan_id))
+      if (params.mine !== false) {
+        search.set('mine', '1')
+      }
+      if (params.per_page != null) {
+        search.set('per_page', String(params.per_page))
+      }
+      if (params.page != null) {
+        search.set('page', String(params.page))
+      }
+
+      const payload = await requestApi<PaginatedResponse<Berkas> | ApiEnvelope<Berkas[]>>(
+        `/berkas?${search.toString()}`,
+      )
+      return unwrapCollection<Berkas>(payload)
+    },
+
+    async createBerkas(input: FormData) {
+      const payload = await requestApi<ApiEnvelope<Berkas>>('/berkas', {
+        method: 'POST',
+        body: input,
+      })
+      return unwrapEntity<Berkas>(payload)
     },
 
     async submitKontrakAddendum(addendumId: number | string) {

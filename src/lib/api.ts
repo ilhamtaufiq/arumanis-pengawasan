@@ -52,6 +52,8 @@ export const {
   getPekerjaanList,
   getPekerjaanDetail,
   getPekerjaanMedia,
+  getBerkasList,
+  createBerkas,
   getPenerimaByPekerjaan,
   createPenerima,
   updatePenerima,

@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, FolderOpen, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { PekerjaanBerkasTab } from '@/components/PekerjaanBerkasTab'
 import { ImportPenerimaDialog } from '@/components/ImportPenerimaDialog'
 import {
   createOutput,
@@ -53,7 +54,7 @@ import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilie
 import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
 
-type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'progress' | 'addendum' | 'tiket'
+type DetailTab = 'ringkasan' | 'output' | 'penerima' | 'foto' | 'berkas' | 'progress' | 'addendum' | 'tiket'
 
 type PenerimaFormState = {
   nama: string
@@ -110,6 +111,7 @@ const DETAIL_TABS: Array<{ id: DetailTab; label: string; icon: ReactNode }> = [
   { id: 'output', label: 'Output', icon: <FileText size={14} /> },
   { id: 'penerima', label: 'Penerima', icon: <FileText size={14} /> },
   { id: 'foto', label: 'Foto', icon: <Camera size={14} /> },
+  { id: 'berkas', label: 'Berkas', icon: <FolderOpen size={14} /> },
   { id: 'progress', label: 'Progress', icon: <RefreshCcw size={14} /> },
   { id: 'addendum', label: 'Addendum', icon: <History size={14} /> },
   { id: 'tiket', label: 'Tiket', icon: <MessageSquareText size={14} /> },
@@ -1806,6 +1808,9 @@ export function PekerjaanDetailPage() {
           </div>
         </div>
       ) : null}
+
+      {/* ─── Tab: Berkas (upload + lihat milik sendiri) ─── */}
+      {activeTab === 'berkas' ? <PekerjaanBerkasTab pekerjaanId={pekerjaanId} /> : null}
 
       {/* ─── Tab: Progress ─── */}
       {activeTab === 'progress' ? (

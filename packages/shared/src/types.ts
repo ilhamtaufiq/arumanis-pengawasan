@@ -25,6 +25,22 @@ export type AuthUser = {
   [key: string]: unknown
 }
 
+/** Dokumen berkas pekerjaan (tbl_berkas) — upload panel pengawas */
+export type Berkas = {
+  id: number
+  pekerjaan_id: number
+  jenis_dokumen: string
+  uploaded_by?: number | null
+  berkas_url?: string | null
+  file_name?: string | null
+  mime_type?: string | null
+  size?: number | null
+  media_id?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+  uploader?: { id: number; name?: string; email?: string } | null
+}
+
 export type PengawasStatistics = {
   total_pengawas: number
   total_lokasi: number
