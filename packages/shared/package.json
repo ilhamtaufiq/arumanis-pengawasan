@@ -8,6 +8,7 @@
     "./types": "./src/types.ts",
     "./format": "./src/format.ts",
     "./foto-status": "./src/foto-status.ts",
+    "./foto-koordinat-status": "./src/foto-koordinat-status.ts",
     "./query-keys": "./src/query-keys.ts",
     "./koordinat": "./src/koordinat.ts",
     "./notifications": "./src/notifications.ts",

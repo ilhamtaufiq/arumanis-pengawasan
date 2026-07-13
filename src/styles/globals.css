@@ -2584,6 +2584,16 @@ button {
   transition: transform 0.1s ease;
 }
 
+.photo-slot--coords-invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.photo-slot--coords-invalid .photo-slot-header {
+  background: #b91c1c;
+  color: #fff;
+}
+
 .photo-matrix-slot:hover {
   transform: translateY(-1px);
 }

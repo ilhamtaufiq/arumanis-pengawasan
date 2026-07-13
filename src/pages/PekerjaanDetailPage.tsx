@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, FolderOpen, History, Link2, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, FolderOpen, History, Link2, MapPin, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import { PekerjaanBerkasTab } from '@/components/PekerjaanBerkasTab'
 import { ImportPenerimaDialog } from '@/components/ImportPenerimaDialog'
 import {
@@ -30,6 +30,10 @@ import { PekerjaanProgressEstimasiTab } from '@/components/PekerjaanProgressEsti
 import { extractCoordinates } from '@/lib/image-gps-utils'
 import { formatKoordinatDisplay, hasParsableKoordinat } from '@/lib/koordinat-utils'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@/lib/foto-status'
+import {
+  isFotoKoordinatInvalid,
+  summarizeFotoKoordinatStatus,
+} from '@/lib/foto-koordinat-status'
 import {
   AnchorButton,
   Badge,
@@ -182,6 +186,7 @@ export function PekerjaanDetailPage() {
   const [selectedFotoIds, setSelectedFotoIds] = useState<number[]>([])
   const [bulkDeletePenerimaOpen, setBulkDeletePenerimaOpen] = useState(false)
   const [bulkDeleteFotoOpen, setBulkDeleteFotoOpen] = useState(false)
+  const [fotoKoordinatFilter, setFotoKoordinatFilter] = useState<'all' | 'invalid'>('all')
   const [importPenerimaOpen, setImportPenerimaOpen] = useState(false)
   const [uploadTarget, setUploadTarget] = useState<UploadTarget | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
@@ -372,6 +377,8 @@ export function PekerjaanDetailPage() {
   const outputList = pekerjaan?.output ?? []
   const tiketList = tiketQuery.data?.data ?? []
   const totalFoto = fotoList.length
+  const fotoKoordinatSummary = useMemo(() => summarizeFotoKoordinatStatus(fotoList), [fotoList])
+  const invalidFotos = useMemo(() => fotoList.filter((f) => isFotoKoordinatInvalid(f)), [fotoList])
   const totalPenerima = penerimaList.length
   const tahunAnggaran = useMemo(() => {
     const fromKegiatan = Number(pekerjaan?.kegiatan?.tahun_anggaran)
@@ -480,6 +487,13 @@ export function PekerjaanDetailPage() {
 
     return matrix
   }, [fotoList, outputList, penerimaList])
+
+  const filteredOutputPhotoMatrix = useMemo(() => {
+    if (fotoKoordinatFilter !== 'invalid') return outputPhotoMatrix
+    return outputPhotoMatrix.filter((entry) =>
+      entry.slots.some((slot) => slot.foto && isFotoKoordinatInvalid(slot.foto)),
+    )
+  }, [outputPhotoMatrix, fotoKoordinatFilter])
 
   const orphanFotos = useMemo(() => {
     const knownOutputIds = new Set(outputList.map((output) => output.id))
@@ -1624,13 +1638,81 @@ export function PekerjaanDetailPage() {
             <StatusChip>Total foto: <strong>{formatNumber(totalFoto)}</strong></StatusChip>
             <StatusChip>Output: <strong>{formatNumber(outputList.length)}</strong></StatusChip>
             <StatusChip>Foto wajib: <strong>{stringValue(pekerjaan.foto_required_count)}</strong></StatusChip>
+            {fotoKoordinatSummary.invalid > 0 ? (
+              <StatusChip>
+                Koordinat invalid:{' '}
+                <strong style={{ color: '#b91c1c' }}>{formatNumber(fotoKoordinatSummary.invalid)}</strong>
+              </StatusChip>
+            ) : null}
           </div>
+
+          {fotoKoordinatSummary.invalid > 0 ? (
+            <div
+              className="neo-surface"
+              style={{
+                padding: 14,
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 12,
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', maxWidth: 640 }}>
+                <MapPin size={18} color="#b91c1c" style={{ marginTop: 2, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontWeight: 800, color: '#7f1d1d' }}>
+                    {fotoKoordinatSummary.invalid} foto koordinat invalid (di luar desa)
+                  </div>
+                  <div style={{ fontSize: 13, color: '#991b1b', marginTop: 4 }}>
+                    Slot berlabel GPS! atau outline merah. Gunakan filter di bawah, buka preview, lalu unggah
+                    ulang dengan koordinat valid.
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9f1239', marginTop: 4 }}>
+                    Valid: {fotoKoordinatSummary.valid} · Tanpa koordinat: {fotoKoordinatSummary.noCoords}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <Button
+                  type="button"
+                  variant={fotoKoordinatFilter === 'invalid' ? 'primary' : 'neutral'}
+                  size="sm"
+                  onClick={() =>
+                    setFotoKoordinatFilter((prev) => (prev === 'invalid' ? 'all' : 'invalid'))
+                  }
+                >
+                  <AlertTriangle size={14} />
+                  <span>
+                    {fotoKoordinatFilter === 'invalid' ? 'Tampilkan semua' : 'Filter hanya invalid'}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openPhotoPreview(invalidFotos, 0)}
+                  disabled={invalidFotos.length === 0}
+                >
+                  <Camera size={14} />
+                  <span>Preview invalid</span>
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="detail-section-full">
             <div className="detail-tab-header">
               <div className="detail-tab-header-left">
                 <h2>Matriks foto</h2>
-                <p>Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%</p>
+                <p>
+                  Setiap output memiliki slot 0% / 25% / 50% / 75% / 100%
+                  {fotoKoordinatFilter === 'invalid'
+                    ? ` · menampilkan ${filteredOutputPhotoMatrix.length} grup dengan GPS invalid`
+                    : ''}
+                </p>
               </div>
               <div className="detail-inline-controls">
                 {selectedFotoIds.length > 0 ? (
@@ -1674,9 +1756,9 @@ export function PekerjaanDetailPage() {
               </div>
             </div>
 
-            {outputPhotoMatrix.length ? (
+            {filteredOutputPhotoMatrix.length ? (
               <PhotoMatrix
-                entries={outputPhotoMatrix.map((entry) => ({
+                entries={filteredOutputPhotoMatrix.map((entry) => ({
                   ...entry,
                   showPenerimaWarning:
                     !entry.penerima && !entry.output.penerima_is_optional && penerimaList.length === 0,
@@ -1704,10 +1786,61 @@ export function PekerjaanDetailPage() {
                 }}
                 onSlotUpload={(output, slot, penerima) => openUploadTarget(output, slot, penerima)}
               />
+            ) : fotoKoordinatFilter === 'invalid' && invalidFotos.length === 0 ? (
+              <EmptyState
+                title="Tidak ada foto invalid"
+                description="Semua foto dengan koordinat lolos validasi desa."
+              />
+            ) : fotoKoordinatFilter === 'invalid' && invalidFotos.length > 0 ? (
+              <div className="foto-fallback-grid">
+                {invalidFotos.map((foto, idx) => (
+                  <div
+                    key={`invalid-foto-${foto.id}-${idx}`}
+                    className="neo-surface foto-card"
+                    style={{ position: 'relative', outline: '2px solid #dc2626' }}
+                  >
+                    <button
+                      type="button"
+                      className="foto-card-media-btn"
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        padding: 0,
+                        border: 0,
+                        background: 'transparent',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => openPhotoPreview(invalidFotos, idx)}
+                    >
+                      <img
+                        src={foto.foto_thumb_url || foto.foto_url || ''}
+                        alt={foto.keterangan || 'Foto invalid'}
+                        className="foto-card-img"
+                      />
+                    </button>
+                    <div className="foto-card-body">
+                      <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
+                      <div className="foto-card-meta">
+                        {foto.komponen?.komponen || stringValue(foto.komponen_id) || 'Komponen'}
+                      </div>
+                      <div className="foto-card-meta" style={{ color: '#b91c1c', fontWeight: 700 }}>
+                        {foto.validasi_koordinat_message || 'Koordinat di luar desa'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : fotoList.length && orphanFotos.length === 0 ? (
               <div className="foto-fallback-grid">
-                {fotoList.map((foto, idx) => (
-                  <div key={`foto-${foto.id}-${idx}`} className="neo-surface foto-card" style={{ position: 'relative' }}>
+                {(fotoKoordinatFilter === 'invalid' ? invalidFotos : fotoList).map((foto, idx) => (
+                  <div
+                    key={`foto-${foto.id}-${idx}`}
+                    className="neo-surface foto-card"
+                    style={{
+                      position: 'relative',
+                      outline: isFotoKoordinatInvalid(foto) ? '2px solid #dc2626' : undefined,
+                    }}
+                  >
                     <label
                       style={{ position: 'absolute', top: 8, left: 8, zIndex: 2 }}
                       onClick={(event) => event.stopPropagation()}
@@ -1743,6 +1876,11 @@ export function PekerjaanDetailPage() {
                     <div className="foto-card-body">
                       <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
                       <div className="foto-card-meta">{formatDateTime(foto.created_at)}</div>
+                      {isFotoKoordinatInvalid(foto) ? (
+                        <div className="foto-card-meta" style={{ color: '#b91c1c', fontWeight: 700 }}>
+                          GPS invalid: {foto.validasi_koordinat_message || 'di luar desa'}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}

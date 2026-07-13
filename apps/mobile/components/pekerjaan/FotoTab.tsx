@@ -18,6 +18,10 @@ import {
 import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
 import { buildFotoMatrix } from '@/lib/pekerjaan-helpers'
+import {
+  isFotoKoordinatInvalid,
+  summarizeFotoKoordinatStatus,
+} from '@pengawas/shared/foto-koordinat-status'
 import { FOTO_MATRIX_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagination'
 import { FotoPreviewModal } from '@/components/pekerjaan/FotoPreviewModal'
 import { FotoUploadQueueBanner } from '@/components/pekerjaan/FotoUploadQueueBanner'
@@ -70,6 +74,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   } | null>(null)
   const [slotActions, setSlotActions] = useState<SlotActions | null>(null)
   const [matrixPage, setMatrixPage] = useState(1)
+  const [coordsFilter, setCoordsFilter] = useState<'all' | 'invalid'>('all')
   /** Progress upload 0–100; null = indeterminate / idle. */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
@@ -77,28 +82,35 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const fotoList = pekerjaan.foto ?? []
   const outputList = pekerjaan.output ?? []
   const penerimaList = pekerjaan.penerima ?? []
+  const coordsSummary = useMemo(() => summarizeFotoKoordinatStatus(fotoList), [fotoList])
   const matrix = useMemo(
     () => buildFotoMatrix(outputList, fotoList, penerimaList),
     [fotoList, outputList, penerimaList],
   )
+  const filteredMatrix = useMemo(() => {
+    if (coordsFilter !== 'invalid') return matrix
+    return matrix.filter((row) =>
+      row.slots.some((s) => s.foto && isFotoKoordinatInvalid(s.foto)),
+    )
+  }, [matrix, coordsFilter])
   const matrixPagination = useMemo(
     () =>
       readPaginationMeta(undefined, {
         page: matrixPage,
         perPage: FOTO_MATRIX_PAGE_SIZE,
-        total: matrix.length,
+        total: filteredMatrix.length,
       }),
-    [matrix.length, matrixPage],
+    [filteredMatrix.length, matrixPage],
   )
   const pagedMatrix = useMemo(
-    () => paginateSlice(matrix, matrixPage, FOTO_MATRIX_PAGE_SIZE),
-    [matrix, matrixPage],
+    () => paginateSlice(filteredMatrix, matrixPage, FOTO_MATRIX_PAGE_SIZE),
+    [filteredMatrix, matrixPage],
   )
   const statusFoto = resolveFotoStatus(pekerjaan)
 
   useEffect(() => {
     setMatrixPage(1)
-  }, [pekerjaanId])
+  }, [pekerjaanId, coordsFilter])
 
   useEffect(() => {
     if (matrixPage > matrixPagination.lastPage) {
@@ -535,9 +547,42 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
       <NeoBadge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</NeoBadge>
 
-      {matrix.length > FOTO_MATRIX_PAGE_SIZE ? (
+      {coordsSummary.invalid > 0 ? (
+        <NeoSurface tone="secondary" style={{ padding: 12, gap: 8, borderColor: '#fecaca', backgroundColor: '#fef2f2' }}>
+          <Text style={{ fontWeight: '800', color: '#7f1d1d' }}>
+            {coordsSummary.invalid} foto GPS invalid (di luar desa)
+          </Text>
+          <Text style={{ fontSize: 12, color: '#991b1b' }}>
+            Slot berbingkai merah. Ketuk foto → ganti dengan koordinat valid.
+          </Text>
+          <Pressable
+            onPress={() => setCoordsFilter((prev) => (prev === 'invalid' ? 'all' : 'invalid'))}
+            style={{
+              alignSelf: 'flex-start',
+              backgroundColor: coordsFilter === 'invalid' ? '#b91c1c' : '#fff',
+              borderWidth: 1,
+              borderColor: '#b91c1c',
+              borderRadius: radius,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+            }}
+          >
+            <Text
+              style={{
+                fontWeight: '800',
+                fontSize: 12,
+                color: coordsFilter === 'invalid' ? '#fff' : '#b91c1c',
+              }}
+            >
+              {coordsFilter === 'invalid' ? 'Tampilkan semua' : 'Filter hanya invalid'}
+            </Text>
+          </Pressable>
+        </NeoSurface>
+      ) : null}
+
+      {filteredMatrix.length > FOTO_MATRIX_PAGE_SIZE ? (
         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-          {matrix.length} grup output · {FOTO_MATRIX_PAGE_SIZE} per halaman
+          {filteredMatrix.length} grup output · {FOTO_MATRIX_PAGE_SIZE} per halaman
         </Text>
       ) : null}
 
@@ -599,7 +644,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
                       width: 96,
                       height: 96,
                       borderWidth: 2,
-                      borderColor: colors.border,
+                      borderColor:
+                        foto && isFotoKoordinatInvalid(foto) ? '#dc2626' : colors.border,
                       borderRadius: radius,
                       backgroundColor: foto ? colors.card : colors.muted,
                       alignItems: 'center',
@@ -618,10 +664,37 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
                     ) : (
                       <Text style={{ fontWeight: '800', fontSize: 13 }}>{isUploading ? '...' : '+'}</Text>
                     )}
+                    {foto && isFotoKoordinatInvalid(foto) ? (
+                      <View
+                        style={{
+                          position: 'absolute',
+                          top: 4,
+                          right: 4,
+                          backgroundColor: '#dc2626',
+                          borderRadius: 4,
+                          paddingHorizontal: 4,
+                          paddingVertical: 2,
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>GPS!</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={{ fontWeight: '700', fontSize: 12, textAlign: 'center' }}>{slot}</Text>
-                  <Text style={{ fontSize: 10, color: colors.mutedForeground, textAlign: 'center' }}>
-                    {foto ? 'Ketuk preview' : 'Ketuk ambil foto'}
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      color:
+                        foto && isFotoKoordinatInvalid(foto) ? '#b91c1c' : colors.mutedForeground,
+                      textAlign: 'center',
+                      fontWeight: foto && isFotoKoordinatInvalid(foto) ? '700' : '400',
+                    }}
+                  >
+                    {foto && isFotoKoordinatInvalid(foto)
+                      ? 'GPS invalid'
+                      : foto
+                        ? 'Ketuk preview'
+                        : 'Ketuk ambil foto'}
                   </Text>
                 </Pressable>
               )

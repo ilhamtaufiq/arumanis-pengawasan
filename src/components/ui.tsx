@@ -254,9 +254,16 @@ export function PhotoSlotCard({
   onClick: () => void
   onUpload: () => void
 }) {
+  const coordsInvalid =
+    Boolean(foto?.koordinat && String(foto.koordinat).trim()) && foto?.validasi_koordinat === false
+
   return (
     <div
-      className={cn('neo-surface photo-slot', selected && 'photo-slot--selected')}
+      className={cn(
+        'neo-surface photo-slot',
+        selected && 'photo-slot--selected',
+        coordsInvalid && 'photo-slot--coords-invalid',
+      )}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -266,7 +273,18 @@ export function PhotoSlotCard({
           onClick()
         }
       }}
-      style={selected ? { outline: '2px solid var(--neo-primary, #2563eb)', outlineOffset: 2 } : undefined}
+      style={
+        selected
+          ? { outline: '2px solid var(--neo-primary, #2563eb)', outlineOffset: 2 }
+          : coordsInvalid
+            ? { outline: '2px solid #dc2626', outlineOffset: 2 }
+            : undefined
+      }
+      title={
+        coordsInvalid
+          ? foto?.validasi_koordinat_message || 'Koordinat di luar desa'
+          : undefined
+      }
     >
       <div className="photo-slot-header">
         <span>{slot}</span>
@@ -281,7 +299,7 @@ export function PhotoSlotCard({
           </label>
         ) : null}
       </div>
-      <div className="photo-slot-body">
+      <div className="photo-slot-body" style={{ position: 'relative' }}>
         {foto ? (
           <img
             src={foto.foto_thumb_url || foto.foto_url || ''}
@@ -293,11 +311,38 @@ export function PhotoSlotCard({
             <Camera size={22} className="photo-slot-empty-icon" />
           </div>
         )}
+        {coordsInvalid ? (
+          <span
+            style={{
+              position: 'absolute',
+              top: 4,
+              right: 4,
+              background: '#dc2626',
+              color: '#fff',
+              fontSize: 9,
+              fontWeight: 800,
+              padding: '2px 4px',
+              borderRadius: 4,
+              lineHeight: 1.1,
+            }}
+          >
+            GPS!
+          </span>
+        ) : null}
       </div>
       <div className="photo-slot-footer">
         <div className="photo-slot-text">
           <div className="photo-slot-label">{foto?.keterangan || `Slot ${slot}`}</div>
-          <div className="photo-slot-hint">{foto ? formatDateTime(foto.created_at) : 'Klik untuk unggah'}</div>
+          <div
+            className="photo-slot-hint"
+            style={coordsInvalid ? { color: '#b91c1c', fontWeight: 600 } : undefined}
+          >
+            {coordsInvalid
+              ? foto?.validasi_koordinat_message || 'Koordinat invalid'
+              : foto
+                ? formatDateTime(foto.created_at)
+                : 'Klik untuk unggah'}
+          </div>
         </div>
         <Button
           type="button"
