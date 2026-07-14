@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  AppState,
   FlatList,
   Platform,
   Pressable,
@@ -254,7 +253,18 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     onError: async (error, variables) => {
       uploadSubmitLockRef.current = false
       setUploadProgress(null)
-      if (shouldQueueAfterFailedUpload(error)) {
+
+      // Hanya antrekan bila benar-benar offline / gagal jaringan awal.
+      // Jangan antrekan timeout/5xx setelah body terkirim — sering sudah tersimpan di server
+      // dan antrean bikin loop upload berulang (lag berat).
+      const status =
+        error && typeof error === 'object' && 'status' in error
+          ? Number((error as { status: unknown }).status)
+          : null
+      const isHardOffline = status === 0
+      const allowQueue = isHardOffline && shouldQueueAfterFailedUpload(error)
+
+      if (allowQueue) {
         try {
           await enqueueFotoUpload({
             pekerjaanId,
@@ -271,7 +281,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           setPendingUpload(null)
           setSourceRequest(null)
           setErrorMessage(
-            'Koneksi tidak stabil. Foto disimpan di perangkat dan akan dikirim otomatis saat online.',
+            'Koneksi terputus. Foto disimpan di perangkat dan akan dikirim saat online (maks. 2 percobaan).',
           )
           return
         } catch (queueError) {
@@ -285,8 +295,17 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           return
         }
       }
+
       setUploadingTarget(null)
-      setErrorMessage(formatApiError(error, 'Gagal mengunggah foto.'))
+      // Biarkan modal tetap terbuka (pendingUpload) agar user bisa coba sekali lagi manual
+      setErrorMessage(
+        formatApiError(
+          error,
+          status === 408
+            ? 'Timeout. Cek daftar foto — bila sudah ada, jangan unggah ulang.'
+            : 'Gagal mengunggah foto.',
+        ),
+      )
     },
   })
 
@@ -529,8 +548,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     if (Platform.OS === 'web') return
     let cancelled = false
     /**
-     * Recovery HANYA untuk kasus process di-kill saat kamera (promise launch hilang).
-     * Jangan dipanggil bila launchCameraAsync masih hidup — itu penyebab upload dobel.
+     * Recovery HANYA cold-start / process kill — bukan setiap AppState active.
+     * AppState + getPendingResultAsync sering double-handle hasil kamera → multi upload.
      */
     const recoverPendingPickerResult = async () => {
       if (pickerLaunchActiveRef.current) return
@@ -542,26 +561,22 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
         const pending = await ImagePicker.getPendingResultAsync()
         const latest = pending.at(-1)
-        if (!latest || !('assets' in latest) || cancelled) return
+        if (!latest || !('assets' in latest) || cancelled) {
+          // Session basi tanpa hasil — bersihkan agar tidak di-recover berulang
+          await clearPendingFotoPickerSession()
+          return
+        }
         handlePickerResult(request, latest, 'recovery')
       } catch {
         // best-effort
       }
     }
-    const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active') {
-        // Tunggu sebentar: biar promise launch selesai dulu bila app hanya pause.
-        setTimeout(() => {
-          if (!cancelled) void recoverPendingPickerResult()
-        }, 1000)
-      }
-    })
+    // Satu kali saat mount tab (bukan listener AppState yang sering fire)
     void recoverPendingPickerResult()
     return () => {
       cancelled = true
-      subscription.remove()
     }
-  }, [pekerjaanId, outputList, penerimaList, handlePickerResult])
+  }, [pekerjaanId, handlePickerResult])
 
   const startUpload = useCallback((target: UploadTarget, replaceFotoId?: number) => {
     setErrorMessage(null)

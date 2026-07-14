@@ -240,12 +240,52 @@ export async function removeQueuedFotoUpload(id: string): Promise<void> {
   }
 }
 
+/** Batas retry antrean — di atas ini item dibuang (cegah loop upload ke server). */
+export const MAX_QUEUE_ATTEMPTS = 2
+
 export async function markQueuedFotoUploadFailed(id: string, errorMessage: string): Promise<void> {
   const db = await getDb()
   await db.runAsync(
     'UPDATE foto_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?',
     [errorMessage, id],
   )
+}
+
+export async function getQueuedFotoUploadAttempts(id: string): Promise<number> {
+  const db = await getDb()
+  const row = await db.getFirstAsync<{ attempts: number }>(
+    'SELECT attempts FROM foto_queue WHERE id = ?',
+    [id],
+  )
+  return row?.attempts ?? 0
+}
+
+/** Item yang masih boleh dicoba (attempts < max). */
+export async function listRetryableQueuedFotoUploads(
+  maxAttempts = MAX_QUEUE_ATTEMPTS,
+): Promise<QueuedFotoUpload[]> {
+  const db = await getDb()
+  const rows = await db.getAllAsync<QueueRow>(
+    'SELECT * FROM foto_queue WHERE attempts < ? ORDER BY created_at ASC',
+    [maxAttempts],
+  )
+  return rows.map(rowToEntry)
+}
+
+/** Buang item yang sudah kelewat max attempts (bersihkan loop). */
+export async function purgeExhaustedQueuedFotoUploads(
+  maxAttempts = MAX_QUEUE_ATTEMPTS,
+): Promise<number> {
+  const db = await getDb()
+  const rows = await db.getAllAsync<Pick<QueueRow, 'id' | 'file_uri'>>(
+    'SELECT id, file_uri FROM foto_queue WHERE attempts >= ?',
+    [maxAttempts],
+  )
+  for (const row of rows) {
+    await db.runAsync('DELETE FROM foto_queue WHERE id = ?', [row.id])
+    if (row.file_uri) await deleteStoredFile(row.file_uri)
+  }
+  return rows.length
 }
 
 export async function buildFotoFormDataFromQueue(entry: QueuedFotoUpload): Promise<FormData> {

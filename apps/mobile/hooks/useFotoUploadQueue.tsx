@@ -4,10 +4,13 @@ import NetInfo from '@react-native-community/netinfo'
 import { assessNetworkConnectivity } from '@/lib/network-context'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import {
-  buildFotoFormDataFromQueue,
   listQueuedFotoUploads,
+  listRetryableQueuedFotoUploads,
   markQueuedFotoUploadFailed,
+  MAX_QUEUE_ATTEMPTS,
+  purgeExhaustedQueuedFotoUploads,
   removeQueuedFotoUpload,
+  buildFotoFormDataFromQueue,
   type QueuedFotoUpload,
 } from '@/lib/foto-upload-queue'
 import { uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
@@ -34,16 +37,21 @@ async function isOnline(): Promise<boolean> {
 function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextValue {
   const queryClient = useQueryClient()
   const processingRef = useRef(false)
+  const lastFlushAtRef = useRef(0)
+  const flushCooldownMs = 8_000
 
   const queueQuery = useQuery({
     queryKey: fotoUploadQueueKey,
-    queryFn: listQueuedFotoUploads,
+    queryFn: async () => {
+      await purgeExhaustedQueuedFotoUploads(MAX_QUEUE_ATTEMPTS)
+      return listQueuedFotoUploads()
+    },
     enabled,
-    // Poll hanya saat ada antrean — hindari timer 15s yang terus jalan di background.
+    // Jangan poll agresif — cuma cek sesekali bila masih ada antrean
     refetchInterval: (query) => {
       if (!enabled) return false
       const count = query.state.data?.length ?? 0
-      return count > 0 ? 15_000 : false
+      return count > 0 ? 45_000 : false
     },
   })
 
@@ -55,9 +63,9 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
     async (entry: QueuedFotoUpload) => {
       try {
         const formData = await buildFotoFormDataFromQueue(entry)
-        // Update existing bila replace — jangan hapus dulu (upload gagal = foto hilang)
+        // Create dari antrean: 1 attempt saja (hindari duplikat di server)
         await uploadFotoWithRetry(formData, {
-          maxAttempts: 2,
+          maxAttempts: 1,
           fotoId: entry.replaceFotoId,
         })
         await removeQueuedFotoUpload(entry.id)
@@ -67,6 +75,11 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Gagal mengunggah foto dari antrean'
         await markQueuedFotoUploadFailed(entry.id, message)
+        const attempts = (entry.attempts ?? 0) + 1
+        if (attempts >= MAX_QUEUE_ATTEMPTS) {
+          // Stop loop: buang item yang terus gagal
+          await removeQueuedFotoUpload(entry.id)
+        }
         throw error
       }
     },
@@ -76,14 +89,21 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
   const flushMutation = useMutation({
     mutationFn: async () => {
       if (!enabled || processingRef.current) return { processed: 0, failed: 0 }
+
+      const now = Date.now()
+      if (now - lastFlushAtRef.current < flushCooldownMs) {
+        return { processed: 0, failed: 0 }
+      }
       if (!(await isOnline())) return { processed: 0, failed: 0 }
 
       processingRef.current = true
+      lastFlushAtRef.current = now
       let processed = 0
       let failed = 0
 
       try {
-        const items = await listQueuedFotoUploads()
+        await purgeExhaustedQueuedFotoUploads(MAX_QUEUE_ATTEMPTS)
+        const items = await listRetryableQueuedFotoUploads(MAX_QUEUE_ATTEMPTS)
 
         for (const entry of items) {
           try {
@@ -97,29 +117,45 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
         return { processed, failed }
       } finally {
         processingRef.current = false
-        await invalidateQueue()
+        // Jangan invalidate di sini bila 0 item — cegah cascade re-render → re-flush
+        if (processed > 0 || failed > 0) {
+          await invalidateQueue()
+        }
       }
     },
   })
 
+  // Stabil: jangan masuk dependency effect lewat object mutation yang berubah tiap render
+  const flushMutateRef = useRef(flushMutation.mutate)
+  flushMutateRef.current = flushMutation.mutate
+
   const flushQueue = useCallback(() => {
-    if (!enabled || flushMutation.isPending) return
-    flushMutation.mutate()
-  }, [enabled, flushMutation])
+    if (!enabled || processingRef.current) return
+    flushMutateRef.current()
+  }, [enabled])
 
   useEffect(() => {
     if (!enabled) return
 
     const unsubscribe = NetInfo.addEventListener((state) => {
-      if (assessNetworkConnectivity(state).hasInternet) flushQueue()
+      if (assessNetworkConnectivity(state).hasInternet) {
+        // Cooldown di dalam mutationFn — aman dipanggil
+        flushQueue()
+      }
     })
 
     return unsubscribe
   }, [enabled, flushQueue])
 
+  // Flush sekali saat antrean baru muncul (length 0 → >0), bukan tiap re-render isPending
+  const prevCountRef = useRef(0)
   useEffect(() => {
     if (!enabled) return
-    if ((queueQuery.data?.length ?? 0) > 0) {
+    const count = queueQuery.data?.length ?? 0
+    const prev = prevCountRef.current
+    prevCountRef.current = count
+    if (count > 0 && count >= prev) {
+      // Hanya flush bila ada item (termasuk item baru)
       void isOnline().then((online) => {
         if (online) flushQueue()
       })

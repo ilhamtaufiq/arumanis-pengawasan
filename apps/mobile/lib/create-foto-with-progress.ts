@@ -57,15 +57,37 @@ export async function createFotoWithProgress(
 
     xhr.onload = () => {
       const status = xhr.status
-      const payload = xhr.response ?? null
+      // RN kadang kasih response string meski responseType=json
+      let payload: unknown = xhr.response ?? null
+      if (typeof payload === 'string' && payload.trim()) {
+        try {
+          payload = JSON.parse(payload)
+        } catch {
+          // biarkan string
+        }
+      }
+      if (payload == null && typeof xhr.responseText === 'string' && xhr.responseText.trim()) {
+        try {
+          payload = JSON.parse(xhr.responseText)
+        } catch {
+          payload = xhr.responseText
+        }
+      }
 
       if (status >= 200 && status < 300) {
         try {
           const foto = unwrapEntity<Foto>(payload)
           onProgress?.({ percent: 100, loaded: 1, total: 1 })
-          resolve(foto)
-        } catch (error) {
-          reject(error instanceof Error ? error : new Error('Respons upload tidak valid'))
+          // Sukses meski body tipis — jangan reject (reject → antrean → upload loop)
+          if (foto && typeof foto === 'object') {
+            resolve(foto)
+            return
+          }
+          resolve({ id: 0, ...(typeof payload === 'object' && payload ? payload : {}) } as Foto)
+        } catch {
+          // HTTP 2xx = server terima file. Anggap sukses agar tidak di-enqueue ulang.
+          onProgress?.({ percent: 100, loaded: 1, total: 1 })
+          resolve({ id: 0 } as Foto)
         }
         return
       }
@@ -77,11 +99,14 @@ export async function createFotoWithProgress(
     }
 
     xhr.onerror = () => {
+      // Hanya error jaringan sejati — status 0
       reject(new ApiError('Jaringan gagal saat mengunggah foto.', 0, null))
     }
 
     xhr.ontimeout = () => {
-      reject(new ApiError('Upload foto timeout. Coba lagi.', 0, null))
+      // Timeout setelah upload panjang: server mungkin sudah simpan.
+      // Jangan treat sebagai retriable create otomatis di layer atas.
+      reject(new ApiError('Upload foto timeout. Cek apakah foto sudah masuk, lalu unggah ulang hanya jika belum.', 408, null))
     }
 
     // 3 menit — foto lapangan bisa besar di jaringan seluler.

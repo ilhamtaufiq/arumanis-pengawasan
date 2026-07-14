@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Image, Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { hasParsableKoordinat, isManualOrEmptyKoordinat } from '@pengawas/shared/koordinat'
@@ -59,6 +59,7 @@ export function FotoUploadModal({
   const [validation, setValidation] = useState<KoordinatValidationUi | null>(null)
   const [isLocating, setIsLocating] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const submitOnceRef = useRef(false)
   const isOnline = useIsOnline()
 
   useEffect(() => {
@@ -68,12 +69,14 @@ export function FotoUploadModal({
       setValidation(null)
       setLocalError(null)
       setIsLocating(false)
+      submitOnceRef.current = false
       return
     }
 
     if (!asset) {
       return
     }
+    submitOnceRef.current = false
 
     let cancelled = false
 
@@ -217,7 +220,7 @@ export function FotoUploadModal({
   }
 
   function handleUpload() {
-    if (isUploading) return
+    if (isUploading || submitOnceRef.current) return
     const trimmed = koordinat.trim()
     if (!hasParsableKoordinat(trimmed)) {
       setLocalError('Koordinat wajib diisi dengan format lat, lng.')
@@ -228,8 +231,21 @@ export function FotoUploadModal({
       return
     }
     setLocalError(null)
+    submitOnceRef.current = true
     onUpload(trimmed)
   }
+
+  // Jika parent upload gagal, izinkan coba lagi manual (sekali per tekan)
+  useEffect(() => {
+    if (!isUploading) {
+      // lepas lock setelah request selesai (sukses tutup modal; gagal boleh ulang)
+      const t = setTimeout(() => {
+        if (!isUploading) submitOnceRef.current = false
+      }, 400)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [isUploading])
 
   if (!target || !asset) {
     return null
