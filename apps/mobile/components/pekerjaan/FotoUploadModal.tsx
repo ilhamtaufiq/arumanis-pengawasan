@@ -217,6 +217,7 @@ export function FotoUploadModal({
   }
 
   function handleUpload() {
+    if (isUploading) return
     const trimmed = koordinat.trim()
     if (!hasParsableKoordinat(trimmed)) {
       setLocalError('Koordinat wajib diisi dengan format lat, lng.')

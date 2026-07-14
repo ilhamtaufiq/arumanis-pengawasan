@@ -155,6 +155,10 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [nav, setNav] = useState<NavLevel>({ kind: 'outputs' })
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
+  /** Cegah handlePickerResult 2x (promise kamera + AppState getPendingResultAsync). */
+  const handledPickerUriRef = useRef<string | null>(null)
+  const pickerLaunchActiveRef = useRef(false)
+  const uploadSubmitLockRef = useRef(false)
 
   const fotoList = pekerjaan.foto ?? []
   const outputList = pekerjaan.output ?? []
@@ -204,14 +208,18 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       await appendFotoFileToFormData(formData, input.asset)
       setUploadProgress(0)
 
+      // Create: 1 attempt (retry create sering bikin duplikat foto di server).
+      // Replace/update: boleh retry singkat.
       return uploadFotoWithRetry(formData, {
         fotoId: input.replaceFotoId,
+        maxAttempts: input.replaceFotoId ? 3 : 1,
         onProgress: (progress) => {
           if (progress.percent != null) setUploadProgress(progress.percent)
         },
       })
     },
     onSuccess: (created, variables) => {
+      uploadSubmitLockRef.current = false
       const localUri = variables.asset.uri
       const nextFoto: Foto = {
         ...created,
@@ -244,6 +252,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       setUploadProgress(null)
     },
     onError: async (error, variables) => {
+      uploadSubmitLockRef.current = false
       setUploadProgress(null)
       if (shouldQueueAfterFailedUpload(error)) {
         try {
@@ -425,14 +434,32 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }, [])
 
   const handlePickerResult = useCallback(
-    (request: SourceRequest, result: ImagePicker.ImagePickerResult) => {
-      pendingPickerRequestRef.current = null
-      void clearPendingFotoPickerSession()
+    (request: SourceRequest, result: ImagePicker.ImagePickerResult, source: 'launch' | 'recovery') => {
       const asset = assetFromResult(result)
       if (!asset) {
-        if (!result.canceled) setErrorMessage('Tidak ada foto yang dipilih.')
+        if (!result.canceled && source === 'launch') {
+          setErrorMessage('Tidak ada foto yang dipilih.')
+        }
+        pendingPickerRequestRef.current = null
+        void clearPendingFotoPickerSession()
         return
       }
+
+      // Dedup: kamera Android sering resolve promise + pending-result recovery dengan URI sama.
+      if (handledPickerUriRef.current && handledPickerUriRef.current === asset.uri) {
+        pendingPickerRequestRef.current = null
+        void clearPendingFotoPickerSession()
+        return
+      }
+      // Saat launch masih aktif, recovery AppState jangan ikut buka modal kedua.
+      if (source === 'recovery' && pickerLaunchActiveRef.current) {
+        return
+      }
+
+      handledPickerUriRef.current = asset.uri
+      pendingPickerRequestRef.current = null
+      void clearPendingFotoPickerSession()
+
       const unsupported = getUnsupportedFotoFormatReason(asset)
       if (unsupported) {
         setErrorMessage(unsupported)
@@ -445,6 +472,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   async function handlePickerFailure(message: string) {
     pendingPickerRequestRef.current = null
+    pickerLaunchActiveRef.current = false
     await clearPendingFotoPickerSession()
     setErrorMessage(message)
   }
@@ -455,14 +483,21 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     failLabel: string,
   ) {
     pendingPickerRequestRef.current = request
+    pickerLaunchActiveRef.current = true
+    handledPickerUriRef.current = null
     setSourceRequest(null)
     setErrorMessage(null)
     try {
       await savePendingFotoPickerSession(requestToSession(request))
       const result = await launch()
-      handlePickerResult(request, result)
+      handlePickerResult(request, result, 'launch')
     } catch (error) {
       await handlePickerFailure(error instanceof Error ? error.message : failLabel)
+    } finally {
+      // Delay lepas flag agar AppState 'active' segera setelah kamera tidak race.
+      setTimeout(() => {
+        pickerLaunchActiveRef.current = false
+      }, 800)
     }
   }
 
@@ -493,28 +528,33 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   useEffect(() => {
     if (Platform.OS === 'web') return
     let cancelled = false
+    /**
+     * Recovery HANYA untuk kasus process di-kill saat kamera (promise launch hilang).
+     * Jangan dipanggil bila launchCameraAsync masih hidup — itu penyebab upload dobel.
+     */
     const recoverPendingPickerResult = async () => {
+      if (pickerLaunchActiveRef.current) return
       try {
-        let request = pendingPickerRequestRef.current
-        if (!request) {
-          const session = await readPendingFotoPickerSession(pekerjaanId)
-          if (session) {
-            request = resolveRequestFromSession(session)
-            if (!request) return
-            pendingPickerRequestRef.current = request
-          }
-        }
-        if (!request || cancelled) return
+        const session = await readPendingFotoPickerSession(pekerjaanId)
+        if (!session || cancelled) return
+        const request = resolveRequestFromSession(session)
+        if (!request) return
+
         const pending = await ImagePicker.getPendingResultAsync()
         const latest = pending.at(-1)
         if (!latest || !('assets' in latest) || cancelled) return
-        handlePickerResult(request, latest)
+        handlePickerResult(request, latest, 'recovery')
       } catch {
         // best-effort
       }
     }
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active') void recoverPendingPickerResult()
+      if (next === 'active') {
+        // Tunggu sebentar: biar promise launch selesai dulu bila app hanya pause.
+        setTimeout(() => {
+          if (!cancelled) void recoverPendingPickerResult()
+        }, 1000)
+      }
     })
     void recoverPendingPickerResult()
     return () => {
@@ -545,6 +585,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   function submitUpload(koordinat: string) {
     if (!pendingUpload) return
+    if (uploadMutation.isPending || uploadSubmitLockRef.current) return
+    uploadSubmitLockRef.current = true
     uploadMutation.mutate({
       target: pendingUpload.target,
       asset: pendingUpload.asset,

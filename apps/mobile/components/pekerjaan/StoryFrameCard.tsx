@@ -1,7 +1,10 @@
 import { forwardRef } from 'react'
 import { Image, Text, View } from 'react-native'
-import type { StoryShareMeta } from '@/lib/story-share'
-import { STORY_PREVIEW_HEIGHT, STORY_PREVIEW_WIDTH } from '@/lib/story-share'
+import {
+  STORY_PREVIEW_HEIGHT,
+  STORY_PREVIEW_WIDTH,
+  type StoryShareMeta,
+} from '@/lib/story-share-meta'
 import { colors, radius } from '@/theme/tokens'
 
 type StoryFrameCardProps = {

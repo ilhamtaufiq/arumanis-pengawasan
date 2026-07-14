@@ -8,9 +8,9 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import { captureRef } from 'react-native-view-shot'
 import type { Foto } from '@pengawas/shared'
 import {
+  buildStoryCaption,
   buildStoryShareMeta,
   shareStoryImage,
   STORY_PREVIEW_WIDTH,
@@ -27,11 +27,42 @@ type StoryShareModalProps = {
   onClose: () => void
 }
 
+async function tryCaptureFrame(view: View | null): Promise<string | null> {
+  if (!view) return null
+  try {
+    // Lazy require — APK tanpa react-native-view-shot tetap bisa share foto asli.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('react-native-view-shot') as {
+      captureRef?: (
+        target: View,
+        options: {
+          format: string
+          quality: number
+          result: string
+          width: number
+          height: number
+        },
+      ) => Promise<string>
+    }
+    if (typeof mod.captureRef !== 'function') return null
+    return await mod.captureRef(view, {
+      format: 'png',
+      quality: 1,
+      result: 'tmpfile',
+      width: 1080,
+      height: 1920,
+    })
+  } catch {
+    return null
+  }
+}
+
 export function StoryShareModal({ visible, foto, context, onClose }: StoryShareModalProps) {
   const frameRef = useRef<View>(null)
   const { height } = useWindowDimensions()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [modeHint, setModeHint] = useState<string | null>(null)
 
   const imageUri = foto?.foto_url || foto?.foto_thumb_url || ''
   const meta = useMemo(() => {
@@ -40,26 +71,29 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
   }, [foto, context])
 
   const handleShare = useCallback(async () => {
-    if (!frameRef.current || !meta) return
+    if (!meta || !imageUri) return
+    if (busy) return
     setBusy(true)
     setError(null)
+    setModeHint(null)
     try {
-      // pixelRatio ~3 → mendekati 1080px lebar dari preview 320
-      const uri = await captureRef(frameRef, {
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
-        // 1080/320 ≈ 3.375 — biarkan native scale
-        width: 1080,
-        height: 1920,
-      })
-      await shareStoryImage(uri, `${meta.title} · ${meta.slotLine}`)
+      const caption = buildStoryCaption(meta)
+      const framed = await tryCaptureFrame(frameRef.current)
+      if (framed) {
+        setModeHint('Bingkai story 1080×1920')
+        await shareStoryImage(framed, caption)
+      } else {
+        // Fallback OTA-safe: bagikan foto dokumentasi + caption (tanpa view-shot)
+        setModeHint('Foto + caption (bingkai native belum terpasang di APK ini)')
+        await shareStoryImage(imageUri, caption)
+      }
+      onClose()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal membuat atau membagikan story.')
     } finally {
       setBusy(false)
     }
-  }, [meta])
+  }, [busy, imageUri, meta, onClose])
 
   if (!foto || !meta) return null
 
@@ -92,7 +126,8 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
               Instagram / WhatsApp
             </Text>
             <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-              Bingkai neobrutalism + info pekerjaan. Pilih Instagram Stories atau Status WhatsApp di menu bagikan.
+              Pratinjau bingkai di bawah. Jika perangkat mendukung, dibagikan sebagai story 1080×1920;
+              jika tidak, foto + caption tetap bisa dibagikan.
             </Text>
           </View>
 
@@ -111,6 +146,12 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
             >
               <StoryFrameCard ref={frameRef} imageUri={imageUri} meta={meta} width={STORY_PREVIEW_WIDTH} />
             </View>
+
+            {modeHint ? (
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground, textAlign: 'center' }}>
+                {modeHint}
+              </Text>
+            ) : null}
 
             {error ? (
               <View
@@ -141,7 +182,7 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
           {busy ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <ActivityIndicator color={colors.foreground} />
-              <Text style={{ fontWeight: '700', fontSize: 12 }}>Render bingkai 1080×1920…</Text>
+              <Text style={{ fontWeight: '700', fontSize: 12 }}>Menyiapkan berbagi…</Text>
             </View>
           ) : null}
         </NeoSurface>
