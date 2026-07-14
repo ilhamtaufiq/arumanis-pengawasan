@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -12,11 +13,10 @@ import type { Foto } from '@pengawas/shared'
 import {
   buildStoryCaption,
   buildStoryShareMeta,
-  shareStoryImage,
-  STORY_PREVIEW_WIDTH,
+  copyStoryCaption,
+  shareStoryImageFile,
   type StoryShareContext,
 } from '@/lib/story-share'
-import { StoryFrameCard } from '@/components/pekerjaan/StoryFrameCard'
 import { NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius } from '@/theme/tokens'
 
@@ -27,42 +27,15 @@ type StoryShareModalProps = {
   onClose: () => void
 }
 
-async function tryCaptureFrame(view: View | null): Promise<string | null> {
-  if (!view) return null
-  try {
-    // Lazy require — APK tanpa react-native-view-shot tetap bisa share foto asli.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('react-native-view-shot') as {
-      captureRef?: (
-        target: View,
-        options: {
-          format: string
-          quality: number
-          result: string
-          width: number
-          height: number
-        },
-      ) => Promise<string>
-    }
-    if (typeof mod.captureRef !== 'function') return null
-    return await mod.captureRef(view, {
-      format: 'png',
-      quality: 1,
-      result: 'tmpfile',
-      width: 1080,
-      height: 1920,
-    })
-  } catch {
-    return null
-  }
-}
-
+/**
+ * Bagikan FOTO (file) ke Instagram Story / WhatsApp Status.
+ * Caption ditampilkan + bisa disalin — tidak mengirim link/URL publik.
+ */
 export function StoryShareModal({ visible, foto, context, onClose }: StoryShareModalProps) {
-  const frameRef = useRef<View>(null)
   const { height } = useWindowDimensions()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [modeHint, setModeHint] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   const imageUri = foto?.foto_url || foto?.foto_thumb_url || ''
   const meta = useMemo(() => {
@@ -70,30 +43,33 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
     return buildStoryShareMeta(foto, context)
   }, [foto, context])
 
-  const handleShare = useCallback(async () => {
-    if (!meta || !imageUri) return
-    if (busy) return
+  const caption = useMemo(() => (meta ? buildStoryCaption(meta) : ''), [meta])
+
+  const handleCopyCaption = useCallback(async () => {
+    if (!caption) return
+    setError(null)
+    try {
+      await copyStoryCaption(caption)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menyalin caption.')
+    }
+  }, [caption])
+
+  const handleSharePhoto = useCallback(async () => {
+    if (!imageUri || busy) return
     setBusy(true)
     setError(null)
-    setModeHint(null)
     try {
-      const caption = buildStoryCaption(meta)
-      const framed = await tryCaptureFrame(frameRef.current)
-      if (framed) {
-        setModeHint('Bingkai story 1080×1920')
-        await shareStoryImage(framed, caption)
-      } else {
-        // Fallback OTA-safe: bagikan foto dokumentasi + caption (tanpa view-shot)
-        setModeHint('Foto + caption (bingkai native belum terpasang di APK ini)')
-        await shareStoryImage(imageUri, caption)
-      }
-      onClose()
+      // Share file lokal saja (URL remote di-download dulu di ensureLocalImageFile)
+      await shareStoryImageFile(imageUri)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal membuat atau membagikan story.')
+      setError(e instanceof Error ? e.message : 'Gagal membagikan foto.')
     } finally {
       setBusy(false)
     }
-  }, [busy, imageUri, meta, onClose])
+  }, [busy, imageUri])
 
   if (!foto || !meta) return null
 
@@ -114,77 +90,130 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
             borderBottomRightRadius: 0,
             borderBottomWidth: 0,
             maxHeight: height * 0.92,
-            gap: 12,
             paddingBottom: 20,
           }}
         >
-          <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.mutedForeground }}>
-              SHARE STORY · 9:16
-            </Text>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground }}>
-              Instagram / WhatsApp
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-              Pratinjau bingkai di bawah. Jika perangkat mendukung, dibagikan sebagai story 1080×1920;
-              jika tidak, foto + caption tetap bisa dibagikan.
-            </Text>
-          </View>
-
           <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ alignItems: 'center', paddingVertical: 8, gap: 12 }}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ paddingBottom: 8 }}
           >
+            <View style={{ marginBottom: 12 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  letterSpacing: 1,
+                  color: colors.mutedForeground,
+                  marginBottom: 4,
+                }}
+              >
+                BAGIKAN FOTO
+              </Text>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground, marginBottom: 6 }}>
+                Instagram Story / WhatsApp Status
+              </Text>
+              <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
+                Membagikan file foto (bukan link). Pilih Instagram atau WhatsApp di menu berbagi.
+                Caption disalin terpisah, lalu tempel di story bila perlu.
+              </Text>
+            </View>
+
+            {imageUri ? (
+              <View
+                style={{
+                  width: '100%',
+                  height: Math.min(height * 0.32, 280),
+                  borderWidth: 2,
+                  borderColor: colors.border,
+                  borderRadius: radius,
+                  overflow: 'hidden',
+                  backgroundColor: colors.muted,
+                  marginBottom: 12,
+                }}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : null}
+
             <View
               style={{
                 borderWidth: 2,
                 borderColor: colors.border,
                 borderRadius: radius,
-                overflow: 'hidden',
-                backgroundColor: colors.muted,
+                backgroundColor: colors.card,
+                padding: 12,
+                marginBottom: 12,
               }}
             >
-              <StoryFrameCard ref={frameRef} imageUri={imageUri} meta={meta} width={STORY_PREVIEW_WIDTH} />
-            </View>
-
-            {modeHint ? (
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground, textAlign: 'center' }}>
-                {modeHint}
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: colors.mutedForeground,
+                  marginBottom: 6,
+                  letterSpacing: 0.5,
+                }}
+              >
+                CAPTION (salin, bukan link)
               </Text>
-            ) : null}
+              <Text
+                selectable
+                style={{ fontSize: 13, lineHeight: 19, color: colors.foreground, fontWeight: '600' }}
+              >
+                {caption || '-'}
+              </Text>
+            </View>
 
             {error ? (
               <View
                 style={{
-                  width: '100%',
                   backgroundColor: '#fef2f2',
                   borderWidth: 2,
                   borderColor: '#dc2626',
                   borderRadius: radius,
                   padding: 10,
+                  marginBottom: 12,
                 }}
               >
                 <Text style={{ fontWeight: '700', color: '#7f1d1d', fontSize: 13 }}>{error}</Text>
               </View>
             ) : null}
-          </ScrollView>
 
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            <NeoButton
-              label={busy ? 'Menyiapkan…' : 'Bagikan Story'}
-              variant="primary"
-              onPress={() => void handleShare()}
-              disabled={busy || !imageUri}
-            />
-            <NeoButton label="Batal" variant="ghost" onPress={onClose} disabled={busy} />
-          </View>
-
-          {busy ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <ActivityIndicator color={colors.foreground} />
-              <Text style={{ fontWeight: '700', fontSize: 12 }}>Menyiapkan berbagi…</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              <NeoButton
+                label={copied ? 'Caption disalin ✓' : 'Salin caption'}
+                variant="secondary"
+                onPress={() => void handleCopyCaption()}
+                disabled={busy || !caption}
+              />
+              <NeoButton
+                label={busy ? 'Menyiapkan foto…' : 'Bagikan foto'}
+                variant="primary"
+                onPress={() => void handleSharePhoto()}
+                disabled={busy || !imageUri}
+              />
+              <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={busy} />
             </View>
-          ) : null}
+
+            {busy ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator color={colors.foreground} />
+                <Text style={{ fontWeight: '700', fontSize: 12 }}>
+                  Menyiapkan file foto (bukan URL)…
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 15 }}>
+                Tips: ketuk Salin caption → Bagikan foto → pilih Instagram/WhatsApp → tempel caption di
+                story.
+              </Text>
+            )}
+          </ScrollView>
         </NeoSurface>
       </View>
     </Modal>
