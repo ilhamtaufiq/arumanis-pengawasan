@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { router } from 'expo-router'
 import { ApiError } from '@pengawas/api-client'
-import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatCurrency, formatDate, formatPercent } from '@pengawas/shared/format'
-import { getPekerjaanList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import { readPaginationMeta } from '@/lib/pagination'
+import {
+  PEKERJAAN_LIST_PER_PAGE,
+  useServerPekerjaanList,
+} from '@/hooks/useServerPekerjaanList'
 import {
   isElevatedUser,
   pekerjaanScopeDescription,
@@ -17,97 +16,23 @@ import {
 import { EmptyState, NeoBadge, NeoInput, NeoSurface, SectionHeader, Spinner } from '@/components/ui'
 import { colors, radius } from '@/theme/tokens'
 
-/** 5 pekerjaan per halaman (server-side). */
-const PER_PAGE = 5
-const SEARCH_DEBOUNCE_MS = 400
-
+/**
+ * Tab Pekerjaan — 100% server-side.
+ * Admin & pengawas: max 5 baris/halaman. Search memfilter seluruh dataset di API
+ * (bukan hanya halaman yang sedang dibuka).
+ */
 export default function PekerjaanScreen() {
   const listRef = useRef<FlatList>(null)
-  const [search, setSearch] = useState('')
-  const [tahun, setTahun] = useState('')
-  const [page, setPage] = useState(1)
-  const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS)
-  const debouncedTahun = useDebouncedValue(tahun.trim(), SEARCH_DEBOUNCE_MS)
   const { canFetch, user } = useAuth()
   const elevated = isElevatedUser(user)
 
-  const searchPending = search.trim() !== debouncedSearch || tahun.trim() !== debouncedTahun
-
-  // Reset ke halaman 1 saat filter debounced berubah
-  useEffect(() => {
-    setPage(1)
-  }, [debouncedSearch, debouncedTahun])
-
-  const listFilters = useMemo(
-    () => ({
-      search: debouncedSearch || undefined,
-      tahun: debouncedTahun || undefined,
-      page,
-      per_page: PER_PAGE,
-    }),
-    [debouncedSearch, debouncedTahun, page],
-  )
-
-  const pekerjaanQuery = useQuery({
-    queryKey: queryKeys.pekerjaan.list(listFilters),
-    queryFn: () =>
-      getPekerjaanList({
-        per_page: PER_PAGE,
-        page,
-        search: debouncedSearch || undefined,
-        tahun: debouncedTahun || undefined,
-        sort_by: 'created_at',
-        sort_direction: 'desc',
-      }),
+  const list = useServerPekerjaanList({
     enabled: canFetch,
-    retry: 1,
-    networkMode: 'offlineFirst',
-    placeholderData: keepPreviousData,
-    staleTime: 20_000,
+    perPage: PEKERJAAN_LIST_PER_PAGE,
+    keepPagePlaceholder: true,
   })
 
-  const items = pekerjaanQuery.data?.data ?? []
-  const pagination = readPaginationMeta(
-    pekerjaanQuery.data?.meta as Record<string, unknown> | undefined,
-    {
-      page,
-      perPage: PER_PAGE,
-      // Jangan pakai items.length sebagai total — itu cuma 1 halaman.
-      total: Number(
-        (pekerjaanQuery.data?.meta as Record<string, unknown> | undefined)?.total ?? 0,
-      ),
-    },
-  )
-
-  // Paksa perPage UI = PER_PAGE bila meta kosong / salah
-  const perPage = pagination.perPage > 0 ? pagination.perPage : PER_PAGE
-  const currentPage = Math.max(1, pagination.currentPage || page)
-  const total = Math.max(0, pagination.total)
-  const lastPage = Math.max(
-    1,
-    pagination.lastPage || (total > 0 ? Math.ceil(total / perPage) : 1),
-  )
-  const from = total === 0 ? 0 : (currentPage - 1) * perPage + 1
-  const to = Math.min(currentPage * perPage, total)
-  const error = pekerjaanQuery.error instanceof ApiError ? pekerjaanQuery.error : null
-  const isPageLoading = pekerjaanQuery.isFetching && !pekerjaanQuery.isPending
-  const showPager = total > perPage || lastPage > 1
-
-  const goToPage = useCallback(
-    (next: number) => {
-      const clamped = Math.max(1, Math.min(lastPage, next))
-      if (clamped === page) return
-      setPage(clamped)
-      listRef.current?.scrollToOffset({ offset: 0, animated: true })
-    },
-    [lastPage, page],
-  )
-
-  const clearFilters = useCallback(() => {
-    setSearch('')
-    setTahun('')
-    setPage(1)
-  }, [])
+  const error = list.query.error instanceof ApiError ? list.query.error : null
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -125,17 +50,18 @@ export default function PekerjaanScreen() {
           }}
         >
           <NeoBadge tone={elevated ? 'info' : 'success'}>{primaryRoleLabel(user)}</NeoBadge>
-          {total > 0 ? (
+          <NeoBadge tone="neutral">{`${list.perPage}/halaman · server`}</NeoBadge>
+          {list.total > 0 ? (
             <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-              {from}–{to} dari {total}
+              {list.from}–{list.to} dari {list.total}
             </Text>
           ) : null}
-          {searchPending || isPageLoading ? (
+          {list.searchPending || list.isPageLoading ? (
             <ActivityIndicator size="small" color={colors.foreground} />
           ) : null}
-          {searchPending ? (
+          {list.searchPending ? (
             <Text style={{ fontSize: 11, fontWeight: '700', color: colors.mutedForeground }}>
-              Mencari…
+              Mencari di server…
             </Text>
           ) : null}
         </View>
@@ -143,9 +69,9 @@ export default function PekerjaanScreen() {
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <NeoInput
-              placeholder="Cari paket / desa / kecamatan"
-              value={search}
-              onChangeText={setSearch}
+              placeholder="Cari semua paket (bukan hanya halaman ini)"
+              value={list.search}
+              onChangeText={list.setSearch}
               autoCorrect={false}
               autoCapitalize="none"
               returnKeyType="search"
@@ -155,30 +81,34 @@ export default function PekerjaanScreen() {
           <View style={{ width: 88 }}>
             <NeoInput
               placeholder="Tahun"
-              value={tahun}
-              onChangeText={(text) => setTahun(text.replace(/[^\d]/g, '').slice(0, 4))}
+              value={list.tahun}
+              onChangeText={(text) => list.setTahun(text.replace(/[^\d]/g, '').slice(0, 4))}
               keyboardType="number-pad"
               returnKeyType="done"
             />
           </View>
         </View>
 
-        {search.trim() || tahun.trim() ? (
-          <Pressable onPress={clearFilters} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
+        {list.search.trim() || list.tahun.trim() ? (
+          <Pressable onPress={list.clearFilters} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
             <Text style={{ fontSize: 12, fontWeight: '800', color: colors.foreground }}>
               Hapus filter
             </Text>
           </Pressable>
-        ) : null}
+        ) : (
+          <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 4, lineHeight: 15 }}>
+            Search dijalankan di server untuk seluruh data (meski Anda di halaman 1).
+          </Text>
+        )}
       </View>
 
-      {pekerjaanQuery.isPending && !pekerjaanQuery.data ? (
+      {list.query.isPending && !list.query.data ? (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Spinner label="Memuat pekerjaan…" />
         </View>
       ) : null}
 
-      {error && !pekerjaanQuery.data ? (
+      {error && !list.query.data ? (
         <View style={{ flex: 1, padding: 16 }}>
           <EmptyState
             title={
@@ -190,33 +120,42 @@ export default function PekerjaanScreen() {
             }
             description={error.message}
             actionLabel="Coba lagi"
-            onAction={() => void pekerjaanQuery.refetch()}
+            onAction={() => void list.query.refetch()}
           />
         </View>
       ) : null}
 
-      {pekerjaanQuery.data || (!pekerjaanQuery.isPending && !error) ? (
+      {list.query.data || (!list.query.isPending && !error) ? (
         <FlatList
           ref={listRef}
           style={{ flex: 1, minHeight: 120 }}
-          data={items}
+          data={list.items}
           keyExtractor={(item) => String(item.id)}
+          extraData={`${list.filterKey}:${list.page}`}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 12, flexGrow: 1 }}
           ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           ListEmptyComponent={
-            !pekerjaanQuery.isPending && !error ? (
+            !list.query.isPending && !list.searchPending && !error ? (
               <EmptyState
-                title={debouncedSearch || debouncedTahun ? 'Tidak ada hasil' : 'Belum ada pekerjaan'}
+                title={
+                  list.debouncedSearch || list.debouncedTahun
+                    ? 'Tidak ada hasil di server'
+                    : 'Belum ada pekerjaan'
+                }
                 description={
-                  debouncedSearch || debouncedTahun
-                    ? 'Coba kata kunci atau tahun lain.'
+                  list.debouncedSearch || list.debouncedTahun
+                    ? 'Kata kunci tidak cocok dengan paket / desa / kecamatan manapun.'
                     : elevated
-                      ? 'Tidak ada data untuk filter ini.'
+                      ? 'Tidak ada data pekerjaan.'
                       : 'Tidak ada pekerjaan yang ditugaskan ke akun Anda.'
                 }
               />
+            ) : list.searchPending ? (
+              <View style={{ padding: 24 }}>
+                <Spinner label="Mencari di server…" />
+              </View>
             ) : null
           }
           renderItem={({ item }) => (
@@ -250,8 +189,7 @@ export default function PekerjaanScreen() {
         />
       ) : null}
 
-      {/* Pager tetap di bawah layar — 5 item/halaman */}
-      {showPager ? (
+      {list.showPager ? (
         <View
           style={{
             borderTopWidth: 2,
@@ -271,16 +209,19 @@ export default function PekerjaanScreen() {
               marginBottom: 8,
             }}
           >
-            Halaman {currentPage} / {lastPage}
-            {total > 0 ? ` · ${total} paket · ${perPage}/halaman` : ''}
+            Halaman {list.currentPage} / {list.lastPage}
+            {list.total > 0 ? ` · ${list.total} paket · ${list.perPage}/halaman` : ''}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
-              disabled={currentPage <= 1 || isPageLoading || searchPending}
-              onPress={() => goToPage(currentPage - 1)}
+              disabled={list.currentPage <= 1 || list.isPageLoading || list.searchPending}
+              onPress={() => {
+                list.goToPage(list.currentPage - 1)
+                listRef.current?.scrollToOffset({ offset: 0, animated: true })
+              }}
               style={{
                 flex: 1,
-                opacity: currentPage <= 1 || isPageLoading || searchPending ? 0.45 : 1,
+                opacity: list.currentPage <= 1 || list.isPageLoading || list.searchPending ? 0.45 : 1,
                 borderWidth: 2,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
@@ -292,11 +233,17 @@ export default function PekerjaanScreen() {
               <Text style={{ fontWeight: '800' }}>Sebelumnya</Text>
             </Pressable>
             <Pressable
-              disabled={currentPage >= lastPage || isPageLoading || searchPending}
-              onPress={() => goToPage(currentPage + 1)}
+              disabled={list.currentPage >= list.lastPage || list.isPageLoading || list.searchPending}
+              onPress={() => {
+                list.goToPage(list.currentPage + 1)
+                listRef.current?.scrollToOffset({ offset: 0, animated: true })
+              }}
               style={{
                 flex: 1,
-                opacity: currentPage >= lastPage || isPageLoading || searchPending ? 0.45 : 1,
+                opacity:
+                  list.currentPage >= list.lastPage || list.isPageLoading || list.searchPending
+                    ? 0.45
+                    : 1,
                 borderWidth: 2,
                 borderColor: colors.border,
                 backgroundColor: colors.main,
@@ -309,10 +256,17 @@ export default function PekerjaanScreen() {
             </Pressable>
           </View>
         </View>
-      ) : total > 0 ? (
+      ) : list.total > 0 ? (
         <View style={{ paddingHorizontal: 16, paddingBottom: 12, paddingTop: 4 }}>
-          <Text style={{ textAlign: 'center', fontSize: 12, color: colors.mutedForeground, fontWeight: '600' }}>
-            {total} paket (semua di 1 halaman)
+          <Text
+            style={{
+              textAlign: 'center',
+              fontSize: 12,
+              color: colors.mutedForeground,
+              fontWeight: '600',
+            }}
+          >
+            {list.total} paket (1 halaman)
           </Text>
         </View>
       ) : null}

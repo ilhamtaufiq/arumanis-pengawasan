@@ -1,4 +1,3 @@
-import { useMemo, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import { useQuery } from '@tanstack/react-query'
 import { router } from 'expo-router'
@@ -25,9 +24,10 @@ import {
   Spinner,
 } from '@/components/ui'
 import { colors } from '@/theme/tokens'
+import { useState } from 'react'
 
-/** Jangan pernah tarik semua paket di dashboard (admin 400+ = lag/OOM). */
-const ATTENTION_LIMIT = 12
+/** Dashboard: satu request kecil. Total & search = meta server. */
+const DASHBOARD_PAGE_SIZE = 8
 const SEARCH_DEBOUNCE_MS = 400
 
 export default function DashboardScreen() {
@@ -42,76 +42,48 @@ export default function DashboardScreen() {
     search.trim() !== debouncedSearch || tahun.trim() !== debouncedTahun
 
   /**
-   * Dashboard ringan:
-   * 1) total dari meta.paginasi (per_page=1)
-   * 2) daftar "perhatian" kecil tanpa summary/foto payload
-   * Admin tidak memuat seluruh pekerjaan.
+   * Admin TIDAK load semua pekerjaan.
+   * - page selalu 1, per_page kecil
+   * - search/tahun dikirim ke API (filter seluruh DB lalu paginate)
+   * - total dari meta.total (hasil filter server), bukan length array lokal
    */
   const dashboardQuery = useQuery({
     queryKey: queryKeys.pekerjaan.list({
-      scope: elevated ? 'dashboard-light' : 'dashboard-assigned',
+      mode: 'dashboard-server',
       search: debouncedSearch || undefined,
       tahun: debouncedTahun || undefined,
-      mode: 'dashboard-v2',
+      page: 1,
+      per_page: DASHBOARD_PAGE_SIZE,
     }),
     queryFn: async () => {
-      const filter = {
+      const res = await getPekerjaanList({
         search: debouncedSearch || undefined,
         tahun: debouncedTahun || undefined,
-        sort_by: 'updated_at' as const,
-        sort_direction: 'desc' as const,
-      }
-
-      const [countRes, listRes] = await Promise.all([
-        getPekerjaanList({
-          ...filter,
-          per_page: 1,
-          page: 1,
-        }),
-        getPekerjaanList({
-          ...filter,
-          // Tanpa summary — cukup list ringkas
-          per_page: ATTENTION_LIMIT,
-          page: 1,
-        }),
-      ])
-
-      const meta = countRes.meta as Record<string, unknown> | undefined
-      const total = Number(meta?.total ?? listRes.data?.length ?? 0)
-      const items = listRes.data ?? []
-
-      // Metrik dari sampel halaman (admin: sampel 12 terbaru; pengawas: biasanya semua assign)
-      const belumProgress = items.filter((item) => Number(item.progress_estimasi_fisik ?? 0) <= 0).length
-      const fotoBelum = items.filter((item) => resolveFotoStatus(item) !== 'selesai').length
-      const perhatian = items
-        .filter(
-          (item) =>
-            Number(item.progress_estimasi_fisik ?? 0) <= 0 || resolveFotoStatus(item) !== 'selesai',
-        )
-        .slice(0, elevated ? 12 : 8)
+        page: 1,
+        per_page: DASHBOARD_PAGE_SIZE,
+        sort_by: 'updated_at',
+        sort_direction: 'desc',
+      })
+      const items = res.data ?? []
+      const meta = res.meta as Record<string, unknown> | undefined
+      const total = Number(meta?.total ?? items.length)
 
       return {
         total: Number.isFinite(total) ? total : items.length,
-        sampleSize: items.length,
-        belumProgress,
-        fotoBelum,
-        perhatian,
         items,
+        belumProgress: items.filter((item) => Number(item.progress_estimasi_fisik ?? 0) <= 0).length,
+        fotoBelum: items.filter((item) => resolveFotoStatus(item) !== 'selesai').length,
       }
     },
     enabled: canFetch,
     retry: 1,
-    staleTime: 45_000,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   })
 
   const data = dashboardQuery.data
   const error = dashboardQuery.error instanceof ApiError ? dashboardQuery.error : null
-
-  const metricsHint = useMemo(() => {
-    if (!elevated || !data) return null
-    if (data.total <= ATTENTION_LIMIT) return null
-    return `Metrik "belum progress/foto" dihitung dari ${data.sampleSize} paket terbaru (bukan seluruh ${data.total}). Gunakan tab Pekerjaan untuk cari & paginasi.`
-  }, [data, elevated])
+  const hasFilter = Boolean(debouncedSearch || debouncedTahun)
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
@@ -119,21 +91,29 @@ export default function DashboardScreen() {
         title="Dashboard"
         description={pekerjaanScopeDescription(user)}
         action={
-          <NeoButton label="Notifikasi" variant="neutral" compact onPress={() => router.push('/notifikasi')} />
+          <NeoButton
+            label="Notifikasi"
+            variant="neutral"
+            compact
+            onPress={() => router.push('/notifikasi')}
+          />
         }
       />
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <NeoBadge tone={elevated ? 'info' : 'success'}>{roleLabel}</NeoBadge>
+        <NeoBadge tone="neutral">server · max {DASHBOARD_PAGE_SIZE}</NeoBadge>
         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-          {elevated ? 'Cakupan: seluruh pekerjaan (ringkas)' : 'Cakupan: hanya yang ditugaskan'}
+          {elevated
+            ? 'Admin: paginasi server, tidak load semua paket'
+            : 'Hanya pekerjaan yang ditugaskan'}
         </Text>
       </View>
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <View style={{ flex: 1, minWidth: 0 }}>
           <NeoInput
-            placeholder="Cari paket / desa (server)"
+            placeholder="Cari di server (semua halaman)"
             value={search}
             onChangeText={setSearch}
             autoCorrect={false}
@@ -152,10 +132,14 @@ export default function DashboardScreen() {
       </View>
 
       {searchPending ? (
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>Mencari…</Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
+          Mencari di server…
+        </Text>
       ) : null}
 
-      {dashboardQuery.isLoading ? <Spinner label="Memuat ringkasan…" /> : null}
+      {dashboardQuery.isLoading || searchPending ? (
+        <Spinner label={searchPending ? 'Mencari…' : 'Memuat ringkasan…'} />
+      ) : null}
 
       {error ? (
         <EmptyState
@@ -166,41 +150,43 @@ export default function DashboardScreen() {
         />
       ) : null}
 
-      {!dashboardQuery.isLoading && !error && data ? (
+      {!dashboardQuery.isLoading && !searchPending && !error && data ? (
         <>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
             <MetricCard
-              label={elevated ? 'Total Pekerjaan' : 'Pekerjaan Ditugaskan'}
+              label={hasFilter ? 'Hasil di server' : elevated ? 'Total Pekerjaan' : 'Ditugaskan'}
               value={formatNumber(data.total)}
               tone="main"
             />
             <MetricCard
-              label={elevated ? 'Belum Progress*' : 'Belum Progress'}
+              label="Belum progress (sampel)"
               value={formatNumber(data.belumProgress)}
               tone="secondary"
             />
             <MetricCard
-              label={elevated ? 'Foto Belum*' : 'Foto Belum Lengkap'}
+              label="Foto belum (sampel)"
               value={formatNumber(data.fotoBelum)}
               tone="accent"
             />
           </View>
 
-          {metricsHint ? (
+          {elevated ? (
             <NeoSurface tone="main" style={{ padding: 12, gap: 4 }}>
-              <Text style={{ fontWeight: '800', fontSize: 13 }}>Mode admin (ringan)</Text>
+              <Text style={{ fontWeight: '800', fontSize: 13 }}>Mode admin ringan</Text>
               <Text style={{ fontSize: 12, color: colors.mutedForeground, lineHeight: 17 }}>
-                {metricsHint}
+                Hanya {DASHBOARD_PAGE_SIZE} baris per request. Search memfilter seluruh database di
+                server, lalu menampilkan halaman 1 hasil. Untuk daftar lengkap berhalaman, buka tab
+                Pekerjaan.
               </Text>
             </NeoSurface>
           ) : null}
 
           <View style={{ gap: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: '800' }}>
-              {debouncedSearch || debouncedTahun ? 'Hasil pencarian' : 'Perlu Perhatian'}
+              {hasFilter ? `Hasil pencarian (${data.total} cocok)` : 'Terbaru / perlu cek'}
             </Text>
 
-            {(debouncedSearch || debouncedTahun ? data.items : data.perhatian).map((item) => (
+            {data.items.map((item) => (
               <Pressable
                 key={item.id}
                 onPress={() => router.push(`/pekerjaan/${item.id}`)}
@@ -229,28 +215,19 @@ export default function DashboardScreen() {
 
             {data.total === 0 ? (
               <EmptyState
-                title={debouncedSearch || debouncedTahun ? 'Tidak ada hasil' : 'Tidak ada pekerjaan'}
+                title={hasFilter ? 'Tidak ada hasil di server' : 'Tidak ada pekerjaan'}
                 description={
-                  debouncedSearch || debouncedTahun
-                    ? 'Coba kata kunci lain, atau buka tab Pekerjaan.'
+                  hasFilter
+                    ? 'Kata kunci tidak cocok. Coba di tab Pekerjaan atau ubah kata kunci.'
                     : elevated
                       ? 'Belum ada data pekerjaan.'
                       : 'Belum ada pekerjaan yang ditugaskan ke akun Anda.'
                 }
               />
-            ) : !debouncedSearch && !debouncedTahun && data.perhatian.length === 0 ? (
-              <EmptyState
-                title="Semua aman"
-                description="Tidak ada paket yang butuh perhatian segera pada sampel ini."
-              />
             ) : null}
 
             <NeoButton
-              label={
-                debouncedSearch
-                  ? 'Cari di tab Pekerjaan (paginasi)'
-                  : 'Lihat semua pekerjaan'
-              }
+              label={hasFilter ? 'Buka hasil lengkap di tab Pekerjaan' : 'Lihat semua (paginasi)'}
               variant="neutral"
               fullWidth
               onPress={() => router.push('/(tabs)/pekerjaan')}
