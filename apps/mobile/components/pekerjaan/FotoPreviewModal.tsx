@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import {
   Image,
   Modal,
@@ -10,10 +10,16 @@ import {
 } from 'react-native'
 import type { Foto } from '@pengawas/shared'
 import { formatDateTime } from '@pengawas/shared/format'
-import type { StoryShareContext } from '@/lib/story-share'
-import { StoryShareModal } from '@/components/pekerjaan/StoryShareModal'
+import type { StoryShareContext } from '@/lib/story-share-meta'
 import { NeoBadge, NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
+
+type StoryShareModalProps = {
+  visible: boolean
+  foto: Foto | null
+  context: StoryShareContext | null
+  onClose: () => void
+}
 
 type FotoPreviewModalProps = {
   visible: boolean
@@ -26,6 +32,39 @@ type FotoPreviewModalProps = {
   onEditKoordinat?: () => void
   onDelete: () => void
   isBusy?: boolean
+}
+
+/**
+ * Story share (view-shot / expo-sharing) di-load lazy saat user tap.
+ * Jangan import statis — native module hilang di APK lama → tab foto blank/crash.
+ */
+function useLazyStoryShareModal(enabled: boolean) {
+  const [Comp, setComp] = useState<ComponentType<StoryShareModalProps> | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!enabled || Comp) return
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./StoryShareModal') as {
+        StoryShareModal?: ComponentType<StoryShareModalProps>
+      }
+      if (!mod.StoryShareModal) {
+        setLoadError('Modul bagikan story tidak ditemukan.')
+        return
+      }
+      setComp(() => mod.StoryShareModal!)
+      setLoadError(null)
+    } catch (error: unknown) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Fitur bagikan story membutuhkan aplikasi versi terbaru (native build).',
+      )
+    }
+  }, [enabled, Comp])
+
+  return { Comp, loadError }
 }
 
 export function FotoPreviewModal({
@@ -43,6 +82,7 @@ export function FotoPreviewModal({
   const imageUri = foto?.foto_url || foto?.foto_thumb_url || ''
   const maxImageHeight = Math.min(height * 0.5, 420)
   const canShareStory = Boolean(storyContext && imageUri)
+  const { Comp: StoryShareModal, loadError: shareLoadError } = useLazyStoryShareModal(shareOpen)
 
   if (!foto) return null
 
@@ -171,12 +211,38 @@ export function FotoPreviewModal({
         </Pressable>
       </Modal>
 
-      <StoryShareModal
-        visible={shareOpen && visible}
-        foto={foto}
-        context={storyContext}
-        onClose={() => setShareOpen(false)}
-      />
+      {shareOpen && visible ? (
+        StoryShareModal ? (
+          <StoryShareModal
+            visible
+            foto={foto}
+            context={storyContext}
+            onClose={() => setShareOpen(false)}
+          />
+        ) : (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+            <View
+              style={{
+                flex: 1,
+                backgroundColor: 'rgba(17, 17, 17, 0.72)',
+                justifyContent: 'center',
+                padding: 24,
+              }}
+            >
+              <NeoSurface style={{ gap: 12, padding: 16 }}>
+                <Text style={{ fontWeight: '800', fontSize: 16 }}>
+                  {shareLoadError ? 'Bagikan story belum tersedia' : 'Memuat…'}
+                </Text>
+                <Text style={{ color: colors.mutedForeground, lineHeight: 20 }}>
+                  {shareLoadError ||
+                    'Menyiapkan fitur bagikan. Jika stuck, perbarui APK native (bukan hanya OTA).'}
+                </Text>
+                <NeoButton label="Tutup" variant="primary" onPress={() => setShareOpen(false)} />
+              </NeoSurface>
+            </View>
+          </Modal>
+        )
+      ) : null}
     </>
   )
 }

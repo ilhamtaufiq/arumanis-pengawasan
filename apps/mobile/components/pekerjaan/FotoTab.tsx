@@ -4,6 +4,7 @@ import {
   FlatList,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   View,
   type ListRenderItem,
@@ -82,7 +83,7 @@ const ROW_H = 72
  */
 export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const queryClient = useQueryClient()
-  // Jika detail di-slim (URL dipotong karena banyak foto), hydrate sekali saat tab foto dibuka.
+  // Jika detail di-slim (URL dipotong), isi thumb saja — jangan dump full URL massal (OOM / blank).
   useEffect(() => {
     const fotos = pekerjaan.foto ?? []
     if (fotos.length === 0) return
@@ -93,9 +94,38 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     void getPekerjaanDetail(pekerjaanId)
       .then((full) => {
         if (cancelled || !full?.foto?.length) return
+        const byId = new Map(full.foto.map((f) => [f.id, f]))
         queryClient.setQueryData(queryKeys.pekerjaan.detail(pekerjaanId), (prev: typeof full | undefined) => {
-          if (!prev) return full
-          return { ...prev, foto: full.foto, foto_count: full.foto_count ?? full.foto?.length }
+          if (!prev) {
+            // Jangan inject payload penuh mentah; slim dulu lewat merge thumbs.
+            return {
+              ...full,
+              foto: (full.foto ?? []).map((f) => ({
+                ...f,
+                foto_url: f.foto_thumb_url || f.foto_url || null,
+                foto_thumb_url: f.foto_thumb_url || f.foto_url || null,
+              })),
+            }
+          }
+          return {
+            ...prev,
+            foto: (prev.foto ?? []).map((item) => {
+              const remote = item.id != null ? byId.get(item.id) : undefined
+              if (!remote) return item
+              const thumb = remote.foto_thumb_url || remote.foto_url || null
+              return {
+                ...item,
+                // Prefer thumb di list; full URL di-load saat preview bila sudah ada di cache remote
+                foto_thumb_url: item.foto_thumb_url || thumb,
+                foto_url: item.foto_url || remote.foto_url || thumb,
+                validasi_koordinat: item.validasi_koordinat ?? remote.validasi_koordinat,
+                validasi_koordinat_message:
+                  item.validasi_koordinat_message ?? remote.validasi_koordinat_message,
+                koordinat: item.koordinat || remote.koordinat,
+              }
+            }),
+            foto_count: prev.foto_count ?? full.foto_count ?? full.foto?.length,
+          }
         })
       })
       .catch(() => {
@@ -645,16 +675,27 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }
 
   return (
-    <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
-      <FotoUploadQueueBanner />
+    // Jangan pakai `gap` di parent FlatList/ScrollView flex — di Android sering height 0 (blank).
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <View style={{ marginBottom: 10 }}>
+        <FotoUploadQueueBanner />
+      </View>
 
       {errorMessage ? (
-        <NeoSurface tone="secondary" style={{ padding: 12 }}>
+        <NeoSurface tone="secondary" style={{ padding: 12, marginBottom: 10 }}>
           <Text style={{ fontWeight: '700' }}>{errorMessage}</Text>
         </NeoSurface>
       ) : null}
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: 8,
+          alignItems: 'center',
+          marginBottom: 10,
+        }}
+      >
         <NeoBadge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</NeoBadge>
         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
           {outputList.length} output · {fotoList.length} foto
@@ -672,6 +713,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
             borderRadius: radius,
             paddingHorizontal: 10,
             paddingVertical: 6,
+            marginBottom: 10,
           }}
         >
           <Text
@@ -689,17 +731,19 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       ) : null}
 
       {isBusy ? (
-        <Spinner
-          label={
-            uploadMutation.isPending
-              ? uploadProgress != null
-                ? `Mengunggah... ${uploadProgress}%`
-                : 'Mengunggah foto...'
-              : editKoordinatMutation.isPending
-                ? 'Menyimpan koordinat...'
-                : 'Menghapus foto...'
-          }
-        />
+        <View style={{ marginBottom: 10 }}>
+          <Spinner
+            label={
+              uploadMutation.isPending
+                ? uploadProgress != null
+                  ? `Mengunggah... ${uploadProgress}%`
+                  : 'Mengunggah foto...'
+                : editKoordinatMutation.isPending
+                  ? 'Menyimpan koordinat...'
+                  : 'Menghapus foto...'
+            }
+          />
+        </View>
       ) : null}
 
       {/* Breadcrumb / back */}
@@ -711,6 +755,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
             alignItems: 'center',
             gap: 6,
             paddingVertical: 4,
+            marginBottom: 8,
           }}
         >
           <Text style={{ fontWeight: '900', fontSize: 14, color: colors.foreground }}>← Kembali</Text>
@@ -724,7 +769,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
       {nav.kind === 'outputs' ? (
         <FlatList
-          style={{ flex: 1 }}
+          style={{ flex: 1, minHeight: 120 }}
           data={filteredOutputs}
           keyExtractor={(item) => String(item.output.id)}
           renderItem={renderOutput}
@@ -732,8 +777,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={7}
-          removeClippedSubviews={Platform.OS === 'android'}
-          contentContainerStyle={{ gap: 8, paddingBottom: 32 }}
+          removeClippedSubviews={false}
+          contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState title="Tidak ada output" description="Sesuaikan filter GPS invalid." />
@@ -743,7 +789,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
       {nav.kind === 'penerima' ? (
         <FlatList
-          style={{ flex: 1 }}
+          style={{ flex: 1, minHeight: 120 }}
           data={penerimaRows}
           keyExtractor={(item) => String(item.penerima.id)}
           renderItem={renderPenerima}
@@ -751,8 +797,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           initialNumToRender={10}
           maxToRenderPerBatch={8}
           windowSize={7}
-          removeClippedSubviews={Platform.OS === 'android'}
-          contentContainerStyle={{ gap: 8, paddingBottom: 32 }}
+          removeClippedSubviews={false}
+          contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <EmptyState
@@ -764,8 +811,12 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       ) : null}
 
       {nav.kind === 'slots' ? (
-        <View style={{ gap: 12, paddingBottom: 24 }}>
-          <NeoSurface style={{ gap: 10, padding: 12 }}>
+        <ScrollView
+          style={{ flex: 1, minHeight: 120 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <NeoSurface style={{ gap: 10, padding: 12, marginBottom: 12 }}>
             <Text style={{ fontWeight: '900', fontSize: 15 }}>{nav.output.komponen}</Text>
             <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
               {nav.penerima ? `Penerima: ${nav.penerima.nama}` : 'Output komunal'}
@@ -802,7 +853,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           <Text style={{ fontSize: 11, color: colors.mutedForeground, fontWeight: '600' }}>
             Hanya 5 slot grup ini yang memuat gambar — grup lain tidak di-render.
           </Text>
-        </View>
+        </ScrollView>
       ) : null}
 
       {/* Modals — hanya mount state aktif; komponen tetap ringan */}

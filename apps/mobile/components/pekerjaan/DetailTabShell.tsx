@@ -1,4 +1,4 @@
-import { memo, useCallback, useState, type ComponentType } from 'react'
+import { memo, useCallback, useState, type ComponentType, type ReactNode } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
@@ -6,6 +6,7 @@ import { colors } from '@/theme/tokens'
 import { DetailTabBar } from '@/components/pekerjaan/DetailTabBar'
 import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
 import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
+import { ScreenErrorBoundary } from '@/components/ScreenErrorBoundary'
 import { NeoSurface } from '@/components/ui'
 
 type DetailTabShellProps = {
@@ -30,37 +31,45 @@ type LazyTabModule = {
  * Lazy require tab berat — cegah force close saat buka detail
  * (ImagePicker / view-shot / progress tidak di-load di first paint).
  */
+const tabLoadCache = new Map<DetailTabId, ComponentType<Record<string, unknown>> | null>()
+const tabLoadError = new Map<DetailTabId, string>()
+
 function loadTab(tab: DetailTabId): ComponentType<Record<string, unknown>> | null {
+  if (tabLoadCache.has(tab)) return tabLoadCache.get(tab) ?? null
+
   try {
+    let Comp: ComponentType<Record<string, unknown>> | null = null
     if (tab === 'foto') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./FotoTab') as LazyTabModule
-      return mod.FotoTab ?? null
-    }
-    if (tab === 'output') {
+      Comp = mod.FotoTab ?? mod.default ?? null
+    } else if (tab === 'output') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./OutputTab') as LazyTabModule
-      return mod.OutputTab ?? null
-    }
-    if (tab === 'penerima') {
+      Comp = mod.OutputTab ?? mod.default ?? null
+    } else if (tab === 'penerima') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./PenerimaTab') as LazyTabModule
-      return mod.PenerimaTab ?? null
-    }
-    if (tab === 'progress') {
+      Comp = mod.PenerimaTab ?? mod.default ?? null
+    } else if (tab === 'progress') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./ProgressTab') as LazyTabModule
-      return mod.ProgressTab ?? null
-    }
-    if (tab === 'tiket') {
+      Comp = mod.ProgressTab ?? mod.default ?? null
+    } else if (tab === 'tiket') {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('./TiketTab') as LazyTabModule
-      return mod.TiketTab ?? null
+      Comp = mod.TiketTab ?? mod.default ?? null
     }
+    tabLoadCache.set(tab, Comp)
+    if (!Comp) tabLoadError.set(tab, 'Export komponen tidak ditemukan')
+    return Comp
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     console.error('[DetailTabShell] gagal load tab', tab, error)
+    tabLoadError.set(tab, message)
+    tabLoadCache.set(tab, null)
+    return null
   }
-  return null
 }
 
 function CompactHero({
@@ -126,29 +135,42 @@ function LazyTabBody({
 
   const Comp = loadTab(tab)
   if (!Comp) {
+    const detail = tabLoadError.get(tab)
     return (
-      <NeoSurface style={{ padding: 16 }}>
-        <Text style={{ fontWeight: '700' }}>Gagal memuat tab {tab}.</Text>
+      <NeoSurface style={{ padding: 16, gap: 8 }}>
+        <Text style={{ fontWeight: '800', fontSize: 15 }}>Gagal memuat tab {tab}</Text>
+        <Text style={{ color: colors.mutedForeground, lineHeight: 20 }}>
+          {detail ||
+            'Modul tab gagal di-load. Coba buka ulang aplikasi. Jika berulang, perbarui APK (bukan hanya OTA).'}
+        </Text>
       </NeoSurface>
     )
   }
 
+  let body: ReactNode = null
   if (tab === 'foto') {
-    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+    body = <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  } else if (tab === 'output') {
+    body = <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  } else if (tab === 'penerima') {
+    body = <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  } else if (tab === 'progress') {
+    body = <Comp pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
+  } else if (tab === 'tiket') {
+    body = <Comp pekerjaanId={pekerjaanId} />
   }
-  if (tab === 'output') {
-    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-  }
-  if (tab === 'penerima') {
-    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-  }
-  if (tab === 'progress') {
-    return <Comp pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
-  }
-  if (tab === 'tiket') {
-    return <Comp pekerjaanId={pekerjaanId} />
-  }
-  return null
+
+  if (!body) return null
+
+  return (
+    <ScreenErrorBoundary
+      scope={`Tab ${tab}`}
+      extra={{ pekerjaanId, tab }}
+      showHomeAction={false}
+    >
+      <View style={{ flex: 1, minHeight: 0 }}>{body}</View>
+    </ScreenErrorBoundary>
+  )
 }
 
 export const DetailTabShell = memo(function DetailTabShell({
