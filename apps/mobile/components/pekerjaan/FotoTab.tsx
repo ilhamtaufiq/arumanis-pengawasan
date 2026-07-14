@@ -152,6 +152,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const [slotActions, setSlotActions] = useState<SlotActions | null>(null)
   const [coordsFilter, setCoordsFilter] = useState<'all' | 'invalid'>('all')
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [uploadWaitingServer, setUploadWaitingServer] = useState(false)
   const [nav, setNav] = useState<NavLevel>({ kind: 'outputs' })
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
   /** Cegah handlePickerResult 2x (promise kamera + AppState getPendingResultAsync). */
@@ -206,6 +207,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
       await appendFotoFileToFormData(formData, input.asset)
       setUploadProgress(0)
+      setUploadWaitingServer(false)
 
       // Create: 1 attempt (retry create sering bikin duplikat foto di server).
       // Replace/update: boleh retry singkat.
@@ -214,15 +216,19 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         maxAttempts: input.replaceFotoId ? 3 : 1,
         onProgress: (progress) => {
           if (progress.percent != null) setUploadProgress(progress.percent)
+          if (progress.waitingServer != null) setUploadWaitingServer(progress.waitingServer)
         },
       })
     },
     onSuccess: (created, variables) => {
       uploadSubmitLockRef.current = false
+      setUploadWaitingServer(false)
       const localUri = variables.asset.uri
+      // id 0 = respons 2xx tanpa body ter-parse — tetap tutup modal (file sudah di server)
+      const resolvedId = created?.id && Number(created.id) > 0 ? Number(created.id) : variables.replaceFotoId
       const nextFoto: Foto = {
         ...created,
-        id: created.id ?? variables.replaceFotoId ?? created.id,
+        id: resolvedId ?? created?.id ?? 0,
         pekerjaan_id: created.pekerjaan_id ?? pekerjaanId,
         komponen_id: created.komponen_id ?? variables.target.output.id,
         penerima_id: created.penerima_id ?? variables.target.penerima?.id ?? null,
@@ -232,15 +238,20 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         foto_thumb_url: created.foto_thumb_url || created.foto_url || localUri,
       }
 
-      patchDetailFotos((fotos) => {
-        if (variables.replaceFotoId) {
-          const replaced = fotos.map((item) =>
-            item.id === variables.replaceFotoId ? { ...item, ...nextFoto, id: variables.replaceFotoId } : item,
-          )
-          if (replaced.some((item) => item.id === variables.replaceFotoId)) return replaced
-        }
-        return [...fotos.filter((item) => item.id !== nextFoto.id), nextFoto]
-      })
+      if (nextFoto.id && Number(nextFoto.id) > 0) {
+        patchDetailFotos((fotos) => {
+          if (variables.replaceFotoId) {
+            const replaced = fotos.map((item) =>
+              item.id === variables.replaceFotoId ? { ...item, ...nextFoto, id: variables.replaceFotoId } : item,
+            )
+            if (replaced.some((item) => item.id === variables.replaceFotoId)) return replaced
+          }
+          return [...fotos.filter((item) => item.id !== nextFoto.id), nextFoto]
+        })
+      } else {
+        // Soft refresh detail agar foto baru dari server muncul
+        void queryClient.invalidateQueries({ queryKey: detailQueryKey })
+      }
 
       setUploadingTarget(null)
       setPendingUpload(null)
@@ -253,6 +264,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     onError: async (error, variables) => {
       uploadSubmitLockRef.current = false
       setUploadProgress(null)
+      setUploadWaitingServer(false)
 
       // Hanya antrekan bila benar-benar offline / gagal jaringan awal.
       // Jangan antrekan timeout/5xx setelah body terkirim — sering sudah tersimpan di server
@@ -792,12 +804,14 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           <Spinner
             label={
               uploadMutation.isPending
-                ? uploadProgress != null
-                  ? `Mengunggah... ${uploadProgress}%`
-                  : 'Mengunggah foto...'
+                ? uploadWaitingServer
+                  ? 'File terkirim — memproses di server…'
+                  : uploadProgress != null
+                    ? `Mengunggah… ${uploadProgress}%`
+                    : 'Mengunggah foto…'
                 : editKoordinatMutation.isPending
-                  ? 'Menyimpan koordinat...'
-                  : 'Menghapus foto...'
+                  ? 'Menyimpan koordinat…'
+                  : 'Menghapus foto…'
             }
           />
         </View>
@@ -985,6 +999,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           onUpload={submitUpload}
           isUploading={uploadMutation.isPending}
           uploadProgress={uploadProgress}
+          waitingServer={uploadWaitingServer}
         />
       ) : null}
 

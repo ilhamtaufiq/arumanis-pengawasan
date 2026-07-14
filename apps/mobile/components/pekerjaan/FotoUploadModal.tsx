@@ -37,6 +37,8 @@ type FotoUploadModalProps = {
   isUploading?: boolean
   /** Progress upload 0–100 (opsional). */
   uploadProgress?: number | null
+  /** Body sudah terkirim; menunggu proses media di server. */
+  waitingServer?: boolean
 }
 
 export function FotoUploadModal({
@@ -48,6 +50,7 @@ export function FotoUploadModal({
   onUpload,
   isUploading = false,
   uploadProgress = null,
+  waitingServer = false,
 }: FotoUploadModalProps) {
   const insets = useSafeAreaInsets()
   const { width, height } = useWindowDimensions()
@@ -363,20 +366,26 @@ export function FotoUploadModal({
                       />
                     </View>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground, textAlign: 'center' }}>
-                      {uploadProgress != null ? `Mengunggah... ${uploadProgress}%` : 'Mengunggah...'}
+                      {waitingServer
+                        ? 'File terkirim — memproses di server…'
+                        : uploadProgress != null
+                          ? `Mengunggah… ${uploadProgress}%`
+                          : 'Mengunggah…'}
                     </Text>
                   </View>
                 ) : null}
                 <NeoButton
                   label={
                     isUploading
-                      ? uploadProgress != null
-                        ? `Mengunggah... ${uploadProgress}%`
-                        : 'Mengunggah...'
+                      ? waitingServer
+                        ? 'Memproses di server…'
+                        : uploadProgress != null
+                          ? `Mengunggah… ${uploadProgress}%`
+                          : 'Mengunggah…'
                       : 'Unggah foto'
                   }
                   onPress={handleUpload}
-                  disabled={!canUpload}
+                  disabled={!canUpload || isUploading}
                 />
                 <NeoButton label="Batal" variant="neutral" onPress={onClose} disabled={isUploading} />
                 {!canUpload && !isUploading && !isLocating ? (

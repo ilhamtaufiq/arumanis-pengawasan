@@ -8,13 +8,59 @@ export type CreateFotoProgress = {
   percent: number | null
   loaded: number
   total: number | null
+  /** true = body sudah terkirim, menunggu JSON dari server (olah media). */
+  waitingServer?: boolean
+}
+
+function parseResponsePayload(xhr: XMLHttpRequest): unknown {
+  // Jangan andalkan responseType=json di React Native — sering null meski body ada.
+  const text =
+    typeof xhr.responseText === 'string' && xhr.responseText.length > 0
+      ? xhr.responseText
+      : typeof xhr.response === 'string'
+        ? xhr.response
+        : null
+
+  if (text != null && text.trim()) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text
+    }
+  }
+
+  if (xhr.response != null && typeof xhr.response === 'object') {
+    return xhr.response
+  }
+
+  return null
+}
+
+function fotoFromPayload(payload: unknown): Foto {
+  try {
+    const foto = unwrapEntity<Foto>(payload)
+    if (foto && typeof foto === 'object') {
+      return foto
+    }
+  } catch {
+    // ignore
+  }
+  if (payload && typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    const data = record.data
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      return data as Foto
+    }
+    return payload as Foto
+  }
+  // Server 2xx tanpa body yang bisa di-parse — anggap sukses agar UI tidak stuck
+  return { id: 0 } as Foto
 }
 
 /**
  * Upload foto via XHR agar progress byte tersedia di React Native.
- * Fallback ke fetch-style error parsing yang sama dengan api-client.
- * @param fotoId — jika diisi, update foto existing (POST /foto/{id} + _method=PUT)
- *   tanpa delete-then-create (hindari foto hilang bila upload gagal).
+ * Progress upload cap 99% sampai respons server diterima (hindari "100%" stuck
+ * saat Spatie/media masih memproses di backend).
  */
 export async function createFotoWithProgress(
   formData: FormData,
@@ -32,19 +78,30 @@ export async function createFotoWithProgress(
   }
 
   return new Promise<Foto>((resolve, reject) => {
+    let settled = false
+    const settle = (fn: () => void) => {
+      if (settled) return
+      settled = true
+      fn()
+    }
+
     const xhr = new XMLHttpRequest()
+    // text + parse manual — lebih andal di RN daripada responseType=json
     xhr.open('POST', url)
     xhr.setRequestHeader('Accept', 'application/json')
     xhr.setRequestHeader('Authorization', `Bearer ${token}`)
-    xhr.responseType = 'json'
+    xhr.responseType = 'text'
 
     xhr.upload.onprogress = (event) => {
       if (!onProgress) return
       if (event.lengthComputable && event.total > 0) {
+        // Cap 99: 100% khusus saat response OK (hindari stuck "Mengunggah… 100%")
+        const raw = Math.round((event.loaded / event.total) * 100)
         onProgress({
-          percent: Math.min(100, Math.round((event.loaded / event.total) * 100)),
+          percent: Math.min(99, raw),
           loaded: event.loaded,
           total: event.total,
+          waitingServer: raw >= 100,
         })
         return
       }
@@ -55,58 +112,102 @@ export async function createFotoWithProgress(
       })
     }
 
-    xhr.onload = () => {
+    xhr.upload.onload = () => {
+      // Body sudah terkirim — server mungkin masih proses media
+      onProgress?.({
+        percent: 99,
+        loaded: 1,
+        total: 1,
+        waitingServer: true,
+      })
+    }
+
+    const finishSuccess = (payload: unknown) => {
+      const foto = fotoFromPayload(payload)
+      onProgress?.({ percent: 100, loaded: 1, total: 1, waitingServer: false })
+      settle(() => resolve(foto))
+    }
+
+    const finishError = (error: ApiError) => {
+      settle(() => reject(error))
+    }
+
+    const handleDone = () => {
+      if (settled) return
       const status = xhr.status
-      // RN kadang kasih response string meski responseType=json
-      let payload: unknown = xhr.response ?? null
-      if (typeof payload === 'string' && payload.trim()) {
-        try {
-          payload = JSON.parse(payload)
-        } catch {
-          // biarkan string
-        }
-      }
-      if (payload == null && typeof xhr.responseText === 'string' && xhr.responseText.trim()) {
-        try {
-          payload = JSON.parse(xhr.responseText)
-        } catch {
-          payload = xhr.responseText
-        }
+
+      // status 0 + readyState 4 bisa berarti abort/network; tapi kadang RN
+      // melaporkan 0 padahal body ada — coba parse dulu
+      let payload: unknown = null
+      try {
+        payload = parseResponsePayload(xhr)
+      } catch {
+        payload = null
       }
 
       if (status >= 200 && status < 300) {
-        try {
-          const foto = unwrapEntity<Foto>(payload)
-          onProgress?.({ percent: 100, loaded: 1, total: 1 })
-          // Sukses meski body tipis — jangan reject (reject → antrean → upload loop)
-          if (foto && typeof foto === 'object') {
-            resolve(foto)
-            return
-          }
-          resolve({ id: 0, ...(typeof payload === 'object' && payload ? payload : {}) } as Foto)
-        } catch {
-          // HTTP 2xx = server terima file. Anggap sukses agar tidak di-enqueue ulang.
-          onProgress?.({ percent: 100, loaded: 1, total: 1 })
-          resolve({ id: 0 } as Foto)
+        finishSuccess(payload)
+        return
+      }
+
+      // Beberapa perangkat: status 0 tapi response JSON sukses (proxy/CDN)
+      if (status === 0 && payload && typeof payload === 'object') {
+        const record = payload as Record<string, unknown>
+        if (record.data != null || record.id != null) {
+          finishSuccess(payload)
+          return
         }
+      }
+
+      if (status === 0) {
+        finishError(new ApiError('Jaringan gagal saat mengunggah foto.', 0, payload))
         return
       }
 
       const message =
         formatApiError(new ApiError('Upload gagal', status, payload), 'Gagal mengunggah foto') ||
         `Gagal mengunggah foto (${status})`
-      reject(new ApiError(message, status, payload))
+      finishError(new ApiError(message, status, payload))
+    }
+
+    // onload kadang tidak fire di RN; readyState 4 lebih andal
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState === 4) {
+        handleDone()
+      }
+    }
+
+    xhr.onload = () => {
+      handleDone()
     }
 
     xhr.onerror = () => {
-      // Hanya error jaringan sejati — status 0
-      reject(new ApiError('Jaringan gagal saat mengunggah foto.', 0, null))
+      if (settled) return
+      // Coba anggap sukses jika ada body 2xx-like JSON
+      try {
+        const payload = parseResponsePayload(xhr)
+        if (payload && typeof payload === 'object' && xhr.status >= 200 && xhr.status < 300) {
+          finishSuccess(payload)
+          return
+        }
+      } catch {
+        // ignore
+      }
+      finishError(new ApiError('Jaringan gagal saat mengunggah foto.', 0, null))
     }
 
     xhr.ontimeout = () => {
-      // Timeout setelah upload panjang: server mungkin sudah simpan.
-      // Jangan treat sebagai retriable create otomatis di layer atas.
-      reject(new ApiError('Upload foto timeout. Cek apakah foto sudah masuk, lalu unggah ulang hanya jika belum.', 408, null))
+      finishError(
+        new ApiError(
+          'Upload foto timeout. Cek daftar foto — bila sudah ada, jangan unggah ulang.',
+          408,
+          null,
+        ),
+      )
+    }
+
+    xhr.onabort = () => {
+      finishError(new ApiError('Upload dibatalkan.', 0, null))
     }
 
     // 3 menit — foto lapangan bisa besar di jaringan seluler.
