@@ -13,6 +13,7 @@ export function useOtaUpdate() {
 
   return {
     phase,
+    // Banner + overlay: semua phase aktif termasuk error pasca-reload gagal
     isVisible: phase !== 'idle',
     applyNow: () => applyOtaUpdateNow(),
   }

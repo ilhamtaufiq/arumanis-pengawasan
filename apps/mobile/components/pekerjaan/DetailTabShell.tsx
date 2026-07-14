@@ -1,20 +1,12 @@
-import { memo, useCallback, useEffect, useState, useTransition, type ReactNode } from 'react'
+import { memo, useCallback, useState, type ComponentType } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { type DetailTabId } from '@/lib/pekerjaan-helpers'
 import { colors } from '@/theme/tokens'
 import { DetailTabBar } from '@/components/pekerjaan/DetailTabBar'
-import { FotoTab } from '@/components/pekerjaan/FotoTab'
-import { OutputTab } from '@/components/pekerjaan/OutputTab'
-import { PenerimaTab } from '@/components/pekerjaan/PenerimaTab'
-import { ProgressTab } from '@/components/pekerjaan/ProgressTab'
 import { RingkasanTab } from '@/components/pekerjaan/RingkasanTab'
-import { TiketTab } from '@/components/pekerjaan/TiketTab'
 import { PekerjaanDetailHero } from '@/components/pekerjaan/PekerjaanDetailHero'
 import { NeoSurface } from '@/components/ui'
-
-/** Tab ringan — boleh keep-alive setelah pernah dibuka. */
-const LIGHT_TABS = new Set<DetailTabId>(['ringkasan', 'output', 'penerima', 'tiket'])
 
 type DetailTabShellProps = {
   pekerjaan: PekerjaanDetail
@@ -25,34 +17,51 @@ type DetailTabShellProps = {
   contentPadding: number
 }
 
-type LightSlotProps = {
-  tabId: DetailTabId
-  contentTab: DetailTabId
-  mounted: boolean
-  children: ReactNode
+type LazyTabModule = {
+  default?: ComponentType<Record<string, unknown>>
+  FotoTab?: ComponentType<Record<string, unknown>>
+  OutputTab?: ComponentType<Record<string, unknown>>
+  PenerimaTab?: ComponentType<Record<string, unknown>>
+  ProgressTab?: ComponentType<Record<string, unknown>>
+  TiketTab?: ComponentType<Record<string, unknown>>
 }
 
 /**
- * Keep-alive murah: native view collapsable=false + display none.
- * Hanya untuk tab ringan (tanpa Image grid / form progress besar).
+ * Lazy require tab berat — cegah force close saat buka detail
+ * (ImagePicker / view-shot / progress tidak di-load di first paint).
  */
-const LightTabSlot = memo(function LightTabSlot({ tabId, contentTab, mounted, children }: LightSlotProps) {
-  if (!mounted) return null
-  const visible = contentTab === tabId
-  return (
-    <View
-      collapsable={false}
-      pointerEvents={visible ? 'auto' : 'none'}
-      style={{
-        display: visible ? 'flex' : 'none',
-        width: '100%',
-        gap: 16,
-      }}
-    >
-      {children}
-    </View>
-  )
-})
+function loadTab(tab: DetailTabId): ComponentType<Record<string, unknown>> | null {
+  try {
+    if (tab === 'foto') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./FotoTab') as LazyTabModule
+      return mod.FotoTab ?? null
+    }
+    if (tab === 'output') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./OutputTab') as LazyTabModule
+      return mod.OutputTab ?? null
+    }
+    if (tab === 'penerima') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./PenerimaTab') as LazyTabModule
+      return mod.PenerimaTab ?? null
+    }
+    if (tab === 'progress') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./ProgressTab') as LazyTabModule
+      return mod.ProgressTab ?? null
+    }
+    if (tab === 'tiket') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('./TiketTab') as LazyTabModule
+      return mod.TiketTab ?? null
+    }
+  } catch (error) {
+    console.error('[DetailTabShell] gagal load tab', tab, error)
+  }
+  return null
+}
 
 function CompactHero({
   namaPaket,
@@ -80,7 +89,7 @@ function CompactHero({
       }}
     >
       <Text numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: colors.foreground }}>
-        {namaPaket}
+        {namaPaket || 'Paket pekerjaan'}
       </Text>
       <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 2 }}>
         Ketuk untuk ringkasan paket
@@ -89,70 +98,103 @@ function CompactHero({
   )
 }
 
-/**
- * Arsitektur anti-lag:
- * 1. selectedTab update sinkron → highlight tab bar instan
- * 2. contentTab lewat startTransition → konten tidak memblok UI
- * 3. Tab ringan keep-alive; tab berat (foto/progress) unmount saat tidak aktif
- * 4. Hero penuh hanya di ringkasan (hemat layout di tab lain)
- */
-export const DetailTabShell = memo(
-  function DetailTabShell({
-    pekerjaan,
-    pekerjaanId,
-    tahunAnggaran,
-    progressValue,
-    isOnline,
-    contentPadding,
-  }: DetailTabShellProps) {
-    const [selectedTab, setSelectedTab] = useState<DetailTabId>('ringkasan')
-    const [contentTab, setContentTab] = useState<DetailTabId>('ringkasan')
-    const [mountedLight, setMountedLight] = useState<Set<DetailTabId>>(() => new Set(['ringkasan']))
-    const [, startTransition] = useTransition()
+function OfflineBanner() {
+  return (
+    <NeoSurface tone="main" style={{ gap: 4, padding: 12, marginBottom: 8 }}>
+      <Text style={{ fontWeight: '800', color: colors.foreground }}>Mode offline</Text>
+      <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
+        Menampilkan data tersimpan di perangkat. Data akan diperbarui otomatis saat koneksi kembali.
+      </Text>
+    </NeoSurface>
+  )
+}
 
-    const handleTabChange = useCallback((tab: DetailTabId) => {
-      // Highlight bar dulu — tidak menunggu mount konten berat.
-      setSelectedTab(tab)
-      startTransition(() => {
-        setContentTab(tab)
-        if (LIGHT_TABS.has(tab)) {
-          setMountedLight((prev) => {
-            if (prev.has(tab)) return prev
-            const next = new Set(prev)
-            next.add(tab)
-            return next
-          })
-        }
-      })
-    }, [])
+function LazyTabBody({
+  tab,
+  pekerjaan,
+  pekerjaanId,
+  tahunAnggaran,
+}: {
+  tab: DetailTabId
+  pekerjaan: PekerjaanDetail
+  pekerjaanId: number
+  tahunAnggaran: number
+}) {
+  if (tab === 'ringkasan') {
+    return <RingkasanTab pekerjaan={pekerjaan} />
+  }
 
-    // Pastikan light tab masuk set mounted.
-    useEffect(() => {
-      if (!LIGHT_TABS.has(contentTab)) return
-      setMountedLight((prev) => {
-        if (prev.has(contentTab)) return prev
-        const next = new Set(prev)
-        next.add(contentTab)
-        return next
-      })
-    }, [contentTab])
-
-    const showFullHero = selectedTab === 'ringkasan'
-
+  const Comp = loadTab(tab)
+  if (!Comp) {
     return (
-      <View style={{ flex: 1, minHeight: 0 }}>
-        {showFullHero ? (
-          <PekerjaanDetailHero pekerjaan={pekerjaan} progressValue={progressValue} />
-        ) : (
-          <CompactHero
-            namaPaket={pekerjaan.nama_paket}
-            contentPadding={contentPadding}
-            onExpand={() => handleTabChange('ringkasan')}
+      <NeoSurface style={{ padding: 16 }}>
+        <Text style={{ fontWeight: '700' }}>Gagal memuat tab {tab}.</Text>
+      </NeoSurface>
+    )
+  }
+
+  if (tab === 'foto') {
+    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  }
+  if (tab === 'output') {
+    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  }
+  if (tab === 'penerima') {
+    return <Comp pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
+  }
+  if (tab === 'progress') {
+    return <Comp pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
+  }
+  if (tab === 'tiket') {
+    return <Comp pekerjaanId={pekerjaanId} />
+  }
+  return null
+}
+
+export const DetailTabShell = memo(function DetailTabShell({
+  pekerjaan,
+  pekerjaanId,
+  tahunAnggaran,
+  progressValue,
+  isOnline,
+  contentPadding,
+}: DetailTabShellProps) {
+  const [activeTab, setActiveTab] = useState<DetailTabId>('ringkasan')
+
+  const handleTabChange = useCallback((tab: DetailTabId) => {
+    setActiveTab(tab)
+  }, [])
+
+  const showFullHero = activeTab === 'ringkasan'
+  const isFoto = activeTab === 'foto'
+  const isProgress = activeTab === 'progress'
+  const isHeavy = isFoto || isProgress
+
+  return (
+    <View style={{ flex: 1, minHeight: 0, backgroundColor: colors.background }}>
+      {showFullHero ? (
+        <PekerjaanDetailHero pekerjaan={pekerjaan} progressValue={progressValue} />
+      ) : (
+        <CompactHero
+          namaPaket={pekerjaan?.nama_paket ?? 'Paket pekerjaan'}
+          contentPadding={contentPadding}
+          onExpand={() => handleTabChange('ringkasan')}
+        />
+      )}
+
+      <DetailTabBar active={activeTab} onChange={handleTabChange} contentPadding={contentPadding} />
+
+      {isHeavy ? (
+        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: contentPadding, paddingTop: 8 }}>
+          {!isOnline ? <OfflineBanner /> : null}
+          <LazyTabBody
+            tab={activeTab}
+            pekerjaan={pekerjaan}
+            pekerjaanId={pekerjaanId}
+            tahunAnggaran={tahunAnggaran}
           />
-        )}
-
-        <DetailTabBar active={selectedTab} onChange={handleTabChange} contentPadding={contentPadding} />
-
+        </View>
+      ) : (
         <ScrollView
           style={{ flex: 1, minHeight: 0 }}
           contentContainerStyle={{
@@ -163,49 +205,16 @@ export const DetailTabShell = memo(
             paddingBottom: 32,
           }}
           keyboardShouldPersistTaps="handled"
-          removeClippedSubviews
         >
-          {!isOnline ? (
-            <NeoSurface tone="main" style={{ gap: 4, padding: 12 }}>
-              <Text style={{ fontWeight: '800', color: colors.foreground }}>Mode offline</Text>
-              <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-                Menampilkan data tersimpan di perangkat. Data akan diperbarui otomatis saat koneksi kembali.
-              </Text>
-            </NeoSurface>
-          ) : null}
-
-          <LightTabSlot tabId="ringkasan" contentTab={contentTab} mounted={mountedLight.has('ringkasan')}>
-            <RingkasanTab pekerjaan={pekerjaan} />
-          </LightTabSlot>
-
-          <LightTabSlot tabId="output" contentTab={contentTab} mounted={mountedLight.has('output')}>
-            <OutputTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-          </LightTabSlot>
-
-          <LightTabSlot tabId="penerima" contentTab={contentTab} mounted={mountedLight.has('penerima')}>
-            <PenerimaTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-          </LightTabSlot>
-
-          <LightTabSlot tabId="tiket" contentTab={contentTab} mounted={mountedLight.has('tiket')}>
-            <TiketTab pekerjaanId={pekerjaanId} />
-          </LightTabSlot>
-
-          {contentTab === 'foto' ? (
-            <FotoTab pekerjaanId={pekerjaanId} pekerjaan={pekerjaan} />
-          ) : null}
-
-          {contentTab === 'progress' ? (
-            <ProgressTab pekerjaanId={pekerjaanId} tahunAnggaran={tahunAnggaran} />
-          ) : null}
+          {!isOnline ? <OfflineBanner /> : null}
+          <LazyTabBody
+            tab={activeTab}
+            pekerjaan={pekerjaan}
+            pekerjaanId={pekerjaanId}
+            tahunAnggaran={tahunAnggaran}
+          />
         </ScrollView>
-      </View>
-    )
-  },
-  (prev, next) =>
-    prev.pekerjaanId === next.pekerjaanId &&
-    prev.tahunAnggaran === next.tahunAnggaran &&
-    prev.progressValue === next.progressValue &&
-    prev.isOnline === next.isOnline &&
-    prev.contentPadding === next.contentPadding &&
-    prev.pekerjaan === next.pekerjaan,
-)
+      )}
+    </View>
+  )
+})

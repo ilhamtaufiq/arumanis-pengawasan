@@ -118,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void clearSessionToken()
         setSessionTokenSync(null)
         setHasToken(false)
+        queryClient.clear()
+        void removePersistedQueryCache()
         if (!inAuthGroup) router.replace('/login')
         return
       }
@@ -164,6 +166,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(
     async (input: { email: string; password: string }) => {
+      // Cegah bocor cache antar user (admin → pengawas di device yang sama)
+      queryClient.clear()
+      await removePersistedQueryCache()
       const user = await mobileLogin(input)
       setHasToken(true)
       queryClient.setQueryData(queryKeys.auth.me(), user)
@@ -172,6 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const loginWithGoogle = useCallback(async () => {
+    queryClient.clear()
+    await removePersistedQueryCache()
     const user = await mobileGoogleLogin()
     setHasToken(true)
     queryClient.setQueryData(queryKeys.auth.me(), user)

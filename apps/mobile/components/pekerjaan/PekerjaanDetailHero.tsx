@@ -34,9 +34,7 @@ function HeroKpi({ label, value }: { label: string; value: string }) {
       </Text>
       <Text
         numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.75}
-        style={{ fontSize: 18, fontWeight: '800', color: colors.foreground }}
+        style={{ fontSize: 16, fontWeight: '800', color: colors.foreground }}
       >
         {value}
       </Text>
@@ -62,11 +60,17 @@ export const PekerjaanDetailHero = memo(function PekerjaanDetailHero({
   const tahunLabel = pickText(pekerjaan.kegiatan?.tahun_anggaran)
   const pengawasLabel = pickText(pekerjaan.pengawas?.nama)
   const pendampingLabel = pickText(pekerjaan.pendamping?.nama)
-  const assignmentSources = pekerjaan.assignment_sources ?? []
+  const assignmentSources = Array.isArray(pekerjaan.assignment_sources)
+    ? pekerjaan.assignment_sources
+        .map((source) => (typeof source === 'string' ? source : String(source ?? '')))
+        .filter(Boolean)
+    : []
 
-  const fotoCount = pekerjaan.foto?.length ?? 0
-  const penerimaCount = pekerjaan.penerima?.length ?? 0
-  const outputCount = pekerjaan.output?.length ?? 0
+  const fotoCount = Array.isArray(pekerjaan.foto) ? pekerjaan.foto.length : Number(pekerjaan.foto_count ?? 0)
+  const penerimaCount = Array.isArray(pekerjaan.penerima)
+    ? pekerjaan.penerima.length
+    : Number(pekerjaan.penerima_count ?? 0)
+  const outputCount = Array.isArray(pekerjaan.output) ? pekerjaan.output.length : 0
 
   const personnelParts: string[] = []
   if (pengawasLabel !== '-') personnelParts.push(`Pengawas: ${pengawasLabel}`)
@@ -80,9 +84,6 @@ export const PekerjaanDetailHero = memo(function PekerjaanDetailHero({
         marginHorizontal: contentPadding,
         marginTop: contentPadding,
         gap: 12,
-        width: '100%',
-        maxWidth: '100%',
-        minWidth: 0,
         alignSelf: 'stretch',
       }}
     >
@@ -97,7 +98,7 @@ export const PekerjaanDetailHero = memo(function PekerjaanDetailHero({
             flexShrink: 1,
           }}
         >
-          {pekerjaan.nama_paket}
+          {pekerjaan.nama_paket || 'Paket pekerjaan'}
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <NeoBadge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</NeoBadge>

@@ -1,75 +1,133 @@
-import { useState } from 'react'
-import { FlatList, Pressable, Text, View } from 'react-native'
-import { useQuery } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { router } from 'expo-router'
 import { ApiError } from '@pengawas/api-client'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatCurrency, formatDate, formatPercent } from '@pengawas/shared/format'
 import { getPekerjaanList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { readPaginationMeta } from '@/lib/pagination'
+import {
+  isElevatedUser,
+  pekerjaanScopeDescription,
+  primaryRoleLabel,
+} from '@/lib/roles'
 import { EmptyState, NeoBadge, NeoInput, NeoSurface, SectionHeader, Spinner } from '@/components/ui'
-import { colors } from '@/theme/tokens'
+import { colors, radius } from '@/theme/tokens'
+
+const PER_PAGE = 20
 
 export default function PekerjaanScreen() {
+  const listRef = useRef<FlatList>(null)
   const [search, setSearch] = useState('')
   const [tahun, setTahun] = useState('')
   const [page, setPage] = useState(1)
-  const { canFetch } = useAuth()
+  const debouncedSearch = useDebouncedValue(search, 400)
+  const debouncedTahun = useDebouncedValue(tahun, 400)
+  const { canFetch, user } = useAuth()
+  const elevated = isElevatedUser(user)
+
+  // Reset page when filters settle
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch, debouncedTahun])
 
   const pekerjaanQuery = useQuery({
-    queryKey: queryKeys.pekerjaan.list({ search, tahun, page }),
+    queryKey: queryKeys.pekerjaan.list({
+      search: debouncedSearch,
+      tahun: debouncedTahun,
+      page,
+      per_page: PER_PAGE,
+    }),
     queryFn: () =>
       getPekerjaanList({
-        per_page: 20,
+        per_page: PER_PAGE,
         page,
-        search: search || undefined,
-        tahun: tahun || undefined,
+        search: debouncedSearch || undefined,
+        tahun: debouncedTahun || undefined,
         sort_by: 'created_at',
         sort_direction: 'desc',
       }),
     enabled: canFetch,
     retry: false,
     networkMode: 'offlineFirst',
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   })
 
-  const meta = pekerjaanQuery.data?.meta as Record<string, unknown> | undefined
-  const currentPage = Number(meta?.current_page || page)
-  const lastPage = Number(meta?.last_page || 1)
+  const items = pekerjaanQuery.data?.data ?? []
+  const pagination = readPaginationMeta(pekerjaanQuery.data?.meta as Record<string, unknown> | undefined, {
+    page,
+    perPage: PER_PAGE,
+    total: items.length,
+  })
+  const currentPage = pagination.currentPage
+  const lastPage = pagination.lastPage
+  const total = pagination.total
+  const from = total === 0 ? 0 : (currentPage - 1) * pagination.perPage + 1
+  const to = Math.min(currentPage * pagination.perPage, total)
   const error = pekerjaanQuery.error instanceof ApiError ? pekerjaanQuery.error : null
+  const isPageLoading = pekerjaanQuery.isFetching && !pekerjaanQuery.isPending
+
+  const goToPage = useCallback(
+    (next: number) => {
+      const clamped = Math.max(1, Math.min(lastPage, next))
+      setPage(clamped)
+      listRef.current?.scrollToOffset({ offset: 0, animated: true })
+    },
+    [lastPage],
+  )
 
   return (
     <View style={{ flex: 1, padding: 16, gap: 12 }}>
-      <SectionHeader title="Pekerjaan" description="Daftar paket yang diawasi." />
+      <SectionHeader
+        title="Pekerjaan"
+        description={pekerjaanScopeDescription(user)}
+      />
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <NeoBadge tone={elevated ? 'info' : 'success'}>{primaryRoleLabel(user)}</NeoBadge>
+        {total > 0 ? (
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
+            {from}–{to} dari {total}
+          </Text>
+        ) : null}
+        {isPageLoading ? <ActivityIndicator size="small" color={colors.foreground} /> : null}
+      </View>
 
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <View style={{ flex: 1 }}>
           <NeoInput
             placeholder="Cari paket"
             value={search}
-            onChangeText={(value) => {
-              setSearch(value)
-              setPage(1)
-            }}
+            onChangeText={setSearch}
           />
         </View>
         <View style={{ width: 88 }}>
           <NeoInput
             placeholder="Tahun"
             value={tahun}
-            onChangeText={(value) => {
-              setTahun(value)
-              setPage(1)
-            }}
+            onChangeText={setTahun}
             keyboardType="number-pad"
           />
         </View>
       </View>
 
-      {pekerjaanQuery.isPending && !pekerjaanQuery.data ? <Spinner label="Memuat pekerjaan..." /> : null}
+      {pekerjaanQuery.isPending && !pekerjaanQuery.data ? (
+        <Spinner label="Memuat pekerjaan…" />
+      ) : null}
 
       {error && !pekerjaanQuery.data ? (
         <EmptyState
-          title={error.status === 401 ? 'Sesi tidak valid' : error.status === 403 ? 'Akses ditolak' : 'Gagal memuat'}
+          title={
+            error.status === 401
+              ? 'Sesi tidak valid'
+              : error.status === 403
+                ? 'Akses ditolak'
+                : 'Gagal memuat'
+          }
           description={error.message}
           actionLabel="Coba lagi"
           onAction={() => void pekerjaanQuery.refetch()}
@@ -77,12 +135,22 @@ export default function PekerjaanScreen() {
       ) : null}
 
       <FlatList
-        data={pekerjaanQuery.data?.data ?? []}
+        ref={listRef}
+        style={{ flex: 1 }}
+        data={items}
         keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+        contentContainerStyle={{ gap: 12, paddingBottom: 12, flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           !pekerjaanQuery.isPending && !error ? (
-            <EmptyState title="Belum ada pekerjaan" description="Tidak ada data untuk filter ini." />
+            <EmptyState
+              title="Belum ada pekerjaan"
+              description={
+                elevated
+                  ? 'Tidak ada data untuk filter ini.'
+                  : 'Tidak ada pekerjaan yang ditugaskan ke akun Anda untuk filter ini.'
+              }
+            />
           ) : null
         }
         renderItem={({ item }) => (
@@ -93,60 +161,79 @@ export default function PekerjaanScreen() {
             <NeoSurface style={{ gap: 8 }}>
               <Text style={{ fontSize: 16, fontWeight: '800' }}>{item.nama_paket}</Text>
               <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
-                {[item.kecamatan?.nama_kecamatan, item.desa?.nama_desa].filter(Boolean).join(' · ') || 'Lokasi belum diisi'}
+                {[item.kecamatan?.nama_kecamatan, item.desa?.nama_desa].filter(Boolean).join(' · ') ||
+                  'Lokasi belum diisi'}
               </Text>
+              {elevated && item.pengawas?.nama ? (
+                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.foreground }}>
+                  Pengawas: {item.pengawas.nama}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 <NeoBadge tone="info">{formatPercent(item.progress_estimasi_fisik)}</NeoBadge>
                 <NeoBadge tone="neutral">{formatCurrency(item.pagu)}</NeoBadge>
               </View>
               {item.updated_at ? (
-                <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Diperbarui {formatDate(item.updated_at)}</Text>
+                <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
+                  Diperbarui {formatDate(item.updated_at)}
+                </Text>
               ) : null}
             </NeoSurface>
           </Pressable>
         )}
-        ListFooterComponent={
-          lastPage > 1 ? (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
-              <Pressable
-                disabled={currentPage <= 1}
-                onPress={() => setPage((p) => Math.max(1, p - 1))}
-                style={{
-                  flex: 1,
-                  opacity: currentPage <= 1 ? 0.5 : 1,
-                  borderWidth: 2,
-                  borderColor: colors.border,
-                  backgroundColor: colors.card,
-                  padding: 12,
-                  borderRadius: 6,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ fontWeight: '700' }}>Sebelumnya</Text>
-              </Pressable>
-              <Text style={{ alignSelf: 'center', fontWeight: '700' }}>
-                {currentPage}/{lastPage}
-              </Text>
-              <Pressable
-                disabled={currentPage >= lastPage}
-                onPress={() => setPage((p) => Math.min(lastPage, p + 1))}
-                style={{
-                  flex: 1,
-                  opacity: currentPage >= lastPage ? 0.5 : 1,
-                  borderWidth: 2,
-                  borderColor: colors.border,
-                  backgroundColor: colors.main,
-                  padding: 12,
-                  borderRadius: 6,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ fontWeight: '700' }}>Berikutnya</Text>
-              </Pressable>
-            </View>
-          ) : null
-        }
       />
+
+      {/* Pagination fixed di bawah — tidak perlu scroll ke footer list */}
+      {lastPage > 1 || total > PER_PAGE ? (
+        <View
+          style={{
+            borderTopWidth: 2,
+            borderTopColor: colors.border,
+            paddingTop: 10,
+            gap: 8,
+            backgroundColor: colors.background,
+          }}
+        >
+          <Text style={{ textAlign: 'center', fontWeight: '700', fontSize: 13, color: colors.mutedForeground }}>
+            Halaman {currentPage} / {lastPage}
+            {total > 0 ? ` · total ${total}` : ''}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              disabled={currentPage <= 1 || isPageLoading}
+              onPress={() => goToPage(currentPage - 1)}
+              style={{
+                flex: 1,
+                opacity: currentPage <= 1 || isPageLoading ? 0.45 : 1,
+                borderWidth: 2,
+                borderColor: colors.border,
+                backgroundColor: colors.card,
+                padding: 12,
+                borderRadius: radius,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontWeight: '800' }}>Sebelumnya</Text>
+            </Pressable>
+            <Pressable
+              disabled={currentPage >= lastPage || isPageLoading}
+              onPress={() => goToPage(currentPage + 1)}
+              style={{
+                flex: 1,
+                opacity: currentPage >= lastPage || isPageLoading ? 0.45 : 1,
+                borderWidth: 2,
+                borderColor: colors.border,
+                backgroundColor: colors.main,
+                padding: 12,
+                borderRadius: radius,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ fontWeight: '800' }}>Berikutnya</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }

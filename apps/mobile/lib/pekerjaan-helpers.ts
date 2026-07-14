@@ -71,7 +71,7 @@ export type FotoMatrixRow = {
   count: number
 }
 
-function fotoMatrixKey(komponenId: number, penerimaId: number | null | undefined, slot: string) {
+export function fotoMatrixKey(komponenId: number, penerimaId: number | null | undefined, slot: string) {
   return `${komponenId}:${penerimaId ?? 0}:${slot}`
 }
 
@@ -79,31 +79,92 @@ function fotoCountKey(komponenId: number, penerimaId: number | null | undefined)
   return `${komponenId}:${penerimaId ?? 0}`
 }
 
+/** Index foto per slot — O(fotos), tanpa meledak ke outputs×penerima. */
+export function buildFotoSlotLookup(fotos: Foto[]): Map<string, Foto> {
+  const bySlot = new Map<string, Foto>()
+  for (const foto of fotos) {
+    const komponenId = foto.komponen_id
+    if (komponenId == null) continue
+    const penerimaId = foto.penerima_id ?? null
+    const rawSlot = normalizeSlotLabel(foto.keterangan)
+    const slot = rawSlot.includes('|') ? (rawSlot.split('|')[0] ?? '').trim() || rawSlot : rawSlot
+    if (!slot) continue
+    const key = fotoMatrixKey(komponenId, penerimaId, slot)
+    if (!bySlot.has(key)) bySlot.set(key, foto)
+  }
+  return bySlot
+}
+
+export function slotsForGroup(
+  lookup: Map<string, Foto>,
+  outputId: number,
+  penerimaId: number | null = null,
+): Array<{ slot: string; foto?: Foto }> {
+  return FOTO_SLOTS.map((slot) => ({
+    slot,
+    foto: lookup.get(fotoMatrixKey(outputId, penerimaId, slot)),
+  }))
+}
+
+export function countFilledSlots(
+  lookup: Map<string, Foto>,
+  outputId: number,
+  penerimaId: number | null = null,
+): number {
+  let n = 0
+  for (const slot of FOTO_SLOTS) {
+    if (lookup.has(fotoMatrixKey(outputId, penerimaId, slot))) n += 1
+  }
+  return n
+}
+
+export type OutputFotoSummary = {
+  output: Output
+  isUnit: boolean
+  filled: number
+  total: number
+  groupCount: number
+}
+
+/** Ringkasan per output — murah untuk list level-1. */
+export function buildOutputFotoSummaries(
+  outputs: Output[],
+  lookup: Map<string, Foto>,
+  penerimaList: Penerima[],
+): OutputFotoSummary[] {
+  return outputs.map((output) => {
+    const isUnit = !output.penerima_is_optional && penerimaList.length > 0
+    if (!isUnit) {
+      const filled = countFilledSlots(lookup, output.id, null)
+      return { output, isUnit: false, filled, total: FOTO_SLOTS.length, groupCount: 1 }
+    }
+    let filled = 0
+    for (const p of penerimaList) {
+      filled += countFilledSlots(lookup, output.id, p.id)
+    }
+    return {
+      output,
+      isUnit: true,
+      filled,
+      total: FOTO_SLOTS.length * penerimaList.length,
+      groupCount: penerimaList.length,
+    }
+  })
+}
+
 /**
  * Bangun matriks foto O(fotos + outputs × penerima × slots) dengan lookup map,
  * bukan O(outputs × penerima × slots × fotos) via Array.find berulang.
+ * @deprecated Prefer buildFotoSlotLookup + slotsForGroup untuk UI mobile (anti-lag).
  */
 export function buildFotoMatrix(outputs: Output[], fotos: Foto[], penerimaList: Penerima[]): FotoMatrixRow[] {
-  const bySlot = new Map<string, Foto>()
+  const bySlot = buildFotoSlotLookup(fotos)
   const counts = new Map<string, number>()
 
   for (const foto of fotos) {
     const komponenId = foto.komponen_id
     if (komponenId == null) continue
-
-    const penerimaId = foto.penerima_id ?? null
-    // Samakan normalisasi progress dengan web (legacy "50%|Unit 2" → "50%")
-    const rawSlot = normalizeSlotLabel(foto.keterangan)
-    const slot = rawSlot.includes('|') ? (rawSlot.split('|')[0] ?? '').trim() || rawSlot : rawSlot
-    if (slot) {
-      const key = fotoMatrixKey(komponenId, penerimaId, slot)
-      // Slot pertama menang — konsisten dengan find() sebelumnya
-      if (!bySlot.has(key)) {
-        bySlot.set(key, foto)
-      }
-    }
-
-    const cKey = fotoCountKey(komponenId, penerimaId)
+    const cKey = fotoCountKey(komponenId, foto.penerima_id ?? null)
     counts.set(cKey, (counts.get(cKey) ?? 0) + 1)
   }
 
@@ -111,10 +172,7 @@ export function buildFotoMatrix(outputs: Output[], fotos: Foto[], penerimaList: 
 
   for (const output of outputs) {
     if (output.penerima_is_optional || penerimaList.length === 0) {
-      const slots = FOTO_SLOTS.map((slot) => ({
-        slot,
-        foto: bySlot.get(fotoMatrixKey(output.id, null, slot)),
-      }))
+      const slots = slotsForGroup(bySlot, output.id, null)
       matrix.push({
         output,
         slots,
@@ -124,10 +182,7 @@ export function buildFotoMatrix(outputs: Output[], fotos: Foto[], penerimaList: 
     }
 
     for (const penerima of penerimaList) {
-      const slots = FOTO_SLOTS.map((slot) => ({
-        slot,
-        foto: bySlot.get(fotoMatrixKey(output.id, penerima.id, slot)),
-      }))
+      const slots = slotsForGroup(bySlot, output.id, penerima.id)
       matrix.push({
         output,
         slots,

@@ -1,6 +1,13 @@
-export type OtaUpdatePhase = 'idle' | 'checking' | 'downloading' | 'ready' | 'applying'
+export type OtaUpdatePhase =
+  | 'idle'
+  | 'checking'
+  | 'downloading'
+  | 'ready'
+  | 'applying'
+  | 'error'
 
-export const OTA_APPLY_ANIMATION_MS = 900
+/** Overlay apply — cukup singkat; splash native mengambil alih saat reload. */
+export const OTA_APPLY_ANIMATION_MS = 700
 
 type OtaUpdateListener = (phase: OtaUpdatePhase) => void
 

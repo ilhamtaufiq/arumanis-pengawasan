@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { buildFotoMatrix } from '../apps/mobile/lib/pekerjaan-helpers'
+import {
+  buildFotoMatrix,
+  buildFotoSlotLookup,
+  buildOutputFotoSummaries,
+  countFilledSlots,
+  slotsForGroup,
+} from '../apps/mobile/lib/pekerjaan-helpers'
 import type { Foto, Output, Penerima } from '@pengawas/shared'
 
 const outputUnit: Output = {
@@ -56,3 +62,26 @@ describe('buildFotoMatrix', () => {
     expect(matrix[0]?.slots.find((s) => s.slot === '25%')?.foto?.id).toBe(103)
   })
 })
+
+describe('buildFotoSlotLookup + summaries', () => {
+  test('lookup is O(fotos) and slotsForGroup returns five slots', () => {
+    const lookup = buildFotoSlotLookup(fotos)
+    const slots = slotsForGroup(lookup, 1, 10)
+    expect(slots).toHaveLength(5)
+    expect(slots.find((s) => s.slot === '0%')?.foto?.id).toBe(100)
+    expect(countFilledSlots(lookup, 1, 10)).toBe(2)
+  })
+
+  test('output summaries stay one row per output (no penerima explosion)', () => {
+    const lookup = buildFotoSlotLookup(fotos)
+    const summaries = buildOutputFotoSummaries([outputUnit, outputKomunal], lookup, penerima)
+    expect(summaries).toHaveLength(2)
+    expect(summaries[0]?.isUnit).toBe(true)
+    expect(summaries[0]?.groupCount).toBe(2)
+    expect(summaries[0]?.filled).toBe(3)
+    expect(summaries[0]?.total).toBe(10)
+    expect(summaries[1]?.isUnit).toBe(false)
+    expect(summaries[1]?.filled).toBe(1)
+  })
+})
+

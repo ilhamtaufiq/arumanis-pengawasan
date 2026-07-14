@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
-import { Animated, Easing, Image, Modal, Text, View } from 'react-native'
+import { Alert, Animated, Easing, Image, Modal, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Download, RefreshCw, Sparkles } from 'lucide-react-native'
 import { useOtaUpdate } from '@/hooks/useOtaUpdate'
 import { NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
+import { resetOtaUpdatePhase } from '@/lib/ota-update-status'
 
 const BANNER_HIDDEN_OFFSET = -140
 
@@ -101,7 +102,7 @@ function OtaApplyingOverlay() {
       <Animated.View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(17, 17, 17, 0.82)',
+          backgroundColor: 'rgba(17, 17, 17, 0.88)',
           alignItems: 'center',
           justifyContent: 'center',
           padding: 24,
@@ -132,12 +133,14 @@ function OtaApplyingOverlay() {
             </View>
 
             <View style={{ alignItems: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>OTA UPDATE</Text>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
+                PEMBARUAN
+              </Text>
               <Text style={{ fontSize: 20, fontWeight: '800', color: colors.foreground, textAlign: 'center' }}>
-                Memperbarui aplikasi
+                Memasang versi baru
               </Text>
               <Text style={{ fontSize: 14, color: colors.mutedForeground, textAlign: 'center', lineHeight: 20 }}>
-                Versi terbaru sedang diterapkan. Mohon tunggu sebentar.
+                Mohon tunggu. Aplikasi akan dimuat ulang secara otomatis.
               </Text>
             </View>
 
@@ -151,6 +154,42 @@ function OtaApplyingOverlay() {
   )
 }
 
+function OtaErrorOverlay({ onDismiss, onRetry }: { onDismiss: () => void; onRetry: () => void }) {
+  return (
+    <Modal visible transparent animationType="fade" statusBarTranslucent>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: 'rgba(17, 17, 17, 0.78)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+        }}
+      >
+        <NeoSurface shadow="lg" style={{ gap: 14, width: '100%', maxWidth: 360 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: colors.mutedForeground }}>
+            PEMBARUAN
+          </Text>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground }}>
+            Hampir selesai
+          </Text>
+          <Text style={{ fontSize: 14, color: colors.mutedForeground, lineHeight: 20 }}>
+            Versi baru sudah diunduh. Tutup aplikasi sepenuhnya, lalu buka lagi agar pembaruan aktif.
+            Atau coba terapkan ulang di bawah.
+          </Text>
+          <NeoButton label="Coba terapkan lagi" onPress={onRetry} fullWidth />
+          <NeoButton
+            label="Nanti saja"
+            variant="ghost"
+            onPress={onDismiss}
+            fullWidth
+          />
+        </NeoSurface>
+      </View>
+    </Modal>
+  )
+}
+
 export function OtaUpdateBanner() {
   const insets = useSafeAreaInsets()
   const { phase, isVisible, applyNow } = useOtaUpdate()
@@ -158,7 +197,7 @@ export function OtaUpdateBanner() {
   const pulse = useRef(new Animated.Value(1)).current
 
   useEffect(() => {
-    if (!isVisible || phase === 'applying') {
+    if (!isVisible || phase === 'applying' || phase === 'error') {
       Animated.timing(slideY, {
         toValue: BANNER_HIDDEN_OFFSET,
         duration: 220,
@@ -208,21 +247,39 @@ export function OtaUpdateBanner() {
     return <OtaApplyingOverlay />
   }
 
+  if (phase === 'error') {
+    return (
+      <OtaErrorOverlay
+        onDismiss={() => resetOtaUpdatePhase()}
+        onRetry={() => {
+          void applyNow().then((ok) => {
+            if (!ok) {
+              Alert.alert(
+                'Pembaruan',
+                'Silakan tutup aplikasi sepenuhnya dari daftar aplikasi terbaru, lalu buka lagi.',
+              )
+            }
+          })
+        }}
+      />
+    )
+  }
+
   if (!isVisible) {
     return null
   }
 
   const title =
     phase === 'checking'
-      ? 'Memeriksa pembaruan...'
+      ? 'Memeriksa pembaruan…'
       : phase === 'downloading'
-        ? 'Mengunduh pembaruan...'
+        ? 'Mengunduh pembaruan…'
         : 'Pembaruan siap dipasang'
 
   const description =
     phase === 'ready'
-      ? 'Versi terbaru sudah diunduh. Terapkan sekarang atau otomatis saat aplikasi diminimalkan.'
-      : 'Mohon tetap buka aplikasi sampai proses selesai.'
+      ? 'Versi terbaru sudah diunduh. Ketuk pasang sekarang — aplikasi akan dimuat ulang.'
+      : 'Mohon tetap buka aplikasi sampai unduhan selesai.'
 
   const Icon = phase === 'ready' ? Sparkles : Download
 
@@ -258,16 +315,26 @@ export function OtaUpdateBanner() {
               <Icon size={20} color={colors.foreground} strokeWidth={2.5} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.mutedForeground }}>UPDATE APLIKASI</Text>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.mutedForeground }}>
+                PEMBARUAN APLIKASI
+              </Text>
               <Text style={{ fontSize: 16, fontWeight: '800', color: colors.foreground }}>{title}</Text>
-              <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>{description}</Text>
+              <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
+                {description}
+              </Text>
             </View>
           </View>
 
           {phase === 'downloading' || phase === 'checking' ? <OtaProgressBar /> : null}
 
           {phase === 'ready' ? (
-            <NeoButton label="Terapkan sekarang" onPress={() => void applyNow()} fullWidth />
+            <NeoButton
+              label="Pasang sekarang"
+              onPress={() => {
+                void applyNow()
+              }}
+              fullWidth
+            />
           ) : null}
         </NeoSurface>
       </Animated.View>

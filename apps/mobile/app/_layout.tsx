@@ -14,6 +14,7 @@ import { useBackgroundLocation } from '@/hooks/useBackgroundLocation'
 import { useLocationEnforcement } from '@/hooks/useLocationEnforcement'
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
 import { AuthProvider, useAuth } from '@/lib/auth'
+import { installGlobalClientErrorReporting } from '@/lib/client-error-reporting'
 import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
 import { startOtaUpdateLifecycle } from '@/lib/app-updates'
 import { resetOtaUpdatePhase } from '@/lib/ota-update-status'
@@ -30,6 +31,9 @@ void SplashScreen.preventAutoHideAsync().catch(() => {
   // Web atau lingkungan tanpa native splash — abaikan.
 })
 
+// Global JS fatal / uncaught → POST /client-error-reports → error-logs di web
+installGlobalClientErrorReporting()
+
 export const ErrorBoundary = createRouteErrorBoundary('Aplikasi', false)
 
 function AppShell() {
@@ -41,6 +45,8 @@ function AppShell() {
   useNotificationNavigation()
 
   useEffect(() => {
+    // Setelah cold start / OTA reload, pastikan phase bersih (kecuali error yang
+    // di-set di sesi yang sama sebelum unmount — di cold start selalu idle).
     resetOtaUpdatePhase()
   }, [])
 
@@ -48,16 +54,20 @@ function AppShell() {
     if (splashHiddenRef.current) return
 
     if (!isLoading) {
-      splashHiddenRef.current = true
-      void SplashScreen.hideAsync().catch(() => undefined)
-      return
+      // Sedikit delay agar root tree sempat mount — hindari blank setelah OTA reload.
+      const t = setTimeout(() => {
+        if (splashHiddenRef.current) return
+        splashHiddenRef.current = true
+        void SplashScreen.hideAsync().catch(() => undefined)
+      }, 120)
+      return () => clearTimeout(t)
     }
 
     const fallback = setTimeout(() => {
       if (splashHiddenRef.current) return
       splashHiddenRef.current = true
       void SplashScreen.hideAsync().catch(() => undefined)
-    }, 3500)
+    }, 4000)
 
     return () => clearTimeout(fallback)
   }, [isLoading])

@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AppState, Image, Platform, Pressable, Text, View } from 'react-native'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  AppState,
+  FlatList,
+  Platform,
+  Pressable,
+  Text,
+  View,
+  type ListRenderItem,
+} from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Foto, Output, PekerjaanDetail, Penerima } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { queryKeys } from '@pengawas/shared/query-keys'
-import { deleteFoto, updateFoto } from '@/lib/api'
+import { deleteFoto, getPekerjaanDetail, updateFoto } from '@/lib/api'
 import { appendFotoFileToFormData, getUnsupportedFotoFormatReason, type PickedImageAsset } from '@/lib/foto-upload'
 import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
 import {
@@ -17,33 +25,30 @@ import {
 } from '@/lib/foto-picker-session'
 import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
-import { buildFotoMatrix } from '@/lib/pekerjaan-helpers'
 import {
-  isFotoKoordinatInvalid,
-  summarizeFotoKoordinatStatus,
-} from '@pengawas/shared/foto-koordinat-status'
-import { FOTO_MATRIX_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagination'
+  buildFotoSlotLookup,
+  buildOutputFotoSummaries,
+  countFilledSlots,
+  FOTO_SLOTS,
+  slotsForGroup,
+  type OutputFotoSummary,
+} from '@/lib/pekerjaan-helpers'
+import { isFotoKoordinatInvalid, summarizeFotoKoordinatStatus } from '@pengawas/shared/foto-koordinat-status'
 import { FotoPreviewModal } from '@/components/pekerjaan/FotoPreviewModal'
 import { FotoEditKoordinatModal } from '@/components/pekerjaan/FotoEditKoordinatModal'
 import { FotoUploadQueueBanner } from '@/components/pekerjaan/FotoUploadQueueBanner'
 import { FotoUploadModal } from '@/components/pekerjaan/FotoUploadModal'
+import { FotoSlotTile } from '@/components/pekerjaan/FotoSlotTile'
+import type { UploadTarget } from '@/components/pekerjaan/FotoMatrixRow'
 import {
   ChoiceDialog,
   ConfirmDialog,
   EmptyState,
   NeoBadge,
   NeoSurface,
-  PaginationBar,
-  SectionHeader,
   Spinner,
 } from '@/components/ui'
 import { colors, radius } from '@/theme/tokens'
-
-type UploadTarget = {
-  output: Output
-  slot: string
-  penerima?: Penerima
-}
 
 type SourceRequest = {
   target: UploadTarget
@@ -60,8 +65,48 @@ type FotoTabProps = {
   pekerjaan: PekerjaanDetail
 }
 
+type NavLevel =
+  | { kind: 'outputs' }
+  | { kind: 'penerima'; output: Output }
+  | { kind: 'slots'; output: Output; penerima?: Penerima }
+
+const ROW_H = 72
+
+/**
+ * Tab foto anti-hang:
+ * 1) List OUTPUT saja (sedikit item)
+ * 2) List PENERIMA bila unit (tanpa image)
+ * 3) 5 SLOT image hanya untuk 1 grup terpilih
+ *
+ * Lookup O(fotos) — tidak pernah bangun matriks penuh outputs×penerima.
+ */
 export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const queryClient = useQueryClient()
+  // Jika detail di-slim (URL dipotong karena banyak foto), hydrate sekali saat tab foto dibuka.
+  useEffect(() => {
+    const fotos = pekerjaan.foto ?? []
+    if (fotos.length === 0) return
+    const missingUrl = fotos.some((f) => f.id && !f.foto_url && !f.foto_thumb_url)
+    if (!missingUrl) return
+
+    let cancelled = false
+    void getPekerjaanDetail(pekerjaanId)
+      .then((full) => {
+        if (cancelled || !full?.foto?.length) return
+        queryClient.setQueryData(queryKeys.pekerjaan.detail(pekerjaanId), (prev: typeof full | undefined) => {
+          if (!prev) return full
+          return { ...prev, foto: full.foto, foto_count: full.foto_count ?? full.foto?.length }
+        })
+      })
+      .catch(() => {
+        // Biarkan UI pakai metadata tanpa URL
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [pekerjaanId, pekerjaan.foto, queryClient])
+
   const [uploadingTarget, setUploadingTarget] = useState<UploadTarget | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [previewFoto, setPreviewFoto] = useState<Foto | null>(null)
@@ -76,51 +121,24 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     replaceFotoId?: number
   } | null>(null)
   const [slotActions, setSlotActions] = useState<SlotActions | null>(null)
-  const [matrixPage, setMatrixPage] = useState(1)
   const [coordsFilter, setCoordsFilter] = useState<'all' | 'invalid'>('all')
-  /** Progress upload 0–100; null = indeterminate / idle. */
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
+  const [nav, setNav] = useState<NavLevel>({ kind: 'outputs' })
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
 
   const fotoList = pekerjaan.foto ?? []
   const outputList = pekerjaan.output ?? []
   const penerimaList = pekerjaan.penerima ?? []
+
+  // Index murah — O(fotos), sinkron OK
+  const lookup = useMemo(() => buildFotoSlotLookup(fotoList), [fotoList])
   const coordsSummary = useMemo(() => summarizeFotoKoordinatStatus(fotoList), [fotoList])
-  const matrix = useMemo(
-    () => buildFotoMatrix(outputList, fotoList, penerimaList),
-    [fotoList, outputList, penerimaList],
+  const outputSummaries = useMemo(
+    () => buildOutputFotoSummaries(outputList, lookup, penerimaList),
+    [outputList, lookup, penerimaList],
   )
-  const filteredMatrix = useMemo(() => {
-    if (coordsFilter !== 'invalid') return matrix
-    return matrix.filter((row) =>
-      row.slots.some((s) => s.foto && isFotoKoordinatInvalid(s.foto)),
-    )
-  }, [matrix, coordsFilter])
-  const matrixPagination = useMemo(
-    () =>
-      readPaginationMeta(undefined, {
-        page: matrixPage,
-        perPage: FOTO_MATRIX_PAGE_SIZE,
-        total: filteredMatrix.length,
-      }),
-    [filteredMatrix.length, matrixPage],
-  )
-  const pagedMatrix = useMemo(
-    () => paginateSlice(filteredMatrix, matrixPage, FOTO_MATRIX_PAGE_SIZE),
-    [filteredMatrix, matrixPage],
-  )
+
   const statusFoto = resolveFotoStatus(pekerjaan)
-
-  useEffect(() => {
-    setMatrixPage(1)
-  }, [pekerjaanId, coordsFilter])
-
-  useEffect(() => {
-    if (matrixPage > matrixPagination.lastPage) {
-      setMatrixPage(matrixPagination.lastPage)
-    }
-  }, [matrixPage, matrixPagination.lastPage])
-
   const detailQueryKey = queryKeys.pekerjaan.detail(pekerjaanId)
 
   const patchDetailFotos = useCallback(
@@ -128,11 +146,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       queryClient.setQueryData<PekerjaanDetail>(detailQueryKey, (previous) => {
         if (!previous) return previous
         const nextFotos = updater(previous.foto ?? [])
-        return {
-          ...previous,
-          foto: nextFotos,
-          foto_count: nextFotos.length,
-        }
+        return { ...previous, foto: nextFotos, foto_count: nextFotos.length }
       })
     },
     [detailQueryKey, queryClient],
@@ -146,9 +160,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       replaceFotoId?: number
     }) => {
       const formatError = getUnsupportedFotoFormatReason(input.asset)
-      if (formatError) {
-        throw new Error(formatError)
-      }
+      if (formatError) throw new Error(formatError)
 
       const formData = new FormData()
       formData.append('pekerjaan_id', String(pekerjaanId))
@@ -162,18 +174,14 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       await appendFotoFileToFormData(formData, input.asset)
       setUploadProgress(0)
 
-      // Ganti foto: UPDATE existing (bukan hapus dulu) agar gagal upload tidak hilangkan foto.
       return uploadFotoWithRetry(formData, {
         fotoId: input.replaceFotoId,
         onProgress: (progress) => {
-          if (progress.percent != null) {
-            setUploadProgress(progress.percent)
-          }
+          if (progress.percent != null) setUploadProgress(progress.percent)
         },
       })
     },
     onSuccess: (created, variables) => {
-      // Patch cache lokal — hindari refetch detail penuh (jank + payload gemuk).
       const localUri = variables.asset.uri
       const nextFoto: Foto = {
         ...created,
@@ -192,13 +200,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           const replaced = fotos.map((item) =>
             item.id === variables.replaceFotoId ? { ...item, ...nextFoto, id: variables.replaceFotoId } : item,
           )
-          // Pastikan id lama tetap ada di list
-          if (replaced.some((item) => item.id === variables.replaceFotoId)) {
-            return replaced
-          }
+          if (replaced.some((item) => item.id === variables.replaceFotoId)) return replaced
         }
-        const withoutDup = fotos.filter((item) => item.id !== nextFoto.id)
-        return [...withoutDup, nextFoto]
+        return [...fotos.filter((item) => item.id !== nextFoto.id), nextFoto]
       })
 
       setUploadingTarget(null)
@@ -242,7 +246,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           return
         }
       }
-
       setUploadingTarget(null)
       setErrorMessage(formatApiError(error, 'Gagal mengunggah foto.'))
     },
@@ -267,7 +270,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       return updateFoto(input.foto.id, formData)
     },
     onSuccess: (updated, variables) => {
-      // Pertahankan URL media lokal jika API belum mengembalikan foto_url
       patchDetailFotos((fotos) =>
         fotos.map((item) => {
           if (item.id !== variables.foto.id && item.id !== updated.id) return item
@@ -309,7 +311,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       return { previous }
     },
     onSuccess: () => {
-      // Cache sudah di-patch di onMutate — tidak perlu refetch detail penuh.
       setPendingDelete(null)
       setPreviewFoto(null)
       setPreviewTarget(null)
@@ -317,9 +318,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       setErrorMessage(null)
     },
     onError: (error, _fotoId, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(detailQueryKey, context.previous)
-      }
+      if (context?.previous) queryClient.setQueryData(detailQueryKey, context.previous)
       setErrorMessage(formatApiError(error, 'Gagal menghapus foto.'))
     },
   })
@@ -327,17 +326,18 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const isBusy =
     uploadMutation.isPending || deleteMutation.isPending || editKoordinatMutation.isPending
 
+  const uploadingKey = uploadingTarget
+    ? `${uploadingTarget.output.id}:${uploadingTarget.slot}:${uploadingTarget.penerima?.id ?? 0}`
+    : null
+
   function assetFromResult(result: ImagePicker.ImagePickerResult): PickedImageAsset | null {
     if (result.canceled || !result.assets[0]) return null
     const asset = result.assets[0]
-    // Beberapa galeri Android mengembalikan image/jpg (non-standard) atau HEIC.
-    // Meta di-normalize ke jpeg/png saat FormData; di sini jaga mime agar tidak kosong.
     const rawMime = (asset.mimeType || 'image/jpeg').toLowerCase()
     const mimeType =
       rawMime.includes('png') ? 'image/png' : rawMime.includes('jpeg') || rawMime.includes('jpg')
         ? 'image/jpeg'
         : 'image/jpeg'
-
     return {
       uri: asset.uri,
       mimeType,
@@ -349,12 +349,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   const pickerOptions: ImagePicker.ImagePickerOptions = {
     mediaTypes: ['images'],
-    // Jangan re-encode agresif: quality < 1 di beberapa device menghapus EXIF GPS dari file.
-    // EXIF masih dibaca dari asset.exif, tapi deep parse file butuh GPS di binary.
     quality: 1,
     allowsEditing: false,
     exif: true,
-    // iOS: paksa representasi kompatibel (hindari HEIC yang ditolak API mimes jpg/png).
     ...(Platform.OS === 'ios' && ImagePicker.UIImagePickerPreferredAssetRepresentationMode
       ? {
           preferredAssetRepresentationMode:
@@ -376,20 +373,14 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   function resolveRequestFromSession(session: PendingFotoPickerSession): SourceRequest | null {
     const output = outputList.find((item) => item.id === session.komponenId)
     if (!output) return null
-
     const penerima =
       session.penerimaId != null
         ? penerimaList.find((item) => item.id === session.penerimaId)
         : undefined
-
     const target: UploadTarget = penerima
       ? { output, slot: session.slot, penerima }
       : { output, slot: session.slot }
-
-    return {
-      target,
-      replaceFotoId: session.replaceFotoId,
-    }
+    return { target, replaceFotoId: session.replaceFotoId }
   }
 
   const openUploadModal = useCallback((request: SourceRequest, asset: PickedImageAsset) => {
@@ -409,19 +400,14 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       void clearPendingFotoPickerSession()
       const asset = assetFromResult(result)
       if (!asset) {
-        // User cancel — jangan tampilkan error.
-        if (!result.canceled) {
-          setErrorMessage('Tidak ada foto yang dipilih.')
-        }
+        if (!result.canceled) setErrorMessage('Tidak ada foto yang dipilih.')
         return
       }
-
       const unsupported = getUnsupportedFotoFormatReason(asset)
       if (unsupported) {
         setErrorMessage(unsupported)
         return
       }
-
       openUploadModal(request, asset)
     },
     [openUploadModal],
@@ -441,7 +427,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     pendingPickerRequestRef.current = request
     setSourceRequest(null)
     setErrorMessage(null)
-
     try {
       await savePendingFotoPickerSession(requestToSession(request))
       const result = await launch()
@@ -458,12 +443,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       setErrorMessage('Izin kamera ditolak. Aktifkan di pengaturan perangkat untuk mengambil foto.')
       return
     }
-
-    await persistAndLaunch(
-      request,
-      () => ImagePicker.launchCameraAsync(pickerOptions),
-      'Gagal membuka kamera.',
-    )
+    await persistAndLaunch(request, () => ImagePicker.launchCameraAsync(pickerOptions), 'Gagal membuka kamera.')
   }
 
   async function launchGalleryNow(request: SourceRequest) {
@@ -473,7 +453,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       setErrorMessage('Izin galeri ditolak. Aktifkan di pengaturan perangkat untuk memilih foto.')
       return
     }
-
     await persistAndLaunch(
       request,
       () => ImagePicker.launchImageLibraryAsync(pickerOptions),
@@ -483,51 +462,56 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
 
   useEffect(() => {
     if (Platform.OS === 'web') return
-
     let cancelled = false
-
     const recoverPendingPickerResult = async () => {
       try {
-        // 1) Context in-memory (app tidak di-kill)
         let request = pendingPickerRequestRef.current
-
-        // 2) Context persisten (Android process death saat kamera/galeri)
         if (!request) {
           const session = await readPendingFotoPickerSession(pekerjaanId)
           if (session) {
             request = resolveRequestFromSession(session)
-            if (!request) {
-              // Output/penerima belum di cache — biarkan session sampai data ready.
-              return
-            }
+            if (!request) return
             pendingPickerRequestRef.current = request
           }
         }
-
         if (!request || cancelled) return
-
         const pending = await ImagePicker.getPendingResultAsync()
         const latest = pending.at(-1)
         if (!latest || !('assets' in latest) || cancelled) return
-
         handlePickerResult(request, latest)
       } catch {
-        // Recovery best-effort.
+        // best-effort
       }
     }
-
     const subscription = AppState.addEventListener('change', (next) => {
-      if (next === 'active') {
-        void recoverPendingPickerResult()
-      }
+      if (next === 'active') void recoverPendingPickerResult()
     })
-
     void recoverPendingPickerResult()
     return () => {
       cancelled = true
       subscription.remove()
     }
   }, [pekerjaanId, outputList, penerimaList, handlePickerResult])
+
+  const startUpload = useCallback((target: UploadTarget, replaceFotoId?: number) => {
+    setErrorMessage(null)
+    setSourceRequest({ target, replaceFotoId })
+  }, [])
+
+  const openPreview = useCallback((foto: Foto, target: UploadTarget) => {
+    setPreviewFoto(foto)
+    setPreviewTarget(target)
+  }, [])
+
+  const closePreview = useCallback(() => {
+    if (isBusy) return
+    setPreviewFoto(null)
+    setPreviewTarget(null)
+  }, [isBusy])
+
+  const requestDelete = useCallback((foto: Foto) => {
+    setPendingDelete(foto)
+  }, [])
 
   function submitUpload(koordinat: string) {
     if (!pendingUpload) return
@@ -537,26 +521,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       koordinat,
       replaceFotoId: pendingUpload.replaceFotoId,
     })
-  }
-
-  function startUpload(target: UploadTarget, replaceFotoId?: number) {
-    setErrorMessage(null)
-    setSourceRequest({ target, replaceFotoId })
-  }
-
-  function openPreview(foto: Foto, target: UploadTarget) {
-    setPreviewFoto(foto)
-    setPreviewTarget(target)
-  }
-
-  function closePreview() {
-    if (isBusy) return
-    setPreviewFoto(null)
-    setPreviewTarget(null)
-  }
-
-  function requestDelete(foto: Foto) {
-    setPendingDelete(foto)
   }
 
   function handleReplaceFromPreview() {
@@ -581,6 +545,96 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     deleteMutation.mutate(pendingDelete.id)
   }
 
+  const openOutput = useCallback(
+    (summary: OutputFotoSummary) => {
+      if (summary.isUnit) {
+        setNav({ kind: 'penerima', output: summary.output })
+        return
+      }
+      setNav({ kind: 'slots', output: summary.output })
+    },
+    [],
+  )
+
+  const openPenerima = useCallback((output: Output, penerima: Penerima) => {
+    setNav({ kind: 'slots', output, penerima })
+  }, [])
+
+  const goBack = useCallback(() => {
+    setNav((current) => {
+      if (current.kind === 'slots' && current.penerima) {
+        return { kind: 'penerima', output: current.output }
+      }
+      return { kind: 'outputs' }
+    })
+  }, [])
+
+  // —— Level data ——
+  const penerimaRows = useMemo(() => {
+    if (nav.kind !== 'penerima') return []
+    const outputId = nav.output.id
+    return penerimaList.map((p) => {
+      const filled = countFilledSlots(lookup, outputId, p.id)
+      const slots = slotsForGroup(lookup, outputId, p.id)
+      const invalid = slots.filter((s) => s.foto && isFotoKoordinatInvalid(s.foto)).length
+      return { penerima: p, filled, total: FOTO_SLOTS.length, invalid }
+    }).filter((row) => (coordsFilter === 'invalid' ? row.invalid > 0 : true))
+  }, [nav, penerimaList, lookup, coordsFilter])
+
+  const activeSlots = useMemo(() => {
+    if (nav.kind !== 'slots') return []
+    return slotsForGroup(lookup, nav.output.id, nav.penerima?.id ?? null)
+  }, [nav, lookup])
+
+  const filteredOutputs = useMemo(() => {
+    if (coordsFilter !== 'invalid') return outputSummaries
+    return outputSummaries.filter((s) => {
+      if (!s.isUnit) {
+        return slotsForGroup(lookup, s.output.id, null).some(
+          (slot) => slot.foto && isFotoKoordinatInvalid(slot.foto),
+        )
+      }
+      return penerimaList.some((p) =>
+        slotsForGroup(lookup, s.output.id, p.id).some(
+          (slot) => slot.foto && isFotoKoordinatInvalid(slot.foto),
+        ),
+      )
+    })
+  }, [outputSummaries, coordsFilter, lookup, penerimaList])
+
+  const renderOutput: ListRenderItem<OutputFotoSummary> = useCallback(
+    ({ item }) => (
+      <ListRow
+        title={item.output.komponen}
+        subtitle={
+          item.isUnit
+            ? `${item.groupCount} penerima · ketuk untuk pilih unit`
+            : 'Output komunal · ketuk isi slot'
+        }
+        badge={`${item.filled}/${item.total}`}
+        tone={item.filled >= item.total ? 'ok' : 'warn'}
+        onPress={() => openOutput(item)}
+      />
+    ),
+    [openOutput],
+  )
+
+  const renderPenerima: ListRenderItem<(typeof penerimaRows)[number]> = useCallback(
+    ({ item }) => {
+      if (nav.kind !== 'penerima') return null
+      return (
+        <ListRow
+          title={item.penerima.nama}
+          subtitle={item.invalid > 0 ? `${item.invalid} GPS invalid` : 'Ketuk untuk isi/lihat slot'}
+          badge={`${item.filled}/${item.total}`}
+          tone={item.invalid > 0 ? 'danger' : item.filled >= item.total ? 'ok' : 'warn'}
+          onPress={() => openPenerima(nav.output, item.penerima)}
+        />
+      )
+    },
+    [nav, openPenerima],
+  )
+
   if (outputList.length === 0) {
     return (
       <EmptyState
@@ -591,7 +645,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }
 
   return (
-    <View style={{ gap: 16 }}>
+    <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
       <FotoUploadQueueBanner />
 
       {errorMessage ? (
@@ -600,45 +654,38 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         </NeoSurface>
       ) : null}
 
-      <NeoBadge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</NeoBadge>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <NeoBadge tone={statusFotoTone(statusFoto)}>{statusFotoText(statusFoto)}</NeoBadge>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
+          {outputList.length} output · {fotoList.length} foto
+        </Text>
+      </View>
 
       {coordsSummary.invalid > 0 ? (
-        <NeoSurface tone="secondary" style={{ padding: 12, gap: 8, borderColor: '#fecaca', backgroundColor: '#fef2f2' }}>
-          <Text style={{ fontWeight: '800', color: '#7f1d1d' }}>
-            {coordsSummary.invalid} foto GPS invalid (di luar desa)
-          </Text>
-          <Text style={{ fontSize: 12, color: '#991b1b' }}>
-            Slot berbingkai merah. Ketuk foto → ganti dengan koordinat valid.
-          </Text>
-          <Pressable
-            onPress={() => setCoordsFilter((prev) => (prev === 'invalid' ? 'all' : 'invalid'))}
+        <Pressable
+          onPress={() => setCoordsFilter((p) => (p === 'invalid' ? 'all' : 'invalid'))}
+          style={{
+            alignSelf: 'flex-start',
+            backgroundColor: coordsFilter === 'invalid' ? '#b91c1c' : '#fef2f2',
+            borderWidth: 1.5,
+            borderColor: '#b91c1c',
+            borderRadius: radius,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+          }}
+        >
+          <Text
             style={{
-              alignSelf: 'flex-start',
-              backgroundColor: coordsFilter === 'invalid' ? '#b91c1c' : '#fff',
-              borderWidth: 1,
-              borderColor: '#b91c1c',
-              borderRadius: radius,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
+              fontWeight: '800',
+              fontSize: 11,
+              color: coordsFilter === 'invalid' ? '#fff' : '#b91c1c',
             }}
           >
-            <Text
-              style={{
-                fontWeight: '800',
-                fontSize: 12,
-                color: coordsFilter === 'invalid' ? '#fff' : '#b91c1c',
-              }}
-            >
-              {coordsFilter === 'invalid' ? 'Tampilkan semua' : 'Filter hanya invalid'}
-            </Text>
-          </Pressable>
-        </NeoSurface>
-      ) : null}
-
-      {filteredMatrix.length > FOTO_MATRIX_PAGE_SIZE ? (
-        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-          {filteredMatrix.length} grup output · {FOTO_MATRIX_PAGE_SIZE} per halaman
-        </Text>
+            {coordsFilter === 'invalid'
+              ? 'Tampilkan semua'
+              : `${coordsSummary.invalid} GPS invalid — filter`}
+          </Text>
+        </Pressable>
       ) : null}
 
       {isBusy ? (
@@ -646,157 +693,159 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           label={
             uploadMutation.isPending
               ? uploadProgress != null
-                ? `Mengunggah foto... ${uploadProgress}%`
+                ? `Mengunggah... ${uploadProgress}%`
                 : 'Mengunggah foto...'
-              : 'Menghapus foto...'
+              : editKoordinatMutation.isPending
+                ? 'Menyimpan koordinat...'
+                : 'Menghapus foto...'
           }
         />
       ) : null}
 
-      {pagedMatrix.map((row, index) => (
-        <NeoSurface key={`${row.output.id}-${row.penerima?.id ?? 'komunal'}-${index}`} style={{ gap: 12 }}>
-          <SectionHeader
-            title={row.output.komponen}
-            description={
-              row.penerima
-                ? `Penerima: ${row.penerima.nama}`
-                : row.output.penerima_is_optional
-                  ? 'Output komunal'
-                  : 'Tanpa penerima spesifik'
-            }
-          />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            {row.slots.map(({ slot, foto }) => {
-              const target: UploadTarget = {
-                output: row.output,
-                slot,
-                penerima: row.penerima,
-              }
-              const isUploading =
-                uploadingTarget?.output.id === target.output.id &&
-                uploadingTarget.slot === target.slot &&
-                uploadingTarget.penerima?.id === target.penerima?.id
+      {/* Breadcrumb / back */}
+      {nav.kind !== 'outputs' ? (
+        <Pressable
+          onPress={goBack}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ fontWeight: '900', fontSize: 14, color: colors.foreground }}>← Kembali</Text>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: colors.mutedForeground }}>
+            {nav.kind === 'penerima'
+              ? nav.output.komponen
+              : `${nav.output.komponen}${nav.penerima ? ` · ${nav.penerima.nama}` : ''}`}
+          </Text>
+        </Pressable>
+      ) : null}
 
-              return (
-                <Pressable
-                  key={slot}
-                  onPress={() => {
-                    if (foto) {
-                      openPreview(foto, target)
-                      return
+      {nav.kind === 'outputs' ? (
+        <FlatList
+          style={{ flex: 1 }}
+          data={filteredOutputs}
+          keyExtractor={(item) => String(item.output.id)}
+          renderItem={renderOutput}
+          getItemLayout={(_, index) => ({ length: ROW_H + 8, offset: (ROW_H + 8) * index, index })}
+          initialNumToRender={8}
+          maxToRenderPerBatch={6}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
+          contentContainerStyle={{ gap: 8, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
+            <EmptyState title="Tidak ada output" description="Sesuaikan filter GPS invalid." />
+          }
+        />
+      ) : null}
+
+      {nav.kind === 'penerima' ? (
+        <FlatList
+          style={{ flex: 1 }}
+          data={penerimaRows}
+          keyExtractor={(item) => String(item.penerima.id)}
+          renderItem={renderPenerima}
+          getItemLayout={(_, index) => ({ length: ROW_H + 8, offset: (ROW_H + 8) * index, index })}
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
+          contentContainerStyle={{ gap: 8, paddingBottom: 32 }}
+          keyboardShouldPersistTaps="handled"
+          ListEmptyComponent={
+            <EmptyState
+              title={coordsFilter === 'invalid' ? 'Tidak ada GPS invalid' : 'Belum ada penerima'}
+              description="Data penerima kosong untuk output ini."
+            />
+          }
+        />
+      ) : null}
+
+      {nav.kind === 'slots' ? (
+        <View style={{ gap: 12, paddingBottom: 24 }}>
+          <NeoSurface style={{ gap: 10, padding: 12 }}>
+            <Text style={{ fontWeight: '900', fontSize: 15 }}>{nav.output.komponen}</Text>
+            <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
+              {nav.penerima ? `Penerima: ${nav.penerima.nama}` : 'Output komunal'}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {activeSlots.map(({ slot, foto }) => {
+                const target: UploadTarget = {
+                  output: nav.output,
+                  slot,
+                  penerima: nav.penerima,
+                }
+                const key = `${target.output.id}:${target.slot}:${target.penerima?.id ?? 0}`
+                return (
+                  <FotoSlotTile
+                    key={slot}
+                    slot={slot}
+                    foto={foto}
+                    isUploading={uploadingKey === key}
+                    disabled={isBusy}
+                    onPress={() => {
+                      if (foto) openPreview(foto, target)
+                      else startUpload(target)
+                    }}
+                    onLongPress={
+                      foto
+                        ? () => setSlotActions({ foto, target })
+                        : undefined
                     }
-                    startUpload(target)
-                  }}
-                  onLongPress={() => {
-                    if (!foto) return
-                    setSlotActions({ foto, target })
-                  }}
-                  disabled={isBusy}
-                  style={{ width: 96, gap: 6 }}
-                >
-                  <View
-                    style={{
-                      width: 96,
-                      height: 96,
-                      borderWidth: 2,
-                      borderColor:
-                        foto && isFotoKoordinatInvalid(foto) ? '#dc2626' : colors.border,
-                      borderRadius: radius,
-                      backgroundColor: foto ? colors.card : colors.muted,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {foto?.foto_thumb_url || foto?.foto_url ? (
-                      <Image
-                        source={{ uri: foto.foto_thumb_url || foto.foto_url || '' }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                        // Hindari decode async berat yang memblok frame saat buka tab.
-                        fadeDuration={0}
-                      />
-                    ) : (
-                      <Text style={{ fontWeight: '800', fontSize: 13 }}>{isUploading ? '...' : '+'}</Text>
-                    )}
-                    {foto && isFotoKoordinatInvalid(foto) ? (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          top: 4,
-                          right: 4,
-                          backgroundColor: '#dc2626',
-                          borderRadius: 4,
-                          paddingHorizontal: 4,
-                          paddingVertical: 2,
-                        }}
-                      >
-                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>GPS!</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={{ fontWeight: '700', fontSize: 12, textAlign: 'center' }}>{slot}</Text>
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      color:
-                        foto && isFotoKoordinatInvalid(foto) ? '#b91c1c' : colors.mutedForeground,
-                      textAlign: 'center',
-                      fontWeight: foto && isFotoKoordinatInvalid(foto) ? '700' : '400',
-                    }}
-                  >
-                    {foto && isFotoKoordinatInvalid(foto)
-                      ? 'GPS invalid'
-                      : foto
-                        ? 'Ketuk preview'
-                        : 'Ketuk ambil foto'}
-                  </Text>
-                </Pressable>
-              )
-            })}
-          </View>
-        </NeoSurface>
-      ))}
+                  />
+                )
+              })}
+            </View>
+          </NeoSurface>
+          <Text style={{ fontSize: 11, color: colors.mutedForeground, fontWeight: '600' }}>
+            Hanya 5 slot grup ini yang memuat gambar — grup lain tidak di-render.
+          </Text>
+        </View>
+      ) : null}
 
-      <PaginationBar
-        currentPage={matrixPagination.currentPage}
-        lastPage={matrixPagination.lastPage}
-        total={matrixPagination.total}
-        onPrevious={() => setMatrixPage((current) => Math.max(1, current - 1))}
-        onNext={() => setMatrixPage((current) => Math.min(matrixPagination.lastPage, current + 1))}
-        disabled={isBusy}
-      />
+      {/* Modals — hanya mount state aktif; komponen tetap ringan */}
+      {previewFoto ? (
+        <FotoPreviewModal
+          visible={!pendingDelete && !editKoordinatFoto}
+          foto={previewFoto}
+          storyContext={{
+            namaPaket: pekerjaan.nama_paket,
+            desa: pekerjaan.desa?.nama_desa,
+            kecamatan: pekerjaan.kecamatan?.nama_kecamatan,
+            pengawas: pekerjaan.pengawas?.nama,
+            tahunAnggaran: pekerjaan.kegiatan?.tahun_anggaran,
+          }}
+          onClose={closePreview}
+          onReplace={handleReplaceFromPreview}
+          onEditKoordinat={() => {
+            if (!previewFoto) return
+            setEditKoordinatError(null)
+            setEditKoordinatFoto(previewFoto)
+          }}
+          onDelete={handleDeleteFromPreview}
+          isBusy={isBusy || editKoordinatMutation.isPending}
+        />
+      ) : null}
 
-      <FotoPreviewModal
-        visible={Boolean(previewFoto) && !pendingDelete && !editKoordinatFoto}
-        foto={previewFoto}
-        onClose={closePreview}
-        onReplace={handleReplaceFromPreview}
-        onEditKoordinat={() => {
-          if (!previewFoto) return
-          setEditKoordinatError(null)
-          setEditKoordinatFoto(previewFoto)
-        }}
-        onDelete={handleDeleteFromPreview}
-        isBusy={isBusy || editKoordinatMutation.isPending}
-      />
-
-      <FotoEditKoordinatModal
-        visible={Boolean(editKoordinatFoto)}
-        foto={editKoordinatFoto}
-        pekerjaanId={pekerjaanId}
-        onClose={() => {
-          if (editKoordinatMutation.isPending) return
-          setEditKoordinatFoto(null)
-          setEditKoordinatError(null)
-        }}
-        onSave={(koordinat) => {
-          if (!editKoordinatFoto) return
-          editKoordinatMutation.mutate({ foto: editKoordinatFoto, koordinat })
-        }}
-        isSaving={editKoordinatMutation.isPending}
-        errorMessage={editKoordinatError}
-      />
+      {editKoordinatFoto ? (
+        <FotoEditKoordinatModal
+          visible
+          foto={editKoordinatFoto}
+          pekerjaanId={pekerjaanId}
+          onClose={() => {
+            if (editKoordinatMutation.isPending) return
+            setEditKoordinatFoto(null)
+            setEditKoordinatError(null)
+          }}
+          onSave={(koordinat) => {
+            editKoordinatMutation.mutate({ foto: editKoordinatFoto, koordinat })
+          }}
+          isSaving={editKoordinatMutation.isPending}
+          errorMessage={editKoordinatError}
+        />
+      ) : null}
 
       <ConfirmDialog
         visible={Boolean(pendingDelete)}
@@ -813,21 +862,23 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         isBusy={deleteMutation.isPending}
       />
 
-      <FotoUploadModal
-        visible={Boolean(pendingUpload)}
-        target={pendingUpload?.target ?? null}
-        asset={pendingUpload?.asset ?? null}
-        pekerjaanId={pekerjaanId}
-        onClose={() => {
-          if (isBusy) return
-          setPendingUpload(null)
-          setUploadingTarget(null)
-          setUploadProgress(null)
-        }}
-        onUpload={submitUpload}
-        isUploading={uploadMutation.isPending}
-        uploadProgress={uploadProgress}
-      />
+      {pendingUpload ? (
+        <FotoUploadModal
+          visible
+          target={pendingUpload.target}
+          asset={pendingUpload.asset}
+          pekerjaanId={pekerjaanId}
+          onClose={() => {
+            if (isBusy) return
+            setPendingUpload(null)
+            setUploadingTarget(null)
+            setUploadProgress(null)
+          }}
+          onUpload={submitUpload}
+          isUploading={uploadMutation.isPending}
+          uploadProgress={uploadProgress}
+        />
+      ) : null}
 
       <ChoiceDialog
         visible={Boolean(sourceRequest)}
@@ -844,7 +895,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
             onPress: () => {
               const request = sourceRequest
               if (!request) return
-              // Tutup dialog dulu agar tidak numpuk di atas camera intent.
               setSourceRequest(null)
               void launchCameraNow(request)
             },
@@ -890,3 +940,58 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     </View>
   )
 }
+
+const ListRow = memo(function ListRow({
+  title,
+  subtitle,
+  badge,
+  tone,
+  onPress,
+}: {
+  title: string
+  subtitle: string
+  badge: string
+  tone: 'ok' | 'warn' | 'danger'
+  onPress: () => void
+}) {
+  const badgeBg = tone === 'ok' ? '#dcfce7' : tone === 'danger' ? '#fee2e2' : '#fef9c3'
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        minHeight: ROW_H,
+        borderWidth: 2,
+        borderColor: colors.border,
+        borderRadius: radius,
+        backgroundColor: colors.card,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+      }}
+    >
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text numberOfLines={1} style={{ fontWeight: '800', fontSize: 14, color: colors.foreground }}>
+          {title}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: 11, color: colors.mutedForeground }}>
+          {subtitle}
+        </Text>
+      </View>
+      <View
+        style={{
+          paddingHorizontal: 8,
+          paddingVertical: 4,
+          borderRadius: 4,
+          borderWidth: 1.5,
+          borderColor: colors.border,
+          backgroundColor: badgeBg,
+        }}
+      >
+        <Text style={{ fontWeight: '800', fontSize: 11 }}>{badge}</Text>
+      </View>
+      <Text style={{ fontWeight: '900', fontSize: 16, color: colors.mutedForeground }}>›</Text>
+    </Pressable>
+  )
+})

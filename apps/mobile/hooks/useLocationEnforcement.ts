@@ -27,7 +27,15 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
 }
 
 export function useLocationEnforcement() {
-  const { canFetch } = useAuth()
+  const { canFetch, user } = useAuth()
+  // Admin/manager sering di meja — GPS background wajib hanya untuk pengawas lapangan.
+  const elevated =
+    Boolean(user?.roles?.some((r) => {
+      const name = (typeof r === 'string' ? r : r?.name || '').toLowerCase()
+      return name === 'admin' || name === 'manager' || name === 'super-admin'
+    }))
+  const locationRequired = canFetch && !elevated
+
   const [readiness, setReadiness] = useState<LocationReadiness | null>(null)
   const [checking, setChecking] = useState(false)
   const [awaitingFirstCheck, setAwaitingFirstCheck] = useState(false)
@@ -84,8 +92,13 @@ export function useLocationEnforcement() {
   }, [])
 
   useEffect(() => {
-    if (!canFetch) {
-      setReadiness(null)
+    if (!locationRequired) {
+      setReadiness({
+        ready: true,
+        servicesEnabled: true,
+        foregroundGranted: true,
+        backgroundGranted: true,
+      })
       setAwaitingFirstCheck(false)
       return
     }
@@ -94,10 +107,10 @@ export function useLocationEnforcement() {
     void enforce().finally(() => {
       setAwaitingFirstCheck(false)
     })
-  }, [canFetch, enforce])
+  }, [locationRequired, enforce])
 
   useEffect(() => {
-    if (!canFetch) return
+    if (!locationRequired) return
 
     let reconcileTimer: ReturnType<typeof setTimeout> | null = null
     let interactionHandle: { cancel?: () => void } | null = null
@@ -129,14 +142,14 @@ export function useLocationEnforcement() {
       interactionHandle?.cancel?.()
       subscription.remove()
     }
-  }, [canFetch, reconcile])
+  }, [locationRequired, reconcile])
 
   // Sembunyikan gate saat prompt sistem berjalan; jangan toggle saat app sebentar inactive di Android.
-  const suppressGate = checking || awaitingFirstCheck
+  const suppressGate = checking || awaitingFirstCheck || elevated
 
   return {
-    required: canFetch,
-    ready: readiness?.ready ?? !canFetch,
+    required: locationRequired,
+    ready: elevated ? true : readiness?.ready ?? !canFetch,
     readiness,
     checking,
     suppressGate,

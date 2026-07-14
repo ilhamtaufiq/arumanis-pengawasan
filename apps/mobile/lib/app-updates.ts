@@ -1,4 +1,5 @@
 import { AppState, type AppStateStatus, Platform } from 'react-native'
+import * as SplashScreen from 'expo-splash-screen'
 import * as Updates from 'expo-updates'
 import {
   OTA_CHECK_DELAY_MS,
@@ -29,6 +30,7 @@ export {
 } from '@/lib/ota-update-status'
 
 let otaLifecycleStarted = false
+let applyInFlight = false
 
 function delay(ms: number) {
   return new Promise<void>((resolve) => {
@@ -36,15 +38,35 @@ function delay(ms: number) {
   })
 }
 
+/**
+ * Terapkan OTA dengan splash native supaya tidak blank putih setelah reloadAsync.
+ * Expo reload sering "menggantung" UI jika splash sudah di-hide sebelumnya.
+ */
 async function applyOtaUpdateWithAnimation() {
+  if (applyInFlight) return
+  applyInFlight = true
   setOtaUpdatePhase('applying')
-  await delay(OTA_APPLY_ANIMATION_MS)
 
   try {
+    // Pastikan splash tampil lagi sebelum bundle diganti.
+    await SplashScreen.preventAutoHideAsync().catch(() => undefined)
+    await delay(OTA_APPLY_ANIMATION_MS)
+
+    // reloadAsync biasanya tidak resolve (JS context diganti). Jika resolve/gagal, tangani.
     await Updates.reloadAsync()
-  } catch {
+
+    // Jika sampai di sini (jarang), reload tidak terjadi — minta buka ulang manual.
     markOtaReloadPending()
-    setOtaUpdatePhase('ready')
+    setOtaUpdatePhase('error')
+  } catch {
+    // Beberapa device melempar error meski reload sudah dijadwalkan.
+    // Tunggu sebentar; jika app masih hidup, tampilkan instruksi buka ulang.
+    await delay(1_200)
+    markOtaReloadPending()
+    setOtaUpdatePhase('error')
+    void SplashScreen.hideAsync().catch(() => undefined)
+  } finally {
+    applyInFlight = false
   }
 }
 
@@ -81,20 +103,20 @@ export async function downloadOtaUpdateIfAvailable() {
 }
 
 async function applyPendingOtaReloadIfNeeded(appState: AppStateStatus) {
-  if (!consumeOtaReloadPending()) return
-  if (shouldDeferOtaReload(appState)) {
-    markOtaReloadPending()
-    return
-  }
+  if (!isOtaReloadPending()) return
+  if (shouldDeferOtaReload(appState)) return
 
+  if (!consumeOtaReloadPending()) return
   await applyOtaUpdateWithAnimation()
 }
 
 /** Terapkan update yang sudah diunduh — dipanggil dari UI. */
 export async function applyOtaUpdateNow() {
-  if (!isOtaReloadPending()) return false
+  if (!isOtaReloadPending() || applyInFlight) return false
 
-  consumeOtaReloadPending()
+  // Jangan consume dulu — jika gagal, user masih bisa coba lagi.
+  // Consume tepat sebelum reload agar background handler tidak double-apply.
+  if (!consumeOtaReloadPending()) return false
   await applyOtaUpdateWithAnimation()
   return true
 }
@@ -110,6 +132,7 @@ export function startOtaUpdateLifecycle(delayMs = OTA_CHECK_DELAY_MS) {
   otaLifecycleStarted = true
 
   const handleAppState = (next: AppStateStatus) => {
+    // Saat kembali active setelah error, biarkan UI error tetap (user bisa tekan buka ulang).
     void applyPendingOtaReloadIfNeeded(next)
   }
 
@@ -126,15 +149,16 @@ export function startOtaUpdateLifecycle(delayMs = OTA_CHECK_DELAY_MS) {
     clearTimeout(timer)
     subscription.remove()
     otaLifecycleStarted = false
-    setOtaUpdatePhase('idle')
+    // Jangan reset ke idle di sini saat unmount normal — biarkan phase bertahan
+    // hanya reset lifecycle flag.
   }
 }
 
-/** @deprecated Pakai startOtaUpdateLifecycle — reload langsung menyebabkan force close di Android. */
+/** @deprecated Pakai startOtaUpdateLifecycle */
 export async function checkAndApplyOtaUpdate() {
   const downloaded = await downloadOtaUpdateIfAvailable()
   if (!downloaded || shouldDeferOtaReload(AppState.currentState)) return
 
-  consumeOtaReloadPending()
+  if (!consumeOtaReloadPending()) return
   await applyOtaUpdateWithAnimation()
 }

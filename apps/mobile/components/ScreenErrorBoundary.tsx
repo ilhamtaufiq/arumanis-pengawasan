@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { DebugErrorPanel } from '@/components/DebugErrorPanel'
+import { reportUnknownError } from '@/lib/client-error-reporting'
 
 type ScreenErrorBoundaryProps = {
   children: ReactNode
@@ -21,6 +22,13 @@ export class ScreenErrorBoundary extends Component<ScreenErrorBoundaryProps, Scr
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(`[ScreenErrorBoundary:${this.props.scope}]`, error, info.componentStack)
+    reportUnknownError('react', error, {
+      componentStack: info.componentStack ?? undefined,
+      metadata: {
+        scope: this.props.scope,
+        ...this.props.extra,
+      },
+    })
   }
 
   private handleRetry = () => {

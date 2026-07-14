@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, Text } from 'react-native'
+import { ActivityIndicator, Pressable, Text, View } from 'react-native'
 import Svg, { Path } from 'react-native-svg'
 import { colors, radius, shadows } from '@/theme/tokens'
 
@@ -10,7 +10,7 @@ type GoogleLoginButtonProps = {
 
 function GoogleIcon() {
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24">
+    <Svg width={22} height={22} viewBox="0 0 24 24">
       <Path
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
         fill="#4285F4"
@@ -44,29 +44,49 @@ export function GoogleLoginButton({ onPress, disabled, loading }: GoogleLoginBut
         const { pressed } = state
         return [
           {
-            minHeight: 44,
+            minHeight: 52,
             width: '100%',
             alignSelf: 'stretch',
-            paddingHorizontal: 16,
+            paddingHorizontal: 14,
             paddingVertical: 12,
             backgroundColor: '#ffffff',
-            borderWidth: 2,
+            borderWidth: 3,
             borderColor: colors.border,
             borderRadius: radius,
-            opacity: isDisabled ? 0.85 : 1,
+            opacity: isDisabled ? 0.7 : 1,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 10,
+            gap: 12,
+            // Pastikan terlihat di atas surface putih (neobrutalism)
+            ...shadows.md,
           },
-          !pressed ? shadows.sm : null,
-          pressed ? { transform: [{ translateX: 2 }, { translateY: 2 }] } : null,
+          pressed && !isDisabled
+            ? {
+                transform: [{ translateX: 3 }, { translateY: 3 }],
+                shadowOffset: { width: 0, height: 0 },
+                elevation: 0,
+              }
+            : null,
         ]
       }}
     >
-      {loading ? <ActivityIndicator color={colors.foreground} /> : <GoogleIcon />}
-      <Text style={{ color: colors.foreground, fontWeight: '700', fontSize: 16 }}>
-        {loading ? 'Menghubungkan...' : 'Masuk dengan Google'}
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 4,
+          borderWidth: 2,
+          borderColor: colors.border,
+          backgroundColor: '#f8fafc',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {loading ? <ActivityIndicator color={colors.foreground} /> : <GoogleIcon />}
+      </View>
+      <Text style={{ color: colors.foreground, fontWeight: '800', fontSize: 16, letterSpacing: 0.2 }}>
+        {loading ? 'Menghubungkan Google…' : 'Masuk dengan Google'}
       </Text>
     </Pressable>
   )
