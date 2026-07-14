@@ -8,28 +8,50 @@ export type PaginationMeta = {
   perPage: number
 }
 
+function toPositiveInt(value: unknown, fallback: number) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 1) return fallback
+  return Math.floor(n)
+}
+
+function toNonNegInt(value: unknown, fallback: number) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.floor(n)
+}
+
+/**
+ * Baca meta paginasi Laravel Resource (`meta.current_page`, …).
+ * Fallback total jangan pakai panjang array 1 halaman — itu bikin last_page selalu 1.
+ */
 export function readPaginationMeta(
   meta: Record<string, unknown> | undefined,
   fallback: { page: number; perPage: number; total: number },
 ): PaginationMeta {
   if (meta && (meta.current_page != null || meta.last_page != null || meta.total != null)) {
-    const perPage = Number(meta.per_page || fallback.perPage)
-    const total = Number(meta.total ?? fallback.total)
-    const lastPage = Number(meta.last_page || Math.max(1, Math.ceil(total / Math.max(perPage, 1))))
+    const perPage = toPositiveInt(meta.per_page, fallback.perPage)
+    const total = toNonNegInt(meta.total, fallback.total)
+    const currentPage = toPositiveInt(meta.current_page, fallback.page)
+    const lastPage = toPositiveInt(
+      meta.last_page,
+      Math.max(1, Math.ceil(total / Math.max(perPage, 1)) || 1),
+    )
     return {
-      currentPage: Number(meta.current_page || fallback.page),
-      lastPage,
+      currentPage,
+      lastPage: Math.max(1, lastPage),
       total,
       perPage,
     }
   }
 
-  const lastPage = Math.max(1, Math.ceil(fallback.total / Math.max(fallback.perPage, 1)))
+  const perPage = toPositiveInt(fallback.perPage, 5)
+  const total = toNonNegInt(fallback.total, 0)
+  const lastPage = Math.max(1, total > 0 ? Math.ceil(total / perPage) : 1)
   return {
-    currentPage: fallback.page,
+    currentPage: toPositiveInt(fallback.page, 1),
     lastPage,
-    total: fallback.total,
-    perPage: fallback.perPage,
+    total,
+    perPage,
   }
 }
 
