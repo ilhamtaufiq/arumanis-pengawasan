@@ -247,6 +247,11 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<Foto>(payload)
     },
 
+    async getFoto(fotoId: number | string) {
+      const payload = await requestApi<ApiEnvelope<Foto> | Foto>(`/foto/${fotoId}`)
+      return unwrapEntity<Foto>(payload)
+    },
+
     async updateFoto(fotoId: number | string, input: FormData) {
       // Laravel multipart update: POST + _method=PUT
       if (!input.has('_method')) {

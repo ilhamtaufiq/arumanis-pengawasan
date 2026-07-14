@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  ActivityIndicator,
   Image,
   Modal,
   Pressable,
@@ -11,6 +12,7 @@ import {
 import type { Foto } from '@pengawas/shared'
 import { formatDateTime } from '@pengawas/shared/format'
 import type { StoryShareContext } from '@/lib/story-share-meta'
+import { getFoto } from '@/lib/api'
 import { StoryShareModal } from '@/components/pekerjaan/StoryShareModal'
 import { NeoBadge, NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
@@ -28,6 +30,23 @@ type FotoPreviewModalProps = {
   isBusy?: boolean
 }
 
+function resolveImageUri(foto: Foto | null | undefined): string {
+  if (!foto) return ''
+  const candidates = [
+    foto.foto_url,
+    foto.foto_thumb_url,
+    (foto as { url?: string | null }).url,
+    (foto as { media_url?: string | null }).media_url,
+  ]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+/**
+ * Preview foto + tombol Bagikan Story (selalu terlihat di bawah gambar).
+ */
 export function FotoPreviewModal({
   visible,
   foto,
@@ -40,141 +59,200 @@ export function FotoPreviewModal({
 }: FotoPreviewModalProps) {
   const { height } = useWindowDimensions()
   const [shareOpen, setShareOpen] = useState(false)
-  const imageUri = foto?.foto_url || foto?.foto_thumb_url || ''
-  const maxImageHeight = Math.min(height * 0.5, 420)
-  // Story selalu bisa dibuka bila ada gambar; frame native opsional di dalam modal share.
-  const canShareStory = Boolean(imageUri)
+  const [resolvedFoto, setResolvedFoto] = useState<Foto | null>(foto)
+  const [loadingUrl, setLoadingUrl] = useState(false)
 
-  if (!foto) return null
+  useEffect(() => {
+    setResolvedFoto(foto)
+    setShareOpen(false)
+  }, [foto?.id, visible])
+
+  // Jika URL hilang (detail di-slim), fetch 1 foto agar preview + share jalan
+  useEffect(() => {
+    if (!visible || !foto?.id) return
+    const hasUrl = Boolean(resolveImageUri(foto))
+    if (hasUrl) {
+      setResolvedFoto(foto)
+      return
+    }
+
+    let cancelled = false
+    setLoadingUrl(true)
+    void getFoto(foto.id)
+      .then((full) => {
+        if (cancelled || !full) return
+        setResolvedFoto({
+          ...foto,
+          ...full,
+          foto_url: full.foto_url || full.foto_thumb_url || foto.foto_url,
+          foto_thumb_url: full.foto_thumb_url || full.foto_url || foto.foto_thumb_url,
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedFoto(foto)
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUrl(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [visible, foto?.id, foto?.foto_url, foto?.foto_thumb_url])
+
+  const imageUri = useMemo(() => resolveImageUri(resolvedFoto), [resolvedFoto])
+  const maxImageHeight = Math.min(height * 0.38, 320)
+  const displayFoto = resolvedFoto ?? foto
+
+  if (!displayFoto) return null
 
   return (
     <>
       <Modal visible={visible && !shareOpen} transparent animationType="fade" onRequestClose={onClose}>
-        <Pressable
+        <View
           style={{
             flex: 1,
-            backgroundColor: 'rgba(17, 17, 17, 0.72)',
+            backgroundColor: 'rgba(17, 17, 17, 0.78)',
             justifyContent: 'center',
             padding: 16,
           }}
-          onPress={onClose}
         >
-          <Pressable
-            onPress={(event) => event.stopPropagation()}
-            style={{ width: '100%', maxWidth: 560, alignSelf: 'center' }}
+          <Pressable style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} onPress={onClose} />
+          <NeoSurface
+            shadow="lg"
+            style={{
+              gap: 12,
+              maxHeight: height * 0.9,
+              width: '100%',
+              maxWidth: 560,
+              alignSelf: 'center',
+              zIndex: 2,
+            }}
           >
-            <NeoSurface shadow="lg" style={{ gap: 16, maxHeight: height * 0.9 }}>
-              <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.mutedForeground }}>
-                  PREVIEW FOTO
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 1, color: colors.mutedForeground }}>
+                PREVIEW FOTO
+              </Text>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.foreground }}>
+                {displayFoto.keterangan || 'Foto pekerjaan'}
+              </Text>
+              <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
+                {formatDateTime(displayFoto.created_at)}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                width: '100%',
+                height: maxImageHeight,
+                borderWidth: 2,
+                borderColor: colors.border,
+                borderRadius: radius,
+                overflow: 'hidden',
+                backgroundColor: colors.muted,
+                ...shadows.sm,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {loadingUrl ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : imageUri ? (
+                <Image
+                  source={{ uri: imageUri }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <Text style={{ fontWeight: '700', color: colors.mutedForeground, padding: 12, textAlign: 'center' }}>
+                  Gambar tidak tersedia
                 </Text>
-                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.foreground }}>
-                  {foto.keterangan || 'Foto pekerjaan'}
+              )}
+            </View>
+
+            {/* Share langsung di bawah gambar — tidak perlu scroll jauh */}
+            <NeoButton
+              label={imageUri ? 'Bagikan Story' : loadingUrl ? 'Memuat gambar…' : 'Bagikan Story (tanpa gambar)'}
+              variant="primary"
+              fullWidth
+              onPress={() => setShareOpen(true)}
+              disabled={isBusy || loadingUrl}
+            />
+            <Text style={{ fontSize: 11, color: colors.mutedForeground, textAlign: 'center', lineHeight: 15 }}>
+              Bagikan ke Instagram Stories / WhatsApp Status
+            </Text>
+
+            <ScrollView
+              style={{ maxHeight: height * 0.28 }}
+              showsVerticalScrollIndicator
+              contentContainerStyle={{ gap: 10, paddingBottom: 4 }}
+            >
+              <View style={{ gap: 6 }}>
+                {storyContext?.namaPaket ? (
+                  <Text style={{ fontSize: 14 }}>
+                    <Text style={{ color: colors.mutedForeground }}>Paket: </Text>
+                    <Text style={{ fontWeight: '700' }}>{storyContext.namaPaket}</Text>
+                  </Text>
+                ) : null}
+                <Text style={{ fontSize: 14 }}>
+                  <Text style={{ color: colors.mutedForeground }}>Output: </Text>
+                  <Text style={{ fontWeight: '700' }}>
+                    {displayFoto.komponen?.komponen || String(displayFoto.komponen_id ?? '-')}
+                  </Text>
                 </Text>
-                <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
-                  {formatDateTime(foto.created_at)}
+                <Text style={{ fontSize: 14 }}>
+                  <Text style={{ color: colors.mutedForeground }}>Slot: </Text>
+                  <Text style={{ fontWeight: '700' }}>{displayFoto.keterangan || '-'}</Text>
                 </Text>
+                {displayFoto.penerima?.nama ? (
+                  <Text style={{ fontSize: 14 }}>
+                    <Text style={{ color: colors.mutedForeground }}>Penerima: </Text>
+                    <Text style={{ fontWeight: '700' }}>{displayFoto.penerima.nama}</Text>
+                  </Text>
+                ) : null}
+                <Text style={{ fontSize: 14 }}>
+                  <Text style={{ color: colors.mutedForeground }}>Koordinat: </Text>
+                  <Text style={{ fontWeight: '700' }}>{displayFoto.koordinat?.trim() || '-'}</Text>
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>Validasi:</Text>
+                  <NeoBadge tone={displayFoto.validasi_koordinat ? 'success' : 'danger'}>
+                    {displayFoto.validasi_koordinat ? 'Valid' : 'Belum valid'}
+                  </NeoBadge>
+                </View>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16 }}>
-                <View
-                  style={{
-                    width: '100%',
-                    height: maxImageHeight,
-                    borderWidth: 2,
-                    borderColor: colors.border,
-                    borderRadius: radius,
-                    overflow: 'hidden',
-                    backgroundColor: colors.muted,
-                    ...shadows.sm,
-                  }}
-                >
-                  {imageUri ? (
-                    <Image
-                      source={{ uri: imageUri }}
-                      style={{ width: '100%', height: '100%' }}
-                      resizeMode="contain"
-                    />
-                  ) : (
-                    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontWeight: '700', color: colors.mutedForeground }}>
-                        Gambar tidak tersedia
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={{ gap: 8 }}>
-                  <Text style={{ fontWeight: '800', fontSize: 14 }}>Detail</Text>
-                  {storyContext?.namaPaket ? (
-                    <Text style={{ fontSize: 14 }}>
-                      <Text style={{ color: colors.mutedForeground }}>Paket: </Text>
-                      <Text style={{ fontWeight: '700' }}>{storyContext.namaPaket}</Text>
-                    </Text>
-                  ) : null}
-                  <Text style={{ fontSize: 14 }}>
-                    <Text style={{ color: colors.mutedForeground }}>Output: </Text>
-                    <Text style={{ fontWeight: '700' }}>
-                      {foto.komponen?.komponen || String(foto.komponen_id ?? '-')}
-                    </Text>
-                  </Text>
-                  <Text style={{ fontSize: 14 }}>
-                    <Text style={{ color: colors.mutedForeground }}>Slot: </Text>
-                    <Text style={{ fontWeight: '700' }}>{foto.keterangan || '-'}</Text>
-                  </Text>
-                  {foto.penerima?.nama ? (
-                    <Text style={{ fontSize: 14 }}>
-                      <Text style={{ color: colors.mutedForeground }}>Penerima: </Text>
-                      <Text style={{ fontWeight: '700' }}>{foto.penerima.nama}</Text>
-                    </Text>
-                  ) : null}
-                  <Text style={{ fontSize: 14 }}>
-                    <Text style={{ color: colors.mutedForeground }}>Koordinat: </Text>
-                    <Text style={{ fontWeight: '700' }}>{foto.koordinat?.trim() || '-'}</Text>
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <Text style={{ color: colors.mutedForeground, fontSize: 14 }}>Validasi:</Text>
-                    <NeoBadge tone={foto.validasi_koordinat ? 'success' : 'danger'}>
-                      {foto.validasi_koordinat ? 'Valid' : 'Belum valid'}
-                    </NeoBadge>
-                  </View>
-                  {foto.validasi_koordinat_message ? (
-                    <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
-                      {foto.validasi_koordinat_message}
-                    </Text>
-                  ) : null}
-                </View>
-
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {canShareStory ? (
-                    <NeoButton
-                      label="Bagikan Story"
-                      variant="primary"
-                      onPress={() => setShareOpen(true)}
-                      disabled={isBusy}
-                    />
-                  ) : null}
-                  {onEditKoordinat ? (
-                    <NeoButton
-                      label={foto.validasi_koordinat === false ? 'Perbaiki koordinat' : 'Edit koordinat'}
-                      variant="secondary"
-                      onPress={onEditKoordinat}
-                      disabled={isBusy}
-                    />
-                  ) : null}
-                  <NeoButton label="Ganti foto" variant="neutral" onPress={onReplace} disabled={isBusy} />
-                  <NeoButton label="Hapus foto" variant="danger" onPress={onDelete} disabled={isBusy} />
-                  <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={isBusy} />
-                </View>
-              </ScrollView>
-            </NeoSurface>
-          </Pressable>
-        </Pressable>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {onEditKoordinat ? (
+                  <NeoButton
+                    label={
+                      displayFoto.validasi_koordinat === false ? 'Perbaiki koordinat' : 'Edit koordinat'
+                    }
+                    variant="secondary"
+                    onPress={onEditKoordinat}
+                    disabled={isBusy}
+                  />
+                ) : null}
+                <NeoButton label="Ganti foto" variant="neutral" onPress={onReplace} disabled={isBusy} />
+                <NeoButton label="Hapus foto" variant="danger" onPress={onDelete} disabled={isBusy} />
+                <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={isBusy} />
+              </View>
+            </ScrollView>
+          </NeoSurface>
+        </View>
       </Modal>
 
       <StoryShareModal
         visible={shareOpen && visible}
-        foto={foto}
+        foto={
+          displayFoto
+            ? {
+                ...displayFoto,
+                foto_url: imageUri || displayFoto.foto_url,
+                foto_thumb_url: displayFoto.foto_thumb_url || imageUri || null,
+              }
+            : null
+        }
         context={
           storyContext ?? {
             namaPaket: 'Dokumentasi lapangan',

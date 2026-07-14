@@ -120,6 +120,7 @@ export const {
   getPekerjaanProgressEstimasi,
   savePekerjaanProgressEstimasi,
   createFoto,
+  getFoto,
   updateFoto,
   validateKoordinat,
   deleteFoto,
