@@ -13,17 +13,23 @@ export type CreateFotoProgress = {
 /**
  * Upload foto via XHR agar progress byte tersedia di React Native.
  * Fallback ke fetch-style error parsing yang sama dengan api-client.
+ * @param fotoId — jika diisi, update foto existing (POST /foto/{id} + _method=PUT)
+ *   tanpa delete-then-create (hindari foto hilang bila upload gagal).
  */
 export async function createFotoWithProgress(
   formData: FormData,
   onProgress?: (progress: CreateFotoProgress) => void,
+  fotoId?: number,
 ): Promise<Foto> {
   const token = getSessionTokenSync() ?? (await ensureSessionToken())
   if (!token?.trim()) {
     throw new ApiError('Sesi tidak tersedia. Login ulang.', 401, null)
   }
 
-  const url = `${getApiBaseUrl()}/foto`
+  const url = fotoId != null ? `${getApiBaseUrl()}/foto/${fotoId}` : `${getApiBaseUrl()}/foto`
+  if (fotoId != null && !formData.has('_method')) {
+    formData.append('_method', 'PUT')
+  }
 
   return new Promise<Foto>((resolve, reject) => {
     const xhr = new XMLHttpRequest()

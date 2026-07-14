@@ -150,10 +150,6 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
         throw new Error(formatError)
       }
 
-      if (input.replaceFotoId) {
-        await deleteFoto(input.replaceFotoId)
-      }
-
       const formData = new FormData()
       formData.append('pekerjaan_id', String(pekerjaanId))
       formData.append('komponen_id', String(input.target.output.id))
@@ -166,7 +162,9 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       await appendFotoFileToFormData(formData, input.asset)
       setUploadProgress(0)
 
+      // Ganti foto: UPDATE existing (bukan hapus dulu) agar gagal upload tidak hilangkan foto.
       return uploadFotoWithRetry(formData, {
+        fotoId: input.replaceFotoId,
         onProgress: (progress) => {
           if (progress.percent != null) {
             setUploadProgress(progress.percent)
@@ -179,6 +177,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       const localUri = variables.asset.uri
       const nextFoto: Foto = {
         ...created,
+        id: created.id ?? variables.replaceFotoId ?? created.id,
         pekerjaan_id: created.pekerjaan_id ?? pekerjaanId,
         komponen_id: created.komponen_id ?? variables.target.output.id,
         penerima_id: created.penerima_id ?? variables.target.penerima?.id ?? null,
@@ -189,10 +188,16 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       }
 
       patchDetailFotos((fotos) => {
-        const withoutReplaced = variables.replaceFotoId
-          ? fotos.filter((item) => item.id !== variables.replaceFotoId)
-          : fotos
-        const withoutDup = withoutReplaced.filter((item) => item.id !== nextFoto.id)
+        if (variables.replaceFotoId) {
+          const replaced = fotos.map((item) =>
+            item.id === variables.replaceFotoId ? { ...item, ...nextFoto, id: variables.replaceFotoId } : item,
+          )
+          // Pastikan id lama tetap ada di list
+          if (replaced.some((item) => item.id === variables.replaceFotoId)) {
+            return replaced
+          }
+        }
+        const withoutDup = fotos.filter((item) => item.id !== nextFoto.id)
         return [...withoutDup, nextFoto]
       })
 
@@ -261,14 +266,27 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       }
       return updateFoto(input.foto.id, formData)
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, variables) => {
+      // Pertahankan URL media lokal jika API belum mengembalikan foto_url
       patchDetailFotos((fotos) =>
-        fotos.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+        fotos.map((item) => {
+          if (item.id !== variables.foto.id && item.id !== updated.id) return item
+          return {
+            ...item,
+            ...updated,
+            id: variables.foto.id,
+            foto_url: updated.foto_url || item.foto_url,
+            foto_thumb_url: updated.foto_thumb_url || item.foto_thumb_url || updated.foto_url || item.foto_url,
+            keterangan: updated.keterangan || item.keterangan,
+            unit_index: updated.unit_index ?? item.unit_index,
+          }
+        }),
       )
       setEditKoordinatFoto(null)
       setEditKoordinatError(null)
       setPreviewFoto(null)
       setPreviewTarget(null)
+      setCoordsFilter('all')
       setErrorMessage(null)
     },
     onError: (error) => {

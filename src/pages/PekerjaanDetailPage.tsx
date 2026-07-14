@@ -88,6 +88,9 @@ type UploadTarget = {
   output: Output
   slot: string
   penerima?: Penerima | undefined
+  /** Ganti foto existing (update file), bukan create baru */
+  replaceFotoId?: number
+  existingUnitIndex?: number | null
 }
 
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success' | 'info'
@@ -372,12 +375,14 @@ export function PekerjaanDetailPage() {
     }
   }, [editKoordinat, editFotoTarget, pekerjaanId])
 
+  // Sama seperti mobile: koordinat di luar desa tetap boleh diunggah/disimpan,
+  // status invalid hanya sebagai catatan (validasi_koordinat=false di server).
   const canSubmitFotoUpload = useMemo(
     () =>
       Boolean(uploadFile) &&
       hasParsableKoordinat(uploadKoordinat) &&
-      koordinatValidation?.loading === false &&
-      koordinatValidation?.valid === true,
+      Boolean(koordinatValidation) &&
+      koordinatValidation?.loading === false,
     [uploadFile, uploadKoordinat, koordinatValidation],
   )
 
@@ -385,8 +390,8 @@ export function PekerjaanDetailPage() {
     () =>
       Boolean(editFotoTarget) &&
       hasParsableKoordinat(editKoordinat) &&
-      editKoordinatValidation?.loading === false &&
-      editKoordinatValidation?.valid === true,
+      Boolean(editKoordinatValidation) &&
+      editKoordinatValidation?.loading === false,
     [editFotoTarget, editKoordinat, editKoordinatValidation],
   )
 
@@ -513,7 +518,10 @@ export function PekerjaanDetailPage() {
         // Komunal
         const slots = FOTO_SLOTS.map((slot) => {
           const foto = fotoList.find(
-            (item) => item.komponen_id === output.id && normalizeSlotLabel(item.keterangan) === slot && !item.penerima_id,
+            (item) =>
+              item.komponen_id === output.id &&
+              normalizeFotoProgress(item.keterangan) === slot &&
+              !item.penerima_id,
           )
           return { slot, foto }
         })
@@ -527,7 +535,10 @@ export function PekerjaanDetailPage() {
         if (penerimaList.length === 0) {
           const slots = FOTO_SLOTS.map((slot) => {
             const foto = fotoList.find(
-              (item) => item.komponen_id === output.id && normalizeSlotLabel(item.keterangan) === slot && !item.penerima_id,
+              (item) =>
+                item.komponen_id === output.id &&
+                normalizeFotoProgress(item.keterangan) === slot &&
+                !item.penerima_id,
             )
             return { slot, foto }
           })
@@ -540,7 +551,10 @@ export function PekerjaanDetailPage() {
           penerimaList.forEach((penerima) => {
             const slots = FOTO_SLOTS.map((slot) => {
               const foto = fotoList.find(
-                (item) => item.komponen_id === output.id && item.penerima_id === penerima.id && normalizeSlotLabel(item.keterangan) === slot,
+                (item) =>
+                  item.komponen_id === output.id &&
+                  item.penerima_id === penerima.id &&
+                  normalizeFotoProgress(item.keterangan) === slot,
               )
               return { slot, foto }
             })
@@ -814,16 +828,30 @@ export function PekerjaanDetailPage() {
   })
 
   const uploadFotoMutation = useMutation({
-    mutationFn: async (input: { file: File; output: Output; slot: string; penerima?: Penerima | undefined; koordinat: string }) => {
+    mutationFn: async (input: {
+      file: File
+      output: Output
+      slot: string
+      penerima?: Penerima | undefined
+      koordinat: string
+      replaceFotoId?: number
+      existingUnitIndex?: number | null
+    }) => {
       const formData = new FormData()
       formData.append('pekerjaan_id', String(pekerjaanId))
       formData.append('komponen_id', String(input.output.id))
-      formData.append('keterangan', input.slot)
+      formData.append('keterangan', normalizeFotoProgress(input.slot))
       formData.append('koordinat', input.koordinat.trim())
       if (input.penerima) {
         formData.append('penerima_id', String(input.penerima.id))
       }
+      if (input.existingUnitIndex != null && Number(input.existingUnitIndex) > 0) {
+        formData.append('unit_index', String(input.existingUnitIndex))
+      }
       formData.append('file', input.file)
+      if (input.replaceFotoId) {
+        return updateFoto(input.replaceFotoId, formData)
+      }
       return uploadFotoWithRetry(formData)
     },
     onSuccess: async (_data, variables) => {
@@ -835,6 +863,7 @@ export function PekerjaanDetailPage() {
       setUploadErrorMessage(null)
       setUploadTarget(null)
       setUploadFile(null)
+      setFotoKoordinatFilter('all')
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
     onError: async (error, variables) => {
@@ -984,6 +1013,8 @@ export function PekerjaanDetailPage() {
       setEditErrorMessage(null)
       closeEditFotoKoordinat()
       closePhotoPreview()
+      // Setelah valid, keluar filter invalid agar foto tidak "menghilang"
+      setFotoKoordinatFilter('all')
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
     },
     onError: (error) => {
@@ -2454,6 +2485,13 @@ export function PekerjaanDetailPage() {
                             setUploadTarget({
                               output: relatedOutput,
                               slot: normalizeFotoProgress(currentPreviewFoto.keterangan),
+                              replaceFotoId: currentPreviewFoto.id,
+                              existingUnitIndex: currentPreviewFoto.unit_index,
+                              ...(currentPreviewFoto.penerima_id
+                                ? {
+                                    penerima: penerimaList.find((p) => p.id === currentPreviewFoto.penerima_id),
+                                  }
+                                : {}),
                             })
                             setUploadFile(null)
                             closePhotoPreview()
@@ -2645,6 +2683,12 @@ export function PekerjaanDetailPage() {
                       )}
                     >
                       {editKoordinatValidation.message}
+                      {!editKoordinatValidation.loading && !editKoordinatValidation.valid ? (
+                        <div style={{ marginTop: 4, fontWeight: 600 }}>
+                          Simpan tetap diizinkan. Status GPS invalid tetap tercatat sampai koordinat
+                          sesuai desa pekerjaan.
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -2688,10 +2732,14 @@ export function PekerjaanDetailPage() {
             <div className="neo-surface neo-surface--shadow upload-modal-shell">
               <div className="modal-header-row">
                 <div>
-                  <div className="modal-eyebrow modal-eyebrow--upload">Upload foto</div>
+                  <div className="modal-eyebrow modal-eyebrow--upload">
+                    {uploadTarget.replaceFotoId ? 'Ganti foto' : 'Upload foto'}
+                  </div>
                   <div className="modal-title">{uploadTarget.output.komponen}</div>
                   <div className="modal-subcopy">
-                    Slot {uploadTarget.slot} — {stringValue(uploadTarget.output.volume)} {uploadTarget.output.satuan || ''}
+                    Slot {uploadTarget.slot} — {stringValue(uploadTarget.output.volume)}{' '}
+                    {uploadTarget.output.satuan || ''}
+                    {uploadTarget.replaceFotoId ? ' · mengganti file foto existing' : ''}
                   </div>
                 </div>
                 <Button type="button" variant="neutral" onClick={() => setUploadTarget(null)}>
@@ -2720,6 +2768,12 @@ export function PekerjaanDetailPage() {
                       )}
                     >
                       {koordinatValidation.message}
+                      {!koordinatValidation.loading && !koordinatValidation.valid ? (
+                        <div style={{ marginTop: 4, fontWeight: 600 }}>
+                          Upload tetap diizinkan. Foto akan tersimpan dengan catatan GPS invalid
+                          (bisa diperbaiki nanti).
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -2751,7 +2805,15 @@ export function PekerjaanDetailPage() {
                     disabled={!canSubmitFotoUpload}
                     onClick={() => {
                       if (!uploadFile || !canSubmitFotoUpload) return
-                      const mutationInput: { file: File; output: Output; slot: string; penerima?: Penerima | undefined; koordinat: string } = {
+                      const mutationInput: {
+                        file: File
+                        output: Output
+                        slot: string
+                        penerima?: Penerima | undefined
+                        koordinat: string
+                        replaceFotoId?: number
+                        existingUnitIndex?: number | null
+                      } = {
                         file: uploadFile,
                         output: uploadTarget.output,
                         slot: uploadTarget.slot,
@@ -2760,16 +2822,31 @@ export function PekerjaanDetailPage() {
                       if (uploadTarget.penerima) {
                         mutationInput.penerima = uploadTarget.penerima
                       }
+                      if (uploadTarget.replaceFotoId) {
+                        mutationInput.replaceFotoId = uploadTarget.replaceFotoId
+                        mutationInput.existingUnitIndex = uploadTarget.existingUnitIndex ?? null
+                      }
                       uploadFotoMutation.mutate(mutationInput)
                     }}
                   >
                     <Upload size={16} />
-                    <span>Unggah foto</span>
+                    <span>
+                      {uploadTarget.replaceFotoId
+                        ? koordinatValidation && !koordinatValidation.valid
+                          ? 'Simpan (GPS invalid)'
+                          : 'Simpan ganti foto'
+                        : koordinatValidation && !koordinatValidation.valid
+                          ? 'Unggah (GPS invalid)'
+                          : 'Unggah foto'}
+                    </span>
                   </Button>
                   <Button type="button" variant="neutral" onClick={() => setUploadTarget(null)}>
                     Batal
                   </Button>
                 </div>
+                {!canSubmitFotoUpload && uploadFile && hasParsableKoordinat(uploadKoordinat) && koordinatValidation?.loading ? (
+                  <div className="upload-hint">Menunggu validasi koordinat…</div>
+                ) : null}
               </div>
             </div>
           </div>

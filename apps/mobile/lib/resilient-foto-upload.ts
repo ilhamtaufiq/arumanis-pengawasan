@@ -26,6 +26,8 @@ export async function uploadFotoWithRetry(
     maxAttempts?: number
     onAttempt?: (attempt: number) => void
     onProgress?: (progress: CreateFotoProgress) => void
+    /** Update foto existing (bukan create) — hindari delete-then-create. */
+    fotoId?: number
   },
 ): Promise<Foto> {
   const maxAttempts = options?.maxAttempts ?? DEFAULT_UPLOAD_MAX_ATTEMPTS
@@ -35,7 +37,7 @@ export async function uploadFotoWithRetry(
     options?.onAttempt?.(attempt)
 
     try {
-      return await createFotoWithProgress(formData, options?.onProgress)
+      return await createFotoWithProgress(formData, options?.onProgress, options?.fotoId)
     } catch (error) {
       lastError = error
       const canRetry = isRetriableUploadError(error) && attempt < maxAttempts

@@ -92,7 +92,9 @@ export function buildFotoMatrix(outputs: Output[], fotos: Foto[], penerimaList: 
     if (komponenId == null) continue
 
     const penerimaId = foto.penerima_id ?? null
-    const slot = normalizeSlotLabel(foto.keterangan)
+    // Samakan normalisasi progress dengan web (legacy "50%|Unit 2" → "50%")
+    const rawSlot = normalizeSlotLabel(foto.keterangan)
+    const slot = rawSlot.includes('|') ? (rawSlot.split('|')[0] ?? '').trim() || rawSlot : rawSlot
     if (slot) {
       const key = fotoMatrixKey(komponenId, penerimaId, slot)
       // Slot pertama menang — konsisten dengan find() sebelumnya

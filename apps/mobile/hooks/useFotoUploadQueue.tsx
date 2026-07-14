@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import NetInfo from '@react-native-community/netinfo'
 import { assessNetworkConnectivity } from '@/lib/network-context'
 import { queryKeys } from '@pengawas/shared/query-keys'
-import { deleteFoto } from '@/lib/api'
 import {
   buildFotoFormDataFromQueue,
   listQueuedFotoUploads,
@@ -55,12 +54,12 @@ function useFotoUploadQueueController(enabled: boolean): FotoUploadQueueContextV
   const processEntry = useCallback(
     async (entry: QueuedFotoUpload) => {
       try {
-        if (entry.replaceFotoId) {
-          await deleteFoto(entry.replaceFotoId)
-        }
-
         const formData = await buildFotoFormDataFromQueue(entry)
-        await uploadFotoWithRetry(formData, { maxAttempts: 2 })
+        // Update existing bila replace — jangan hapus dulu (upload gagal = foto hilang)
+        await uploadFotoWithRetry(formData, {
+          maxAttempts: 2,
+          fotoId: entry.replaceFotoId,
+        })
         await removeQueuedFotoUpload(entry.id)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.pekerjaan.detail(entry.pekerjaanId),
