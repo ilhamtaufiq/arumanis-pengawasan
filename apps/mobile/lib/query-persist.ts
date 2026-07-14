@@ -3,8 +3,8 @@ import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persi
 
 export const QUERY_PERSIST_MAX_AGE_MS = 1000 * 60 * 60 * 24
 export const QUERY_PERSIST_GC_TIME_MS = QUERY_PERSIST_MAX_AGE_MS
-/** Naikkan bila perlu invalidate cache offline (mis. cegah sisa data user lain). */
-export const QUERY_PERSIST_BUSTER = 'v2-role-scope'
+/** Naikkan bila perlu invalidate cache offline (mis. cegah sisa data user lain / list raksasa). */
+export const QUERY_PERSIST_BUSTER = 'v3-dashboard-light'
 /** Throttle penulisan cache agar tab switch tidak memblokir UI thread. */
 export const QUERY_PERSIST_THROTTLE_MS = 30_000
 
