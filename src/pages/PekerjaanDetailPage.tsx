@@ -206,6 +206,16 @@ export function PekerjaanDetailPage() {
   const [attachKomponenId, setAttachKomponenId] = useState('')
   const [attachPenerimaId, setAttachPenerimaId] = useState('')
   const [attachErrorMessage, setAttachErrorMessage] = useState<string | null>(null)
+  /** Edit koordinat foto existing (invalid GPS) — seperti www/bun, tanpa ganti file */
+  const [editFotoTarget, setEditFotoTarget] = useState<Foto | null>(null)
+  const [editKoordinat, setEditKoordinat] = useState('')
+  const [editExtractionStatus, setEditExtractionStatus] = useState<string | null>(null)
+  const [editKoordinatValidation, setEditKoordinatValidation] = useState<{
+    valid: boolean
+    message: string
+    loading: boolean
+  } | null>(null)
+  const [editErrorMessage, setEditErrorMessage] = useState<string | null>(null)
 
   const penerimaForm = useForm({
     resolver: zodResolver(penerimaSchema),
@@ -327,6 +337,41 @@ export function PekerjaanDetailPage() {
     }
   }, [uploadKoordinat, uploadTarget, pekerjaanId])
 
+  useEffect(() => {
+    if (!editFotoTarget || !editKoordinat.trim()) {
+      setEditKoordinatValidation(null)
+      return
+    }
+
+    let cancelled = false
+    setEditKoordinatValidation({ valid: false, message: 'Memvalidasi koordinat...', loading: true })
+
+    const timer = window.setTimeout(() => {
+      validateKoordinat(pekerjaanId, editKoordinat)
+        .then((result) => {
+          if (cancelled) return
+          setEditKoordinatValidation({
+            valid: Boolean(result.validasi_koordinat),
+            message: result.validasi_koordinat_message || 'Validasi selesai.',
+            loading: false,
+          })
+        })
+        .catch(() => {
+          if (cancelled) return
+          setEditKoordinatValidation({
+            valid: false,
+            message: 'Gagal memvalidasi koordinat.',
+            loading: false,
+          })
+        })
+    }, 400)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [editKoordinat, editFotoTarget, pekerjaanId])
+
   const canSubmitFotoUpload = useMemo(
     () =>
       Boolean(uploadFile) &&
@@ -335,6 +380,31 @@ export function PekerjaanDetailPage() {
       koordinatValidation?.valid === true,
     [uploadFile, uploadKoordinat, koordinatValidation],
   )
+
+  const canSubmitEditKoordinat = useMemo(
+    () =>
+      Boolean(editFotoTarget) &&
+      hasParsableKoordinat(editKoordinat) &&
+      editKoordinatValidation?.loading === false &&
+      editKoordinatValidation?.valid === true,
+    [editFotoTarget, editKoordinat, editKoordinatValidation],
+  )
+
+  function openEditFotoKoordinat(foto: Foto) {
+    setEditFotoTarget(foto)
+    setEditKoordinat(foto.koordinat?.trim() || '')
+    setEditExtractionStatus(null)
+    setEditErrorMessage(null)
+    setEditKoordinatValidation(null)
+  }
+
+  function closeEditFotoKoordinat() {
+    setEditFotoTarget(null)
+    setEditKoordinat('')
+    setEditExtractionStatus(null)
+    setEditErrorMessage(null)
+    setEditKoordinatValidation(null)
+  }
 
   useEffect(() => {
     if (!tiketKategori) return
@@ -873,13 +943,12 @@ export function PekerjaanDetailPage() {
       } else {
         formData.append('penerima_id', '')
       }
-      if (payload.foto.keterangan) {
-        formData.append('keterangan', payload.foto.keterangan)
-      }
+      // Selalu kirim keterangan non-kosong agar tidak di-null-kan backend
+      formData.append('keterangan', normalizeFotoProgress(payload.foto.keterangan))
       if (payload.foto.koordinat) {
         formData.append('koordinat', payload.foto.koordinat)
       }
-      if (payload.foto.unit_index != null) {
+      if (payload.foto.unit_index != null && Number(payload.foto.unit_index) > 0) {
         formData.append('unit_index', String(payload.foto.unit_index))
       }
       return updateFoto(payload.foto.id, formData)
@@ -891,6 +960,34 @@ export function PekerjaanDetailPage() {
     },
     onError: (error) => {
       setAttachErrorMessage(formatApiError(error, 'Gagal melampirkan foto ke komponen.'))
+    },
+  })
+
+  const editFotoKoordinatMutation = useMutation({
+    mutationFn: async (payload: { foto: Foto; koordinat: string }) => {
+      const formData = new FormData()
+      formData.append('pekerjaan_id', String(payload.foto.pekerjaan_id || pekerjaanId))
+      if (payload.foto.komponen_id != null) {
+        formData.append('komponen_id', String(payload.foto.komponen_id))
+      }
+      formData.append('keterangan', normalizeFotoProgress(payload.foto.keterangan))
+      formData.append('koordinat', payload.koordinat.trim())
+      if (payload.foto.penerima_id != null && Number(payload.foto.penerima_id) > 0) {
+        formData.append('penerima_id', String(payload.foto.penerima_id))
+      }
+      if (payload.foto.unit_index != null && Number(payload.foto.unit_index) > 0) {
+        formData.append('unit_index', String(payload.foto.unit_index))
+      }
+      return updateFoto(payload.foto.id, formData)
+    },
+    onSuccess: async () => {
+      setEditErrorMessage(null)
+      closeEditFotoKoordinat()
+      closePhotoPreview()
+      await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
+    },
+    onError: (error) => {
+      setEditErrorMessage(formatApiError(error, 'Gagal memperbarui koordinat foto.'))
     },
   })
 
@@ -1826,6 +1923,17 @@ export function PekerjaanDetailPage() {
                       <div className="foto-card-meta" style={{ color: '#b91c1c', fontWeight: 700 }}>
                         {foto.validasi_koordinat_message || 'Koordinat di luar desa'}
                       </div>
+                      <div className="detail-inline-controls" style={{ marginTop: 8, gap: 6 }}>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openEditFotoKoordinat(foto)}
+                        >
+                          <MapPin size={14} />
+                          <span>Edit koordinat</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1877,9 +1985,22 @@ export function PekerjaanDetailPage() {
                       <div className="foto-card-title">{foto.keterangan || 'Foto pekerjaan'}</div>
                       <div className="foto-card-meta">{formatDateTime(foto.created_at)}</div>
                       {isFotoKoordinatInvalid(foto) ? (
-                        <div className="foto-card-meta" style={{ color: '#b91c1c', fontWeight: 700 }}>
-                          GPS invalid: {foto.validasi_koordinat_message || 'di luar desa'}
-                        </div>
+                        <>
+                          <div className="foto-card-meta" style={{ color: '#b91c1c', fontWeight: 700 }}>
+                            GPS invalid: {foto.validasi_koordinat_message || 'di luar desa'}
+                          </div>
+                          <div className="detail-inline-controls" style={{ marginTop: 8, gap: 6 }}>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => openEditFotoKoordinat(foto)}
+                            >
+                              <MapPin size={14} />
+                              <span>Edit koordinat</span>
+                            </Button>
+                          </div>
+                        </>
                       ) : null}
                     </div>
                   </div>
@@ -2332,7 +2453,7 @@ export function PekerjaanDetailPage() {
                           if (relatedOutput) {
                             setUploadTarget({
                               output: relatedOutput,
-                              slot: currentPreviewFoto.keterangan || '0%',
+                              slot: normalizeFotoProgress(currentPreviewFoto.keterangan),
                             })
                             setUploadFile(null)
                             closePhotoPreview()
@@ -2343,6 +2464,23 @@ export function PekerjaanDetailPage() {
                         <span>Ganti foto</span>
                       </Button>
                     )}
+
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        const foto = currentPreviewFoto
+                        closePhotoPreview()
+                        openEditFotoKoordinat(foto)
+                      }}
+                    >
+                      <MapPin size={16} />
+                      <span>
+                        {isFotoKoordinatInvalid(currentPreviewFoto)
+                          ? 'Perbaiki koordinat'
+                          : 'Edit koordinat'}
+                      </span>
+                    </Button>
 
                     <Button
                       type="button"
@@ -2439,6 +2577,104 @@ export function PekerjaanDetailPage() {
                       <span>{attachFotoMutation.isPending ? 'Menyimpan...' : 'Lampirkan'}</span>
                     </Button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editFotoTarget ? (
+        <div className="upload-modal-backdrop" onClick={closeEditFotoKoordinat}>
+          <div onClick={(event) => event.stopPropagation()}>
+            <div className="neo-surface neo-surface--shadow upload-modal-shell">
+              <div className="modal-header-row">
+                <div>
+                  <div className="modal-eyebrow modal-eyebrow--upload">Edit koordinat</div>
+                  <div className="modal-title">
+                    {editFotoTarget.komponen?.komponen || stringValue(editFotoTarget.komponen_id)}
+                  </div>
+                  <div className="modal-subcopy">
+                    Slot {normalizeFotoProgress(editFotoTarget.keterangan)}
+                    {editFotoTarget.unit_index != null && Number(editFotoTarget.unit_index) > 0
+                      ? ` · Unit ${editFotoTarget.unit_index}`
+                      : ''}
+                    {' · '}
+                    foto tetap sama, hanya koordinat yang diubah
+                  </div>
+                </div>
+                <Button type="button" variant="neutral" onClick={closeEditFotoKoordinat}>
+                  <X size={16} />
+                </Button>
+              </div>
+
+              <div className="upload-modal-content">
+                {editFotoTarget.foto_thumb_url || editFotoTarget.foto_url ? (
+                  <div className="neo-surface neo-surface--highlight" style={{ textAlign: 'center' }}>
+                    <img
+                      src={editFotoTarget.foto_thumb_url || editFotoTarget.foto_url || ''}
+                      alt={editFotoTarget.keterangan || 'Preview'}
+                      style={{ maxHeight: 160, maxWidth: '100%', objectFit: 'contain', borderRadius: 8 }}
+                    />
+                  </div>
+                ) : null}
+
+                {editFotoTarget.validasi_koordinat_message ? (
+                  <div className="form-error" style={{ marginBottom: 0 }}>
+                    {editFotoTarget.validasi_koordinat_message}
+                  </div>
+                ) : null}
+
+                <div className="neo-surface neo-surface--highlight">
+                  <div className="upload-section-title">Koordinat GPS (wajib, harus di desa pekerjaan)</div>
+                  <KoordinatMapPicker
+                    value={editKoordinat}
+                    onChange={setEditKoordinat}
+                    onStatusChange={setEditExtractionStatus}
+                  />
+                  {editExtractionStatus ? <div className="upload-status">{editExtractionStatus}</div> : null}
+                  {editKoordinatValidation ? (
+                    <div
+                      className={cn(
+                        'upload-status',
+                        editKoordinatValidation.loading
+                          ? ''
+                          : editKoordinatValidation.valid
+                            ? 'upload-status--ok'
+                            : 'upload-status--warn',
+                      )}
+                    >
+                      {editKoordinatValidation.message}
+                    </div>
+                  ) : null}
+                </div>
+
+                {editErrorMessage ? <div className="form-error">{editErrorMessage}</div> : null}
+
+                <div className="neo-form-actions">
+                  <Button
+                    type="button"
+                    isLoading={editFotoKoordinatMutation.isPending}
+                    disabled={!canSubmitEditKoordinat || editFotoKoordinatMutation.isPending}
+                    onClick={() => {
+                      if (!editFotoTarget || !canSubmitEditKoordinat) return
+                      editFotoKoordinatMutation.mutate({
+                        foto: editFotoTarget,
+                        koordinat: editKoordinat.trim(),
+                      })
+                    }}
+                  >
+                    <MapPin size={16} />
+                    <span>Simpan koordinat</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="neutral"
+                    onClick={closeEditFotoKoordinat}
+                    disabled={editFotoKoordinatMutation.isPending}
+                  >
+                    Batal
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2599,6 +2835,16 @@ function normalizeArray(values?: string[] | null) {
 
 function normalizeSlotLabel(value?: string | null) {
   return `${value || ''}`.trim()
+}
+
+/** Progress fisik aman untuk Select / update (dukung legacy "50%|Unit 2"). */
+function normalizeFotoProgress(value?: string | null): string {
+  const options = ['0%', '25%', '50%', '75%', '100%'] as const
+  if (!value) return '0%'
+  const base = (String(value).split('|')[0] ?? '').trim()
+  if ((options as readonly string[]).includes(base)) return base
+  if ((options as readonly string[]).includes(`${base}%`)) return `${base}%`
+  return base || '0%'
 }
 
 function normalizeOptionalNumber(value: string) {

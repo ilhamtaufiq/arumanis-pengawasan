@@ -17,6 +17,8 @@ type FotoPreviewModalProps = {
   foto: Foto | null
   onClose: () => void
   onReplace: () => void
+  /** Edit koordinat existing (invalid GPS) — tanpa ganti file */
+  onEditKoordinat?: () => void
   onDelete: () => void
   isBusy?: boolean
 }
@@ -26,6 +28,7 @@ export function FotoPreviewModal({
   foto,
   onClose,
   onReplace,
+  onEditKoordinat,
   onDelete,
   isBusy = false,
 }: FotoPreviewModalProps) {
@@ -116,6 +119,14 @@ export function FotoPreviewModal({
               </View>
 
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {onEditKoordinat ? (
+                  <NeoButton
+                    label={foto.validasi_koordinat === false ? 'Perbaiki koordinat' : 'Edit koordinat'}
+                    variant="secondary"
+                    onPress={onEditKoordinat}
+                    disabled={isBusy}
+                  />
+                ) : null}
                 <NeoButton label="Ganti foto" variant="neutral" onPress={onReplace} disabled={isBusy} />
                 <NeoButton label="Hapus foto" variant="danger" onPress={onDelete} disabled={isBusy} />
                 <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={isBusy} />

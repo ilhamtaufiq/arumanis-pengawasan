@@ -6,7 +6,7 @@ import type { Foto, Output, PekerjaanDetail, Penerima } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { queryKeys } from '@pengawas/shared/query-keys'
-import { deleteFoto } from '@/lib/api'
+import { deleteFoto, updateFoto } from '@/lib/api'
 import { appendFotoFileToFormData, getUnsupportedFotoFormatReason, type PickedImageAsset } from '@/lib/foto-upload'
 import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
 import {
@@ -24,6 +24,7 @@ import {
 } from '@pengawas/shared/foto-koordinat-status'
 import { FOTO_MATRIX_PAGE_SIZE, paginateSlice, readPaginationMeta } from '@/lib/pagination'
 import { FotoPreviewModal } from '@/components/pekerjaan/FotoPreviewModal'
+import { FotoEditKoordinatModal } from '@/components/pekerjaan/FotoEditKoordinatModal'
 import { FotoUploadQueueBanner } from '@/components/pekerjaan/FotoUploadQueueBanner'
 import { FotoUploadModal } from '@/components/pekerjaan/FotoUploadModal'
 import {
@@ -65,6 +66,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [previewFoto, setPreviewFoto] = useState<Foto | null>(null)
   const [previewTarget, setPreviewTarget] = useState<UploadTarget | null>(null)
+  const [editKoordinatFoto, setEditKoordinatFoto] = useState<Foto | null>(null)
+  const [editKoordinatError, setEditKoordinatError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Foto | null>(null)
   const [sourceRequest, setSourceRequest] = useState<SourceRequest | null>(null)
   const [pendingUpload, setPendingUpload] = useState<{
@@ -240,6 +243,39 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     },
   })
 
+  const editKoordinatMutation = useMutation({
+    mutationFn: async (input: { foto: Foto; koordinat: string }) => {
+      const formData = new FormData()
+      formData.append('pekerjaan_id', String(input.foto.pekerjaan_id || pekerjaanId))
+      if (input.foto.komponen_id != null) {
+        formData.append('komponen_id', String(input.foto.komponen_id))
+      }
+      const progress = (String(input.foto.keterangan || '0%').split('|')[0] ?? '').trim() || '0%'
+      formData.append('keterangan', progress)
+      formData.append('koordinat', input.koordinat.trim())
+      if (input.foto.penerima_id != null && Number(input.foto.penerima_id) > 0) {
+        formData.append('penerima_id', String(input.foto.penerima_id))
+      }
+      if (input.foto.unit_index != null && Number(input.foto.unit_index) > 0) {
+        formData.append('unit_index', String(input.foto.unit_index))
+      }
+      return updateFoto(input.foto.id, formData)
+    },
+    onSuccess: (updated) => {
+      patchDetailFotos((fotos) =>
+        fotos.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+      )
+      setEditKoordinatFoto(null)
+      setEditKoordinatError(null)
+      setPreviewFoto(null)
+      setPreviewTarget(null)
+      setErrorMessage(null)
+    },
+    onError: (error) => {
+      setEditKoordinatError(formatApiError(error, 'Gagal memperbarui koordinat foto.'))
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (fotoId: number) => deleteFoto(fotoId),
     onMutate: async (fotoId) => {
@@ -270,7 +306,8 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
     },
   })
 
-  const isBusy = uploadMutation.isPending || deleteMutation.isPending
+  const isBusy =
+    uploadMutation.isPending || deleteMutation.isPending || editKoordinatMutation.isPending
 
   function assetFromResult(result: ImagePicker.ImagePickerResult): PickedImageAsset | null {
     if (result.canceled || !result.assets[0]) return null
@@ -713,12 +750,34 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       />
 
       <FotoPreviewModal
-        visible={Boolean(previewFoto) && !pendingDelete}
+        visible={Boolean(previewFoto) && !pendingDelete && !editKoordinatFoto}
         foto={previewFoto}
         onClose={closePreview}
         onReplace={handleReplaceFromPreview}
+        onEditKoordinat={() => {
+          if (!previewFoto) return
+          setEditKoordinatError(null)
+          setEditKoordinatFoto(previewFoto)
+        }}
         onDelete={handleDeleteFromPreview}
-        isBusy={isBusy}
+        isBusy={isBusy || editKoordinatMutation.isPending}
+      />
+
+      <FotoEditKoordinatModal
+        visible={Boolean(editKoordinatFoto)}
+        foto={editKoordinatFoto}
+        pekerjaanId={pekerjaanId}
+        onClose={() => {
+          if (editKoordinatMutation.isPending) return
+          setEditKoordinatFoto(null)
+          setEditKoordinatError(null)
+        }}
+        onSave={(koordinat) => {
+          if (!editKoordinatFoto) return
+          editKoordinatMutation.mutate({ foto: editKoordinatFoto, koordinat })
+        }}
+        isSaving={editKoordinatMutation.isPending}
+        errorMessage={editKoordinatError}
       />
 
       <ConfirmDialog
