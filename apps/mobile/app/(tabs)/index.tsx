@@ -5,9 +5,9 @@ import { ApiError } from '@pengawas/api-client'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatNumber, formatPercent } from '@pengawas/shared/format'
 import { resolveFotoStatus } from '@pengawas/shared/foto-status'
-import { getPekerjaanList } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { fetchPekerjaanListWithSearch } from '@/lib/pekerjaan-search'
 import {
   isElevatedUser,
   pekerjaanScopeDescription,
@@ -50,19 +50,24 @@ export default function DashboardScreen() {
   const dashboardQuery = useQuery({
     queryKey: queryKeys.pekerjaan.list({
       mode: 'dashboard-server',
-      search: debouncedSearch || undefined,
-      tahun: debouncedTahun || undefined,
+      search: debouncedSearch,
+      tahun: debouncedTahun,
       page: 1,
       per_page: DASHBOARD_PAGE_SIZE,
     }),
-    queryFn: async () => {
-      const res = await getPekerjaanList({
-        search: debouncedSearch || undefined,
-        tahun: debouncedTahun || undefined,
+    queryFn: async ({ queryKey }) => {
+      const filters = (queryKey[2] || {}) as {
+        search?: string
+        tahun?: string
+        per_page?: number
+      }
+      const res = await fetchPekerjaanListWithSearch({
+        search: (filters.search || '').trim() || undefined,
+        tahun: (filters.tahun || '').trim() || undefined,
         page: 1,
-        per_page: DASHBOARD_PAGE_SIZE,
-        sort_by: 'updated_at',
-        sort_direction: 'desc',
+        perPage: Number(filters.per_page) || DASHBOARD_PAGE_SIZE,
+        sortBy: 'updated_at',
+        sortDirection: 'desc',
       })
       const items = res.data ?? []
       const meta = res.meta as Record<string, unknown> | undefined
@@ -77,7 +82,8 @@ export default function DashboardScreen() {
     },
     enabled: canFetch,
     retry: 1,
-    staleTime: 30_000,
+    networkMode: 'online',
+    staleTime: debouncedSearch || debouncedTahun ? 0 : 30_000,
     gcTime: 5 * 60_000,
   })
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import {
   ActivityIndicator,
   Modal,
@@ -8,25 +8,23 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import type { Foto } from '@pengawas/shared'
 import {
-  buildStoryCaption,
-  buildStoryShareMeta,
   copyStoryCaption,
   shareStoryImageFile,
   STORY_HEIGHT,
   STORY_PREVIEW_WIDTH,
   STORY_WIDTH,
-  type StoryShareContext,
 } from '@/lib/story-share'
+import type { StoryShareMeta } from '@/lib/story-share-meta'
 import { StoryFrameCard } from '@/components/pekerjaan/StoryFrameCard'
 import { NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
 
-type StoryShareModalProps = {
+type KegiatanStoryPreviewModalProps = {
   visible: boolean
-  foto: Foto | null
-  context: StoryShareContext | null
+  imageUri: string
+  meta: StoryShareMeta | null
+  caption: string
   onClose: () => void
 }
 
@@ -42,7 +40,6 @@ type CaptureRefFn = (
 ) => Promise<string>
 
 function loadCaptureRef(): CaptureRefFn {
-  // Lazy require — hindari load native module di first paint (DetailTabShell)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const mod = require('react-native-view-shot') as { captureRef?: CaptureRefFn }
   if (typeof mod.captureRef !== 'function') {
@@ -53,25 +50,20 @@ function loadCaptureRef(): CaptureRefFn {
   return mod.captureRef
 }
 
-/**
- * Bagikan bingkai story (neobrutalism DESAIN.md) ke Instagram Story / WhatsApp Status.
- * Preview + export memakai StoryFrameCard; caption disalin terpisah (bukan link).
- */
-export function StoryShareModal({ visible, foto, context, onClose }: StoryShareModalProps) {
+/** Preview + share bingkai kegiatan lapangan (reuse StoryFrameCard). */
+export function KegiatanStoryPreviewModal({
+  visible,
+  imageUri,
+  meta,
+  caption,
+  onClose,
+}: KegiatanStoryPreviewModalProps) {
   const { height, width } = useWindowDimensions()
   const frameRef = useRef<View>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [imageReady, setImageReady] = useState(false)
-
-  const imageUri = foto?.foto_url || foto?.foto_thumb_url || ''
-  const meta = useMemo(() => {
-    if (!foto || !context) return null
-    return buildStoryShareMeta(foto, context)
-  }, [foto, context])
-
-  const caption = useMemo(() => (meta ? buildStoryCaption(meta) : ''), [meta])
 
   const previewWidth = Math.min(STORY_PREVIEW_WIDTH, Math.max(240, width - 56))
 
@@ -80,11 +72,10 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
     setError(null)
     setCopied(false)
     setImageReady(!imageUri)
-  }, [visible, imageUri, foto?.id])
+  }, [visible, imageUri])
 
-  const handleCopyCaption = useCallback(async () => {
-    if (!caption) return
-    setError(null)
+  const handleCopy = useCallback(async () => {
+    if (!caption.trim()) return
     try {
       await copyStoryCaption(caption)
       setCopied(true)
@@ -94,24 +85,20 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
     }
   }, [caption])
 
-  const handleShareFramed = useCallback(async () => {
-    if (!imageUri || busy || !meta) return
+  const handleShare = useCallback(async () => {
+    if (!imageUri || !meta || busy) return
     setBusy(true)
     setError(null)
     try {
-      // Pastikan layout + (bila remote) image sempat ter-render
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       })
       if (imageUri && !imageReady) {
-        // Tunggu singkat image onLoad; lanjut tetap boleh (bisa blank photo di slot)
         await new Promise((r) => setTimeout(r, 400))
       }
-
       if (!frameRef.current) {
-        throw new Error('Bingkai story belum siap. Tutup lalu buka lagi.')
+        throw new Error('Bingkai belum siap. Tutup lalu buka lagi.')
       }
-
       const captureRef = loadCaptureRef()
       const framedUri = await captureRef(frameRef, {
         format: 'jpg',
@@ -120,16 +107,15 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
         width: STORY_WIDTH,
         height: STORY_HEIGHT,
       })
-
       await shareStoryImageFile(framedUri)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal membagikan bingkai story.')
+      setError(e instanceof Error ? e.message : 'Gagal membagikan story.')
     } finally {
       setBusy(false)
     }
   }, [busy, imageReady, imageUri, meta])
 
-  if (!foto || !meta) return null
+  if (!meta) return null
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -156,43 +142,27 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{ paddingBottom: 8 }}
           >
-            <View style={{ marginBottom: 12 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  letterSpacing: 1,
-                  color: colors.mutedForeground,
-                  marginBottom: 4,
-                }}
-              >
-                BAGIKAN STORY
-              </Text>
-              <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground, marginBottom: 6 }}>
-                Instagram Story / WhatsApp Status
-              </Text>
-              <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18 }}>
-                Preview memakai bingkai neobrutalism (border hitam, aksen kuning). Saat bagikan, gambar
-                berbingkai diekspor — bukan foto mentah. Caption disalin terpisah.
-              </Text>
-            </View>
-
-            {/* Preview + target capture (StoryFrameCard) */}
-            <View
+            <Text
               style={{
-                alignItems: 'center',
-                marginBottom: 14,
-                paddingVertical: 8,
+                fontSize: 11,
+                fontWeight: '800',
+                letterSpacing: 1,
+                color: colors.mutedForeground,
+                marginBottom: 4,
               }}
             >
-              <View
-                style={{
-                  borderRadius: radius,
-                  backgroundColor: colors.background,
-                  // Shadow keras di luar canvas agar preview terasa fisik (DESAIN.md)
-                  ...shadows.lg,
-                }}
-              >
+              PREVIEW STORY
+            </Text>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground, marginBottom: 6 }}>
+              Kegiatan lapangan
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18, marginBottom: 12 }}>
+              Bingkai neobrutalism (logo Arumanis + Bidang AMS + @bidang_ams). Bagikan file berbingkai,
+              caption disalin terpisah.
+            </Text>
+
+            <View style={{ alignItems: 'center', marginBottom: 14, paddingVertical: 8 }}>
+              <View style={{ borderRadius: radius, backgroundColor: colors.background, ...shadows.lg }}>
                 <StoryFrameCard
                   ref={frameRef}
                   imageUri={imageUri}
@@ -201,7 +171,7 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
                   onImageLoad={() => setImageReady(true)}
                   onImageError={() => {
                     setImageReady(false)
-                    setError('Gagal memuat foto di bingkai. Periksa koneksi atau URL foto.')
+                    setError('Gagal memuat foto di bingkai.')
                   }}
                 />
               </View>
@@ -226,7 +196,7 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
                   letterSpacing: 0.5,
                 }}
               >
-                CAPTION (salin, bukan link)
+                CAPTION
               </Text>
               <Text
                 selectable
@@ -255,13 +225,13 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
               <NeoButton
                 label={copied ? 'Caption disalin ✓' : 'Salin caption'}
                 variant="secondary"
-                onPress={() => void handleCopyCaption()}
-                disabled={busy || !caption}
+                onPress={() => void handleCopy()}
+                disabled={busy || !caption.trim()}
               />
               <NeoButton
-                label={busy ? 'Menyiapkan bingkai…' : 'Bagikan story'}
+                label={busy ? 'Menyiapkan…' : 'Bagikan story'}
                 variant="primary"
-                onPress={() => void handleShareFramed()}
+                onPress={() => void handleShare()}
                 disabled={busy || !imageUri}
               />
               <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={busy} />
@@ -270,16 +240,9 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
             {busy ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ActivityIndicator color={colors.foreground} />
-                <Text style={{ fontWeight: '700', fontSize: 12 }}>
-                  Merender bingkai 9:16 lalu membuka share sheet…
-                </Text>
+                <Text style={{ fontWeight: '700', fontSize: 12 }}>Merender bingkai 9:16…</Text>
               </View>
-            ) : (
-              <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 15 }}>
-                Tips: ketuk Salin caption → Bagikan story → pilih Instagram/WhatsApp → tempel caption di
-                story.
-              </Text>
-            )}
+            ) : null}
           </ScrollView>
         </NeoSurface>
       </View>

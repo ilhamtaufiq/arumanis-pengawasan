@@ -18,6 +18,8 @@ export type StoryShareContext = {
 
 export type StoryShareMeta = {
   title: string
+  /** Opsional — mis. nama paket di bawah judul kegiatan */
+  subtitle?: string | null
   locationLine: string
   outputLine: string
   slotLine: string
@@ -27,6 +29,12 @@ export type StoryShareMeta = {
   tanggalLine: string
   brandLine: string
   badge: string
+  /** default = kuning neobrutalism; ams = biru logo Bidang AMS */
+  theme?: 'default' | 'ams'
+  /** Override label baris slot (default SLOT) */
+  slotLabel?: string
+  /** Override label baris penerima (default PENERIMA) */
+  penerimaLabel?: string
 }
 
 export function buildStoryShareMeta(foto: Foto, context: StoryShareContext): StoryShareMeta {

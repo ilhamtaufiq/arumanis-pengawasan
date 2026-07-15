@@ -69,12 +69,13 @@ export default function PekerjaanScreen() {
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <NeoInput
-              placeholder="Cari semua paket (bukan hanya halaman ini)"
+              placeholder="Cari semua paket (seluruh data, bukan halaman ini)"
               value={list.search}
               onChangeText={list.setSearch}
               autoCorrect={false}
               autoCapitalize="none"
               returnKeyType="search"
+              onSubmitEditing={() => list.commitSearch()}
               clearButtonMode="while-editing"
             />
           </View>
@@ -85,19 +86,26 @@ export default function PekerjaanScreen() {
               onChangeText={(text) => list.setTahun(text.replace(/[^\d]/g, '').slice(0, 4))}
               keyboardType="number-pad"
               returnKeyType="done"
+              onSubmitEditing={() => list.commitSearch()}
             />
           </View>
         </View>
-
         {list.search.trim() || list.tahun.trim() ? (
-          <Pressable onPress={list.clearFilters} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.foreground }}>
-              Hapus filter
-            </Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 4 }}>
+            <Pressable onPress={() => list.commitSearch()}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.foreground }}>
+                {list.query.isFetching ? 'Mencari di seluruh data…' : 'Cari sekarang'}
+              </Text>
+            </Pressable>
+            <Pressable onPress={list.clearFilters}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.mutedForeground }}>
+                Hapus filter
+              </Text>
+            </Pressable>
+          </View>
         ) : (
           <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 4, lineHeight: 15 }}>
-            Search dijalankan di server untuk seluruh data (meski Anda di halaman 1).
+            Search memindai seluruh data (bukan hanya halaman ini).
           </Text>
         )}
       </View>

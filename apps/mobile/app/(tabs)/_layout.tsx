@@ -7,7 +7,7 @@ import { AppHeader } from '@/components/AppHeader'
 import { createRouteErrorBoundary } from '@/lib/route-error-boundary'
 
 export const ErrorBoundary = createRouteErrorBoundary('Layar utama')
-import { ClipboardList, LayoutDashboard, MessageSquareText } from 'lucide-react-native'
+import { ClipboardList, LayoutDashboard, MapPin, MessageSquareText } from 'lucide-react-native'
 import { Platform, View, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { colors, shadows } from '@/theme/tokens'
@@ -110,6 +110,13 @@ export default function TabsLayout() {
     [compact],
   )
 
+  const lapanganIcon = useCallback(
+    ({ focused }: { focused: boolean }) => (
+      <TabIcon Icon={MapPin} focused={focused} compact={compact} />
+    ),
+    [compact],
+  )
+
   return (
     <>
       <TabsRealtimeBridge />
@@ -127,6 +134,14 @@ export default function TabsLayout() {
             title: 'Pekerjaan',
             tabBarIcon: pekerjaanIcon,
             tabBarLabel: compact ? 'Kerja' : 'Pekerjaan',
+          }}
+        />
+        <Tabs.Screen
+          name="lapangan"
+          options={{
+            title: 'Lapangan',
+            tabBarIcon: lapanganIcon,
+            tabBarLabel: compact ? 'Lapang' : 'Lapangan',
           }}
         />
         <Tabs.Screen

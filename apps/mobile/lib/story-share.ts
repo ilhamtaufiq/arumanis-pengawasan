@@ -38,6 +38,7 @@ export function buildStoryCaption(meta: {
     meta.pengawasLine ? `Pengawas: ${meta.pengawasLine}` : null,
     meta.koordinatLine ? `GPS: ${meta.koordinatLine}` : null,
     meta.tanggalLine,
+    '@bidang_ams · Bidang Air Minum dan Sanitasi',
   ])
 }
 
