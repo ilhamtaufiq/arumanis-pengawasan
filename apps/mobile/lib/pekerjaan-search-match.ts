@@ -51,19 +51,29 @@ function metaTotal(meta: Record<string, unknown> | undefined): number {
 }
 
 /**
- * Deteksi API mengabaikan `search` (total masih raksasa, page tidak cocok keyword).
+ * Deteksi ketat: API mengabaikan param `search` (hasil “penuh” tanpa match).
+ * Threshold tinggi agar fuzzy/partial server tidak memicu fallback katalog.
  */
 export function serverSearchLikelyIgnored(
   keyword: string,
   res: PaginatedResponse<Pekerjaan>,
 ): boolean {
   const q = keyword.trim()
-  if (!q || res.data.length === 0) return false
-  const matches = res.data.filter((item) => matchPekerjaanKeyword(item, q))
-  if (matches.length > 0) return false
+  if (!q) return false
   const total = metaTotal(res.meta as Record<string, unknown> | undefined)
-  return total > 50 && total >= res.data.length
+  const rows = res.data.length
+  if (rows === 0) {
+    // Kosong + total besar = search diabaikan; kosong + total kecil = valid.
+    return total > 200
+  }
+  const matches = res.data.filter((item) => matchPekerjaanKeyword(item, q))
+  if (matches.length === 0 && total > 200) return true
+  if (total > 300 && matches.length === 0) return true
+  return false
 }
+
+/** Alias untuk pemanggil lama / test. */
+export const serverIgnoredSearch = serverSearchLikelyIgnored
 
 export function matchPekerjaanTahun(item: Pekerjaan, tahun: string): boolean {
   const y = tahun.trim()

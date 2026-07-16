@@ -98,7 +98,10 @@ export default function DashboardScreen() {
     enabled: canFetch && (!!effectiveTahun || !tahunLoading),
     retry: 1,
     networkMode: 'online',
-    staleTime: debouncedSearch || effectiveTahun ? 0 : 30_000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    // Tahun aktif hampir selalu ada — jangan staleTime 0 (spam refetch tiap masuk tab)
+    staleTime: debouncedSearch ? 15_000 : 45_000,
     gcTime: 5 * 60_000,
   })
 

@@ -4,6 +4,7 @@ import {
   buildPekerjaanListQueryString,
 } from '../apps/mobile/lib/pekerjaan-list-params'
 import { matchPekerjaanKeyword } from '../apps/mobile/lib/pekerjaan-search-match'
+import { serverIgnoredSearch } from '../apps/mobile/lib/pekerjaan-search-match'
 import { createApiClient } from '../packages/api-client/src/create-client'
 import type { Pekerjaan } from '@pengawas/shared'
 
@@ -65,5 +66,43 @@ describe('client match for catalog fallback', () => {
     }
     expect(matchPekerjaanKeyword(item, 'kubang')).toBe(true)
     expect(matchPekerjaanKeyword(item, 'konsultan')).toBe(false)
+  })
+})
+
+describe('serverIgnoredSearch heuristics', () => {
+  test('does not treat small empty result as ignored', () => {
+    expect(
+      serverIgnoredSearch('xyz', {
+        data: [],
+        meta: { total: 0, current_page: 1, last_page: 1, per_page: 12 },
+      }),
+    ).toBe(false)
+  })
+
+  test('flags full dump with zero keyword matches', () => {
+    expect(
+      serverIgnoredSearch('kubang', {
+        data: Array.from({ length: 12 }, (_, i) => ({
+          id: i + 1,
+          nama_paket: `Jasa Konsultan ${i}`,
+        })),
+        meta: { total: 558, current_page: 1, last_page: 47, per_page: 12 },
+      }),
+    ).toBe(true)
+  })
+
+  test('accepts server page with matches', () => {
+    expect(
+      serverIgnoredSearch('kubang', {
+        data: [
+          {
+            id: 1,
+            nama_paket: 'MCK',
+            desa: { id: 1, nama_desa: 'Kubang' },
+          },
+        ],
+        meta: { total: 7, current_page: 1, last_page: 1, per_page: 12 },
+      }),
+    ).toBe(false)
   })
 })

@@ -427,12 +427,17 @@ export function PekerjaanDetailPage() {
     queryKey: ['pekerjaan', 'detail', pekerjaanId],
     queryFn: () => getPekerjaanDetail(pekerjaanId),
     enabled: Number.isFinite(pekerjaanId),
+    staleTime: 45_000,
+    refetchOnWindowFocus: false,
   })
 
   const tiketQuery = useQuery({
     queryKey: ['tiket', 'list', { pekerjaanId }],
     queryFn: () => getTiketList({ pekerjaan_id: pekerjaanId, per_page: 15 }),
-    enabled: Number.isFinite(pekerjaanId),
+    // Hanya fetch saat tab tiket aktif
+    enabled: Number.isFinite(pekerjaanId) && activeTab === 'tiket',
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
   })
 
   const pekerjaan = pekerjaanQuery.data as PekerjaanDetail | undefined
@@ -464,7 +469,12 @@ export function PekerjaanDetailPage() {
   const progressEstimasiQuery = useQuery({
     queryKey: ['pekerjaan', 'progress-estimasi', pekerjaanId, tahunAnggaran],
     queryFn: () => getPekerjaanProgressEstimasi(pekerjaanId, tahunAnggaran),
-    enabled: Number.isFinite(pekerjaanId) && Boolean(pekerjaan),
+    enabled:
+      Number.isFinite(pekerjaanId) &&
+      Boolean(pekerjaan) &&
+      (activeTab === 'ringkasan' || activeTab === 'progress'),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   })
 
   const kontrakId = useMemo(() => {

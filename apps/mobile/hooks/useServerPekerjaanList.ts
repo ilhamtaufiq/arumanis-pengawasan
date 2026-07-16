@@ -119,8 +119,11 @@ export function useServerPekerjaanList(options: UseServerPekerjaanListOptions) {
     enabled: listReady,
     retry: 1,
     networkMode: 'online',
-    refetchOnMount: 'always',
-    staleTime: hasFilter ? 0 : 15_000,
+    // Jangan 'always' — cukup refetch jika stale (hemat saat pindah tab)
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    // Search/tahun masih di-cache singkat agar debounce tidak spam server
+    staleTime: hasFilter ? 20_000 : 45_000,
     gcTime: 5 * 60_000,
     placeholderData: undefined,
   })

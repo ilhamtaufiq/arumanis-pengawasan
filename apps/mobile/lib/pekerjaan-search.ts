@@ -7,6 +7,7 @@ import {
 import {
   matchPekerjaanKeyword,
   matchPekerjaanTahun,
+  serverSearchLikelyIgnored,
 } from '@/lib/pekerjaan-search-match'
 import type { PekerjaanSearchInput } from './pekerjaan-search-types'
 
@@ -15,6 +16,7 @@ export {
   matchPekerjaanKeyword,
   matchPekerjaanTahun,
   serverSearchLikelyIgnored,
+  serverIgnoredSearch,
 } from '@/lib/pekerjaan-search-match'
 
 export type PekerjaanSearchDebug = {
@@ -28,13 +30,17 @@ export type PekerjaanSearchDebug = {
   total: number
   mode: 'server' | 'client-catalog' | 'browse'
   at: string
+  fallbackSkipped?: string
 }
 
 let lastDebug: PekerjaanSearchDebug | null = null
 let catalogCache: Pekerjaan[] | null = null
 let catalogPromise: Promise<Pekerjaan[]> | null = null
 let catalogFetchedAt = 0
-const CATALOG_TTL_MS = 3 * 60_000
+const CATALOG_TTL_MS = 5 * 60_000
+/** Hard cap: jangan storm API dengan puluhan page. */
+const CATALOG_MAX_PAGES = 5
+const CATALOG_PER_PAGE = 100
 
 export function getLastPekerjaanSearchDebug(): PekerjaanSearchDebug | null {
   return lastDebug ?? mapRequestDebug()
@@ -69,31 +75,32 @@ function metaNum(meta: Record<string, unknown> | undefined, key: string, fallbac
   return Number.isFinite(n) ? n : fallback
 }
 
-/** Live API terbukti memfilter; deteksi jika response masih “penuh” tanpa match. */
-function serverIgnoredSearch(search: string, res: PaginatedResponse<Pekerjaan>): boolean {
-  if (!search.trim()) return false
-  const total = metaNum(res.meta as Record<string, unknown>, 'total', res.data.length)
-  if (res.data.length === 0) return total > 100
-  const matches = res.data.filter((i) => matchPekerjaanKeyword(i, search))
-  if (matches.length === 0 && total > 50) return true
-  if (total > 100 && matches.length / res.data.length < 0.25) return true
-  return false
-}
-
-async function loadFullPekerjaanCatalog(force = false): Promise<Pekerjaan[]> {
+async function loadPekerjaanCatalogSlice(
+  options: { tahun?: string; force?: boolean } = {},
+): Promise<Pekerjaan[]> {
+  const tahun = options.tahun?.trim() || undefined
   const now = Date.now()
-  if (!force && catalogCache && now - catalogFetchedAt < CATALOG_TTL_MS) return catalogCache
-  if (!force && catalogPromise) return catalogPromise
+  // Cache hanya untuk catalog tanpa tahun (fallback terberat); dengan tahun selalu bounded.
+  if (
+    !tahun &&
+    !options.force &&
+    catalogCache &&
+    now - catalogFetchedAt < CATALOG_TTL_MS
+  ) {
+    return catalogCache
+  }
+  if (!tahun && !options.force && catalogPromise) return catalogPromise
 
-  catalogPromise = (async () => {
+  const run = (async () => {
     const all: Pekerjaan[] = []
     const seen = new Set<number>()
     let page = 1
     let lastPage = 1
-    while (page <= lastPage && page <= 40) {
+    while (page <= lastPage && page <= CATALOG_MAX_PAGES) {
       const res = await fetchPekerjaanFromApi({
         page,
-        perPage: 100,
+        perPage: CATALOG_PER_PAGE,
+        tahun,
         sortBy: 'created_at',
         sortDirection: 'desc',
       })
@@ -106,15 +113,19 @@ async function loadFullPekerjaanCatalog(force = false): Promise<Pekerjaan[]> {
       if (res.data.length === 0) break
       page += 1
     }
-    catalogCache = all
-    catalogFetchedAt = Date.now()
+    if (!tahun) {
+      catalogCache = all
+      catalogFetchedAt = Date.now()
+    }
     return all
   })()
 
+  if (!tahun) catalogPromise = run
+
   try {
-    return await catalogPromise
+    return await run
   } finally {
-    catalogPromise = null
+    if (!tahun) catalogPromise = null
   }
 }
 
@@ -150,13 +161,14 @@ function paginateLocal(
       per_page: perPage,
       total,
       client_catalog: true,
+      catalog_capped: true,
     },
   }
 }
 
 /**
- * Search lewat live API (fetch URL eksplisit).
- * Fallback katalog hanya jika API mengabaikan search (deteksi total tetap penuh).
+ * Search lewat live API.
+ * Fallback katalog hanya jika API terbukti mengabaikan search — dan dibatasi max 5 page.
  */
 export async function fetchPekerjaanListWithSearch(
   input: PekerjaanSearchInput,
@@ -191,17 +203,26 @@ export async function fetchPekerjaanListWithSearch(
     at: new Date().toISOString(),
   }
 
-  // Live probe: search=kubang → total 7. Jika dapat total ~558 + tidak ada match → fallback.
-  if (search && serverIgnoredSearch(search, res)) {
-    const catalog = await loadFullPekerjaanCatalog()
+  if (!search || !serverSearchLikelyIgnored(search, res)) {
+    return res
+  }
+
+  // Tahun aktif sudah memotong dataset di server — fallback penuh sering false positive.
+  // Tetap izinkan fallback terbatas (≤5 page) dengan filter tahun bila ada.
+  try {
+    const catalog = await loadPekerjaanCatalogSlice({ tahun })
     let filtered = catalog.filter((item) => matchPekerjaanKeyword(item, search))
     if (tahun) filtered = filtered.filter((item) => matchPekerjaanTahun(item, tahun))
     return paginateLocal(filtered, page, perPage, {
       search,
       tahun,
-      note: `${req?.queryString || ''} [fallback-catalog n=${catalog.length}]`,
+      note: `${req?.queryString || ''} [fallback-catalog n=${catalog.length} maxPages=${CATALOG_MAX_PAGES}]`,
     })
+  } catch {
+    lastDebug = {
+      ...lastDebug,
+      fallbackSkipped: 'catalog-load-failed',
+    }
+    return res
   }
-
-  return res
 }
