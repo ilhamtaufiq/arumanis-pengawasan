@@ -11,6 +11,7 @@ import {
 import * as ImagePicker from 'expo-image-picker'
 import type { Pekerjaan } from '@pengawas/shared'
 import { formatDateTime } from '@pengawas/shared/format'
+import { getDesaName, getKecamatanName } from '@pengawas/shared/wilayah-fields'
 import { ApiError } from '@pengawas/api-client'
 import { getPekerjaanDetail } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -145,8 +146,8 @@ export default function LapanganScreen() {
         const quick: KegiatanPekerjaanContext = {
           pekerjaanId: item.id,
           namaPaket: item.nama_paket,
-          desa: item.desa?.nama_desa ?? null,
-          kecamatan: item.kecamatan?.nama_kecamatan ?? null,
+          desa: getDesaName(item.desa) || null,
+          kecamatan: getKecamatanName(item.kecamatan) || null,
           outputLine: null,
           outcomeLine: item.kegiatan
             ? [item.kegiatan.nama_kegiatan, item.kegiatan.nama_sub_kegiatan]

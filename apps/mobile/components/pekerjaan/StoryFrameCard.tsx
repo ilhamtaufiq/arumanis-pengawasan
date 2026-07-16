@@ -29,7 +29,11 @@ const amsPalette = {
 type StoryFrameCardProps = {
   imageUri: string
   meta: StoryShareMeta
-  /** Lebar logical; default preview. Capture scale ke 1080×1920. */
+  /**
+   * Lebar logical.
+   * - Preview UI: ~320
+   * - Capture HD: 1080 (via StoryHdCaptureSurface) — jangan scale-up preview
+   */
   width?: number
   onImageLoad?: () => void
   onImageError?: () => void
@@ -37,8 +41,9 @@ type StoryFrameCardProps = {
 
 /**
  * Bingkai story 9:16.
- * - theme ams (kegiatan lapangan): header + FOTO besar + footer — tanpa blok output/outcome/dll.
- * - theme default: header + foto + info (dokumentasi slot).
+ * - theme ams (kegiatan lapangan + foto tab pekerjaan): header biru AMS, pill,
+ *   keterangan opsional, FOTO besar, footer @bidang_ams.
+ * - theme default: header kuning + foto + panel info detail (legacy).
  */
 export const StoryFrameCard = forwardRef<View, StoryFrameCardProps>(function StoryFrameCard(
   { imageUri, meta, width = STORY_PREVIEW_WIDTH, onImageLoad, onImageError },
@@ -63,6 +68,15 @@ export const StoryFrameCard = forwardRef<View, StoryFrameCardProps>(function Sto
   const brandColor = isAms ? amsPalette.brandAccent : colors.main
   const slotLabel = meta.slotLabel || (isAms ? 'OUTCOME' : 'SLOT')
   const penerimaLabel = meta.penerimaLabel || 'PENERIMA'
+
+  // Jangan render title jika sama dengan badge (nama kegiatan cukup di pill)
+  const titleText = meta.title?.trim() || ''
+  const badgeText = meta.badge?.trim() || ''
+  const titleDupBadge =
+    Boolean(titleText) &&
+    Boolean(badgeText) &&
+    titleText.toLowerCase() === badgeText.toLowerCase()
+  const showTitle = Boolean(titleText) && !titleDupBadge
 
   return (
     <View
@@ -136,6 +150,7 @@ export const StoryFrameCard = forwardRef<View, StoryFrameCardProps>(function Sto
           </View>
         </View>
 
+        {/* Pill kegiatan (input user) */}
         <View
           style={{
             alignSelf: 'flex-start',
@@ -161,17 +176,38 @@ export const StoryFrameCard = forwardRef<View, StoryFrameCardProps>(function Sto
           </Text>
         </View>
 
-        <Text
-          numberOfLines={isAms ? 3 : 2}
-          style={{
-            fontWeight: '900',
-            fontSize: Math.round(width * (isAms ? 0.052 : 0.05)),
-            color: headerFg,
-            lineHeight: Math.round(width * 0.062),
-          }}
-        >
-          {meta.title}
-        </Text>
+        {/*
+          Di bawah pill: keterangan user (theme ams).
+          Kosong/null → baris tidak digambar.
+        */}
+        {isAms && meta.keteranganLine?.trim() ? (
+          <Text
+            numberOfLines={3}
+            style={{
+              fontWeight: '700',
+              fontSize: Math.round(width * 0.032),
+              color: '#E3F2FD',
+              lineHeight: Math.round(width * 0.042),
+            }}
+          >
+            {meta.keteranganLine.trim()}
+          </Text>
+        ) : null}
+
+        {/* Nama kegiatan hanya di badge; title lain (paket) ditampilkan jika beda */}
+        {showTitle ? (
+          <Text
+            numberOfLines={isAms ? 3 : 2}
+            style={{
+              fontWeight: '900',
+              fontSize: Math.round(width * (isAms ? 0.052 : 0.05)),
+              color: headerFg,
+              lineHeight: Math.round(width * 0.062),
+            }}
+          >
+            {titleText}
+          </Text>
+        ) : null}
 
         {meta.subtitle?.trim() ? (
           <Text
@@ -239,6 +275,8 @@ export const StoryFrameCard = forwardRef<View, StoryFrameCardProps>(function Sto
                 source={{ uri: imageUri }}
                 style={{ width: '100%', height: '100%' }}
                 resizeMode="cover"
+                // Android: scale (bukan resize) menjaga detail di view besar (HD 1080)
+                resizeMethod="scale"
                 onLoad={onImageLoad}
                 onError={onImageError}
               />

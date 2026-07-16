@@ -1,11 +1,14 @@
-import type { Pekerjaan, PaginatedResponse } from '@pengawas/shared'
-import { getPekerjaanList } from '@/lib/api'
-import { buildPekerjaanListParams } from '@/lib/pekerjaan-list-params'
+import type { PaginatedResponse, Pekerjaan } from '@pengawas/shared'
+import {
+  clearPekerjaanRequestDebug,
+  fetchPekerjaanFromApi,
+  getLastPekerjaanRequestDebug,
+} from '@/lib/pekerjaan-api'
 import {
   matchPekerjaanKeyword,
   matchPekerjaanTahun,
-  serverSearchLikelyIgnored,
 } from '@/lib/pekerjaan-search-match'
+import type { PekerjaanSearchInput } from './pekerjaan-search-types'
 
 export type { PekerjaanSearchInput } from './pekerjaan-search-types'
 export {
@@ -14,71 +17,97 @@ export {
   serverSearchLikelyIgnored,
 } from '@/lib/pekerjaan-search-match'
 
-import type { PekerjaanSearchInput } from './pekerjaan-search-types'
+export type PekerjaanSearchDebug = {
+  queryString: string
+  url?: string
+  search?: string
+  tahun?: string
+  page: number
+  perPage: number
+  rows: number
+  total: number
+  mode: 'server' | 'client-catalog' | 'browse'
+  at: string
+}
 
-/** Cache katalog penuh per sesi (per user token scope — di-clear manual). */
+let lastDebug: PekerjaanSearchDebug | null = null
 let catalogCache: Pekerjaan[] | null = null
 let catalogPromise: Promise<Pekerjaan[]> | null = null
 let catalogFetchedAt = 0
+const CATALOG_TTL_MS = 3 * 60_000
 
-const CATALOG_TTL_MS = 5 * 60_000
+export function getLastPekerjaanSearchDebug(): PekerjaanSearchDebug | null {
+  return lastDebug ?? mapRequestDebug()
+}
+
+function mapRequestDebug(): PekerjaanSearchDebug | null {
+  const d = getLastPekerjaanRequestDebug()
+  if (!d) return null
+  return {
+    queryString: d.queryString,
+    url: d.url,
+    search: d.search,
+    page: d.page,
+    perPage: d.perPage,
+    rows: d.rows,
+    total: d.total,
+    mode: d.search ? 'server' : 'browse',
+    at: d.at,
+  }
+}
 
 export function clearPekerjaanCatalogCache(): void {
+  lastDebug = null
   catalogCache = null
   catalogPromise = null
   catalogFetchedAt = 0
+  clearPekerjaanRequestDebug()
 }
 
-function metaLastPage(meta: Record<string, unknown> | undefined, fallback = 1): number {
-  const n = Number(meta?.last_page)
-  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback
+function metaNum(meta: Record<string, unknown> | undefined, key: string, fallback = 0): number {
+  const n = Number(meta?.[key])
+  return Number.isFinite(n) ? n : fallback
 }
 
-/**
- * Ambil SELURUH pekerjaan yang boleh diakses user (paginate 100/hal).
- * Hasil di-cache di memory agar search berikutnya cepat.
- */
-export async function loadFullPekerjaanCatalog(force = false): Promise<Pekerjaan[]> {
+/** Live API terbukti memfilter; deteksi jika response masih “penuh” tanpa match. */
+function serverIgnoredSearch(search: string, res: PaginatedResponse<Pekerjaan>): boolean {
+  if (!search.trim()) return false
+  const total = metaNum(res.meta as Record<string, unknown>, 'total', res.data.length)
+  if (res.data.length === 0) return total > 100
+  const matches = res.data.filter((i) => matchPekerjaanKeyword(i, search))
+  if (matches.length === 0 && total > 50) return true
+  if (total > 100 && matches.length / res.data.length < 0.25) return true
+  return false
+}
+
+async function loadFullPekerjaanCatalog(force = false): Promise<Pekerjaan[]> {
   const now = Date.now()
-  if (!force && catalogCache && now - catalogFetchedAt < CATALOG_TTL_MS) {
-    return catalogCache
-  }
+  if (!force && catalogCache && now - catalogFetchedAt < CATALOG_TTL_MS) return catalogCache
   if (!force && catalogPromise) return catalogPromise
 
   catalogPromise = (async () => {
     const all: Pekerjaan[] = []
     const seen = new Set<number>()
-    const perPage = 100
     let page = 1
     let lastPage = 1
-    const maxPages = 30
-
-    while (page <= lastPage && page <= maxPages) {
-      const res = await getPekerjaanList(
-        buildPekerjaanListParams({
-          page,
-          perPage,
-          sortBy: 'created_at',
-          sortDirection: 'desc',
-        }),
-      )
-
+    while (page <= lastPage && page <= 40) {
+      const res = await fetchPekerjaanFromApi({
+        page,
+        perPage: 100,
+        sortBy: 'created_at',
+        sortDirection: 'desc',
+      })
       for (const item of res.data) {
         if (seen.has(item.id)) continue
         seen.add(item.id)
         all.push(item)
       }
-
-      lastPage = metaLastPage(res.meta as Record<string, unknown> | undefined, page)
+      lastPage = Math.max(1, metaNum(res.meta as Record<string, unknown>, 'last_page', page))
       if (res.data.length === 0) break
       page += 1
     }
-
     catalogCache = all
     catalogFetchedAt = Date.now()
-    if (__DEV__) {
-      console.log('[pekerjaan-search] catalog loaded', { count: all.length, pages: page - 1 })
-    }
     return all
   })()
 
@@ -93,13 +122,25 @@ function paginateLocal(
   items: Pekerjaan[],
   page: number,
   perPage: number,
-  extraMeta?: Record<string, unknown>,
+  info: { search?: string; tahun?: string; note: string },
 ): PaginatedResponse<Pekerjaan> {
   const total = items.length
   const lastPage = Math.max(1, Math.ceil(total / perPage) || 1)
   const safePage = Math.min(Math.max(1, page), lastPage)
   const start = (safePage - 1) * perPage
   const slice = items.slice(start, start + perPage)
+
+  lastDebug = {
+    queryString: info.note,
+    search: info.search,
+    tahun: info.tahun,
+    page: safePage,
+    perPage,
+    rows: slice.length,
+    total,
+    mode: 'client-catalog',
+    at: new Date().toISOString(),
+  }
 
   return {
     data: slice,
@@ -109,93 +150,58 @@ function paginateLocal(
       per_page: perPage,
       total,
       client_catalog: true,
-      ...extraMeta,
     },
   }
 }
 
 /**
- * Search andal: filter di SELURUH katalog (bukan halaman aktif).
- *
- * - Tanpa keyword/tahun: list server normal (paginasi cepat)
- * - Dengan keyword/tahun: load katalog penuh → filter memory → paginate
+ * Search lewat live API (fetch URL eksplisit).
+ * Fallback katalog hanya jika API mengabaikan search (deteksi total tetap penuh).
  */
 export async function fetchPekerjaanListWithSearch(
   input: PekerjaanSearchInput,
 ): Promise<PaginatedResponse<Pekerjaan>> {
-  const q = (input.search || '').trim()
-  const tahun = (input.tahun || '').trim()
+  const search = (input.search || '').trim() || undefined
+  const tahun = (input.tahun || '').trim() || undefined
   const page = Math.max(1, input.page ?? 1)
-  const perPage = Math.max(1, input.perPage ?? 12)
+  const perPage = Math.max(1, Math.min(100, input.perPage ?? 12))
 
-  // Mode browse normal — tanpa search
-  if (!q && !tahun) {
-    return getPekerjaanList(
-      buildPekerjaanListParams({
-        page,
-        perPage,
-        sortBy: input.sortBy ?? 'created_at',
-        sortDirection: input.sortDirection ?? 'desc',
-      }),
-    )
+  const res = await fetchPekerjaanFromApi({
+    search,
+    tahun,
+    page,
+    perPage,
+    sortBy: input.sortBy ?? 'created_at',
+    sortDirection: input.sortDirection ?? 'desc',
+  })
+
+  const req = getLastPekerjaanRequestDebug()
+  const total = metaNum(res.meta as Record<string, unknown>, 'total', res.data.length)
+
+  lastDebug = {
+    queryString: req?.queryString || '',
+    url: req?.url,
+    search,
+    tahun,
+    page,
+    perPage,
+    rows: res.data.length,
+    total,
+    mode: search || tahun ? 'server' : 'browse',
+    at: new Date().toISOString(),
   }
 
-  // Mode search: SELALU filter di katalog penuh (andalkan client).
-  // Ini memastikan "kubang" dicari di 500+ paket, bukan cuma page 1.
-  const catalog = await loadFullPekerjaanCatalog()
-
-  let filtered = catalog
-  if (q) {
-    filtered = filtered.filter((item) => matchPekerjaanKeyword(item, q))
-  }
-  if (tahun) {
-    filtered = filtered.filter((item) => matchPekerjaanTahun(item, tahun))
-  }
-
-  if (__DEV__) {
-    console.log('[pekerjaan-search] catalog filter', {
-      q,
+  // Live probe: search=kubang → total 7. Jika dapat total ~558 + tidak ada match → fallback.
+  if (search && serverIgnoredSearch(search, res)) {
+    const catalog = await loadFullPekerjaanCatalog()
+    let filtered = catalog.filter((item) => matchPekerjaanKeyword(item, search))
+    if (tahun) filtered = filtered.filter((item) => matchPekerjaanTahun(item, tahun))
+    return paginateLocal(filtered, page, perPage, {
+      search,
       tahun,
-      catalog: catalog.length,
-      matched: filtered.length,
-      page,
+      note: `${req?.queryString || ''} [fallback-catalog n=${catalog.length}]`,
     })
   }
 
-  // Opsional: coba juga server search untuk log perbandingan (tidak dipakai jika kosong)
-  if (q && filtered.length === 0) {
-    try {
-      const serverRes = await getPekerjaanList(
-        buildPekerjaanListParams({
-          search: q,
-          tahun: tahun || undefined,
-          page: 1,
-          perPage: 50,
-        }),
-      )
-      if (serverRes.data.length > 0 && !serverSearchLikelyIgnored(q, serverRes)) {
-        // Server menemukan sesuatu yang katalog/match kita lewatkan — pakai server
-        if (__DEV__) {
-          console.log('[pekerjaan-search] using server hits', serverRes.data.length)
-        }
-        return {
-          data: serverRes.data.slice(0, perPage),
-          meta: {
-            ...(serverRes.meta as object),
-            current_page: 1,
-            per_page: perPage,
-            total: Number((serverRes.meta as { total?: number })?.total ?? serverRes.data.length),
-            client_catalog: false,
-          },
-        }
-      }
-    } catch {
-      // abaikan; tetap pakai hasil catalog
-    }
-  }
-
-  return paginateLocal(filtered, page, perPage, {
-    search: q || undefined,
-    tahun: tahun || undefined,
-  })
+  return res
 }

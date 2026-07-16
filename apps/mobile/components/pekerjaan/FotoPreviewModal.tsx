@@ -233,10 +233,10 @@ export function FotoPreviewModal({
                   <NeoButton
                     label={
                       imageUri
-                        ? 'Bagikan Story'
+                        ? 'Story HD (bagikan / simpan)'
                         : loadingUrl
                           ? 'Memuat gambar…'
-                          : 'Bagikan Story (tanpa gambar)'
+                          : 'Story (tanpa gambar)'
                     }
                     variant="primary"
                     fullWidth
@@ -252,7 +252,7 @@ export function FotoPreviewModal({
                       marginTop: 6,
                     }}
                   >
-                    Bagikan ke Instagram Stories / WhatsApp Status
+                    Bingkai AMS · 1080×1920 · Instagram / WhatsApp / simpan galeri
                   </Text>
                 </View>
 

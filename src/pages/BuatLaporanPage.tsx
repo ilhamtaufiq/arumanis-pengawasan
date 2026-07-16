@@ -14,6 +14,7 @@ import {
   Spinner,
 } from '@/components/ui'
 import type { PekerjaanDetail } from '@/lib/types'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 
 export function BuatLaporanPage() {
   const { pekerjaanId: rawPekerjaanId } = useParams()
@@ -75,7 +76,7 @@ export function BuatLaporanPage() {
           <span>{pekerjaan.nama_paket}</span>
           <span className="detail-sep">•</span>
           <span>
-            {pekerjaan.kecamatan?.nama_kecamatan || '-'} • {pekerjaan.desa?.nama_desa || '-'}
+            {formatPekerjaanLokasi(pekerjaan, { separator: ' • ' })}
           </span>
           <span className="detail-sep">•</span>
           <span>{pekerjaan.kegiatan?.nama_sub_kegiatan || '-'}</span>

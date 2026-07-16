@@ -35,32 +35,63 @@ export type StoryShareMeta = {
   slotLabel?: string
   /** Override label baris penerima (default PENERIMA) */
   penerimaLabel?: string
+  /**
+   * Teks bebas di bawah pill kegiatan (theme ams).
+   * Kosong/null = baris tidak digambar.
+   */
+  keteranganLine?: string | null
 }
 
+/**
+ * Meta bingkai story untuk foto tab detail pekerjaan.
+ * Layout diselaraskan dengan kegiatan lapangan (theme AMS):
+ * - pill progress/slot
+ * - keterangan di bawah pill (penerima / catatan) hanya jika ada
+ * - foto besar, logo Arumanis + Bidang AMS + @bidang_ams
+ */
 export function buildStoryShareMeta(foto: Foto, context: StoryShareContext): StoryShareMeta {
   const desa = context.desa?.trim() || ''
   const kecamatan = context.kecamatan?.trim() || ''
   const locationParts = [desa, kecamatan].filter(Boolean)
-  const output =
+  const outputRaw =
     foto.komponen?.komponen?.trim() ||
-    (foto.komponen_id != null ? `Output #${foto.komponen_id}` : '-')
-  const slot = (foto.keterangan || '0%').split('|')[0]?.trim() || '0%'
+    (foto.komponen_id != null ? `Output #${foto.komponen_id}` : '')
+  const output = outputRaw || '-'
+
+  const ketParts = String(foto.keterangan || '0%')
+    .split('|')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const slot = ketParts[0] || '0%'
+  const catatan = ketParts.slice(1).join(' · ') || null
   const penerima = foto.penerima?.nama?.trim() || null
   const pengawas = context.pengawas?.trim() || null
   const year = context.tahunAnggaran != null ? String(context.tahunAnggaran) : null
+  const namaPaket = context.namaPaket?.trim() || 'Pekerjaan'
+
+  // Di bawah pill: penerima dan/atau catatan bebas — kosong = tidak digambar
+  const keteranganParts = [penerima, catatan].filter(Boolean)
+  const keteranganLine = keteranganParts.length ? keteranganParts.join(' · ') : null
 
   return {
-    title: context.namaPaket?.trim() || 'Pekerjaan',
+    // Judul utama = nama paket (seperti subtitle paket di kegiatan lapangan)
+    title: namaPaket,
+    // Subtitle = output (jika ada)
+    subtitle: outputRaw && outputRaw !== '-' ? outputRaw : null,
     locationLine: locationParts.length ? locationParts.join(' · ') : 'Lokasi belum diisi',
     outputLine: output,
     slotLine: slot,
-    penerimaLine: penerima,
+    penerimaLine: null,
     pengawasLine: pengawas,
     koordinatLine: foto.koordinat?.trim() || 'Koordinat tidak tersedia',
     tanggalLine: formatDateTime(foto.created_at) || '-',
     brandLine: year
       ? `ARUMANIS · Pengawasan · TA ${year}`
       : 'ARUMANIS · Pengawasan Lapangan',
-    badge: 'DOKUMENTASI LAPANGAN',
+    /** Pill = slot progress foto (0% / 25% / …) */
+    badge: `SLOT ${slot}`.toUpperCase(),
+    theme: 'ams',
+    slotLabel: 'SLOT',
+    keteranganLine,
   }
 }

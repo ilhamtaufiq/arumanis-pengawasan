@@ -7,3 +7,11 @@ dist
 *.bak
 coverage
 recovered*.txt
+
+# Local agent / tooling artifacts
+.automaker/
+.codegraph/
+terminals/
+mcps/
+logcat*.txt
+laragonwww*.png

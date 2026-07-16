@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import type { Pekerjaan } from '@pengawas/shared'
 import { ApiError } from '@pengawas/api-client'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 import { useServerPekerjaanList } from '@/hooks/useServerPekerjaanList'
 import { useAuth } from '@/lib/auth'
 import { EmptyState, NeoButton, NeoInput, NeoSurface, Spinner } from '@/components/ui'
@@ -26,8 +27,7 @@ type PekerjaanPickerModalProps = {
 }
 
 /**
- * Picker paket untuk kegiatan lapangan.
- * Search server-side + filter lokal sebagai fallback saat debounce / offline cache.
+ * Picker paket — search 100% server: GET /pekerjaan?search=
  */
 export function PekerjaanPickerModal({
   visible,
@@ -42,21 +42,21 @@ export function PekerjaanPickerModal({
     enabled: visible && canFetch,
     perPage: 12,
     keepPagePlaceholder: false,
-    searchDebounceMs: 300,
+    searchDebounceMs: 350,
     source: 'kegiatan-picker',
   })
 
-  // Reset filter tiap buka modal agar tidak “nyangkut” query lama
+  // Clear HANYA saat transisi closed → open (jangan clear saat re-render)
+  const wasVisible = useRef(false)
   useEffect(() => {
-    if (visible) {
+    if (visible && !wasVisible.current) {
       list.clearFilters()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hanya saat buka
+    wasVisible.current = visible
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- guard open only
   }, [visible])
 
   const error = list.query.error instanceof ApiError ? list.query.error : null
-  /** Hasil sudah difilter di fetchPekerjaanListWithSearch — tampilkan apa adanya. */
-  const displayItems = list.items
 
   return (
     <Modal
@@ -87,14 +87,14 @@ export function PekerjaanPickerModal({
               borderBottomRightRadius: 0,
               borderBottomWidth: 0,
               paddingBottom: Math.max(insets.bottom, 12),
-              gap: 0,
             }}
           >
             <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground, marginBottom: 4 }}>
               Pilih paket pekerjaan
             </Text>
             <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18, marginBottom: 10 }}>
-              Ketik nama paket / desa / kecamatan. Pencarian di server (seluruh data yang Anda awasi).
+              Search server + filter tahun anggaran aktif
+              {list.tahunAktif ? ` (TA ${list.tahunAktif})` : ''}. Bukan seluruh TA.
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
@@ -119,48 +119,65 @@ export function PekerjaanPickerModal({
               />
             </View>
 
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
               {(list.searchPending || list.isPageLoading || list.query.isFetching) && (
                 <ActivityIndicator size="small" color={colors.foreground} />
               )}
               {list.query.isFetching ? (
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
                   {list.debouncedSearch
-                    ? `Memuat katalog & mencari “${list.debouncedSearch}”…`
-                    : 'Memuat paket…'}
+                    ? `GET …?search=${list.debouncedSearch}`
+                    : 'Memuat…'}
                 </Text>
               ) : null}
               {!list.query.isFetching && list.total > 0 ? (
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
                   {list.from}–{list.to} dari {list.total}
-                  {list.debouncedSearch ? ` · “${list.debouncedSearch}”` : ''}
-                  {list.usedClientScan ? ' · katalog penuh' : ''}
+                  {list.debouncedSearch ? ` · q="${list.debouncedSearch}"` : ''}
                 </Text>
               ) : null}
               {!list.query.isFetching && list.total === 0 && list.debouncedSearch ? (
                 <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-                  Tidak ketemu “{list.debouncedSearch}” di seluruh katalog
-                </Text>
-              ) : null}
-              {list.query.isError ? (
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.danger }}>
-                  Gagal memuat: {list.query.error instanceof Error ? list.query.error.message : 'error'}
+                  0 hasil server untuk “{list.debouncedSearch}”
                 </Text>
               ) : null}
               {list.search.trim() ? (
                 <Pressable onPress={list.clearFilters} hitSlop={8}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: colors.foreground }}>
-                    Hapus filter
-                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: '800' }}>Hapus filter</Text>
                 </Pressable>
               ) : null}
             </View>
 
+            {list.lastDebug ? (
+              <Text
+                selectable
+                style={{
+                  fontSize: 10,
+                  color: colors.mutedForeground,
+                  marginBottom: 8,
+                  fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                }}
+              >
+                {list.lastDebug.mode === 'client-catalog'
+                  ? 'Mode: katalog client (API ignore search)'
+                  : 'Mode: server'}
+                {'\n'}
+                {list.lastDebug.queryString}
+                {'\n'}
+                rows={list.lastDebug.rows} total={list.lastDebug.total}
+              </Text>
+            ) : null}
+
             {!canFetch ? (
-              <EmptyState
-                title="Sesi belum siap"
-                description="Tunggu autentikasi selesai, lalu buka lagi."
-              />
+              <EmptyState title="Sesi belum siap" description="Tunggu login selesai." />
             ) : null}
 
             {canFetch && list.query.isPending && !list.query.data ? (
@@ -180,35 +197,28 @@ export function PekerjaanPickerModal({
 
             {canFetch && (list.query.data || (!list.query.isPending && !error)) ? (
               <FlatList
-                data={displayItems}
+                data={list.items}
                 keyExtractor={(item) => String(item.id)}
                 style={{ maxHeight: height * 0.48 }}
                 keyboardShouldPersistTaps="always"
                 keyboardDismissMode="on-drag"
-                extraData={`${list.filterKey}:${list.page}:${list.search}`}
+                extraData={`${list.filterKey}:${list.page}:${list.total}`}
                 ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
                 ListEmptyComponent={
-                  !list.query.isPending && !list.searchPending && !list.query.isFetching ? (
+                  !list.query.isFetching ? (
                     <EmptyState
                       title="Tidak ada paket"
                       description={
                         list.debouncedSearch
-                          ? `Tidak ada hasil untuk “${list.debouncedSearch}”. Coba kata lain.`
+                          ? `Server tidak menemukan “${list.debouncedSearch}”.`
                           : 'Belum ada pekerjaan untuk akun ini.'
                       }
                     />
-                  ) : list.searchPending || list.query.isFetching ? (
-                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
-                      <ActivityIndicator color={colors.foreground} />
-                      <Text style={{ marginTop: 8, fontWeight: '700', fontSize: 12 }}>Mencari…</Text>
-                    </View>
                   ) : null
                 }
                 renderItem={({ item }) => {
                   const selected = selectedId === item.id
-                  const desa = item.desa?.nama_desa?.trim()
-                  const kec = item.kecamatan?.nama_kecamatan?.trim()
-                  const loc = [desa, kec].filter(Boolean).join(' · ')
+                  const loc = formatPekerjaanLokasi(item, { empty: '' })
                   return (
                     <Pressable
                       onPress={() => onSelect(item)}
@@ -221,9 +231,7 @@ export function PekerjaanPickerModal({
                         gap: 4,
                       }}
                     >
-                      <Text style={{ fontWeight: '900', fontSize: 14, color: colors.foreground }}>
-                        {item.nama_paket}
-                      </Text>
+                      <Text style={{ fontWeight: '900', fontSize: 14 }}>{item.nama_paket}</Text>
                       {loc ? (
                         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
                           {loc}

@@ -73,13 +73,21 @@ export type DashboardStats = {
 
 export type Kecamatan = {
   id: number
+  /** Preferred API alias (from KecamatanResource) */
   nama_kecamatan?: string
+  /** Raw DB column — may appear if resource bypassed; prefer nama_kecamatan via getKecamatanName */
+  n_kec?: string
+  name?: string
   jumlah_desa?: number
 }
 
 export type Desa = {
   id: number
+  /** Preferred API alias (from DesaResource) */
   nama_desa?: string
+  /** Raw DB column — may appear if resource bypassed; prefer nama_desa via getDesaName */
+  n_desa?: string
+  name?: string
   kecamatan_id?: number
   kecamatan?: Kecamatan | null
 }

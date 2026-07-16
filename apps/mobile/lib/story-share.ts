@@ -20,8 +20,10 @@ function formatShareCaption(
   return [title.trim(), body, 'ARUMANIS · Pengawasan Lapangan'].filter(Boolean).join('\n')
 }
 
+/** Caption teks untuk salin (bukan digabung ke file). Selaras kegiatan lapangan. */
 export function buildStoryCaption(meta: {
   title: string
+  subtitle?: string | null
   locationLine?: string
   outputLine?: string
   slotLine?: string
@@ -29,14 +31,25 @@ export function buildStoryCaption(meta: {
   pengawasLine?: string | null
   koordinatLine?: string
   tanggalLine?: string
+  keteranganLine?: string | null
+  badge?: string
 }) {
+  const output =
+    meta.outputLine?.trim() && meta.outputLine.trim() !== '-'
+      ? meta.outputLine.trim()
+      : meta.subtitle?.trim() || null
+
   return formatShareCaption(meta.title, [
+    meta.badge ? meta.badge : null,
+    meta.keteranganLine?.trim() || null,
     meta.locationLine,
-    meta.outputLine ? `Output: ${meta.outputLine}` : null,
+    output ? `Output: ${output}` : null,
     meta.slotLine ? `Slot: ${meta.slotLine}` : null,
     meta.penerimaLine ? `Penerima: ${meta.penerimaLine}` : null,
     meta.pengawasLine ? `Pengawas: ${meta.pengawasLine}` : null,
-    meta.koordinatLine ? `GPS: ${meta.koordinatLine}` : null,
+    meta.koordinatLine && !/tidak tersedia/i.test(meta.koordinatLine)
+      ? `GPS: ${meta.koordinatLine}`
+      : null,
     meta.tanggalLine,
     '@bidang_ams · Bidang Air Minum dan Sanitasi',
   ])

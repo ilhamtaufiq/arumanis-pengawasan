@@ -34,6 +34,7 @@ import {
   isFotoKoordinatInvalid,
   summarizeFotoKoordinatStatus,
 } from '@/lib/foto-koordinat-status'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 import {
   AnchorButton,
   Badge,
@@ -489,10 +490,7 @@ export function PekerjaanDetailPage() {
     stringValue(pekerjaan?.kegiatan?.tahun_anggaran),
     recordText(pekerjaan?.kegiatan, 'tahun_anggaran'),
   ])
-  const lokasiLabel = pickFirstText([
-    pekerjaan?.kecamatan?.nama_kecamatan,
-    pekerjaan?.desa?.nama_desa,
-  ])
+  const lokasiLabel = formatPekerjaanLokasi(pekerjaan, { empty: '' }) || undefined
   const pengawasLabel = pickFirstText([
     pekerjaan?.pengawas?.nama,
     recordText(pekerjaan, 'pengawas_nama'),

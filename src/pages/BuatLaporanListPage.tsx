@@ -14,6 +14,7 @@ import {
   Spinner,
   Surface,
 } from '@/components/ui'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 
 export function BuatLaporanListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -119,7 +120,7 @@ export function BuatLaporanListPage() {
                     </td>
                     <td data-label="Kegiatan">{item.kegiatan?.nama_sub_kegiatan || '-'}</td>
                     <td data-label="Lokasi">
-                      {item.kecamatan?.nama_kecamatan || '-'} • {item.desa?.nama_desa || '-'}
+                      {formatPekerjaanLokasi(item, { separator: ' • ' })}
                     </td>
                     <td data-label="Progress">
                       <div className="progress-inline">

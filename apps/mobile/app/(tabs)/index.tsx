@@ -4,9 +4,11 @@ import { router } from 'expo-router'
 import { ApiError } from '@pengawas/api-client'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { formatNumber, formatPercent } from '@pengawas/shared/format'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 import { resolveFotoStatus } from '@pengawas/shared/foto-status'
 import { useAuth } from '@/lib/auth'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useTahunAnggaranAktif } from '@/hooks/useTahunAnggaranAktif'
 import { fetchPekerjaanListWithSearch } from '@/lib/pekerjaan-search'
 import {
   isElevatedUser,
@@ -24,7 +26,7 @@ import {
   Spinner,
 } from '@/components/ui'
 import { colors } from '@/theme/tokens'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 /** Dashboard: satu request kecil. Total & search = meta server. */
 const DASHBOARD_PAGE_SIZE = 8
@@ -36,22 +38,35 @@ export default function DashboardScreen() {
   const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS)
   const debouncedTahun = useDebouncedValue(tahun.trim(), SEARCH_DEBOUNCE_MS)
   const { canFetch, user } = useAuth()
+  const { tahunAktif, isLoading: tahunLoading } = useTahunAnggaranAktif({
+    enabled: canFetch,
+  })
   const elevated = isElevatedUser(user)
   const roleLabel = primaryRoleLabel(user)
+
+  // Seed input tahun dari pengaturan aktif (sekali)
+  useEffect(() => {
+    if (tahunAktif && !tahun) setTahun(tahunAktif)
+  }, [tahunAktif, tahun])
+
+  // Default ke tahun anggaran aktif (pengaturan www/bun)
+  const effectiveTahun = (debouncedTahun || tahunAktif || '').trim()
   const searchPending =
-    search.trim() !== debouncedSearch || tahun.trim() !== debouncedTahun
+    search.trim() !== debouncedSearch ||
+    (tahun.trim() !== debouncedTahun && tahun.trim() !== effectiveTahun) ||
+    (canFetch && tahunLoading)
 
   /**
    * Admin TIDAK load semua pekerjaan.
    * - page selalu 1, per_page kecil
+   * - tahun = tahun anggaran aktif (default) agar dataset ringan
    * - search/tahun dikirim ke API (filter seluruh DB lalu paginate)
-   * - total dari meta.total (hasil filter server), bukan length array lokal
    */
   const dashboardQuery = useQuery({
     queryKey: queryKeys.pekerjaan.list({
       mode: 'dashboard-server',
       search: debouncedSearch,
-      tahun: debouncedTahun,
+      tahun: effectiveTahun,
       page: 1,
       per_page: DASHBOARD_PAGE_SIZE,
     }),
@@ -80,16 +95,16 @@ export default function DashboardScreen() {
         fotoBelum: items.filter((item) => resolveFotoStatus(item) !== 'selesai').length,
       }
     },
-    enabled: canFetch,
+    enabled: canFetch && (!!effectiveTahun || !tahunLoading),
     retry: 1,
     networkMode: 'online',
-    staleTime: debouncedSearch || debouncedTahun ? 0 : 30_000,
+    staleTime: debouncedSearch || effectiveTahun ? 0 : 30_000,
     gcTime: 5 * 60_000,
   })
 
   const data = dashboardQuery.data
   const error = dashboardQuery.error instanceof ApiError ? dashboardQuery.error : null
-  const hasFilter = Boolean(debouncedSearch || debouncedTahun)
+  const hasFilter = Boolean(debouncedSearch || effectiveTahun)
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
@@ -108,11 +123,14 @@ export default function DashboardScreen() {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         <NeoBadge tone={elevated ? 'info' : 'success'}>{roleLabel}</NeoBadge>
+        {tahunAktif ? (
+          <NeoBadge tone="info">TA {tahunAktif}</NeoBadge>
+        ) : null}
         <NeoBadge tone="neutral">server · max {DASHBOARD_PAGE_SIZE}</NeoBadge>
         <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
           {elevated
-            ? 'Admin: paginasi server, tidak load semua paket'
-            : 'Hanya pekerjaan yang ditugaskan'}
+            ? 'Admin: filter tahun aktif + paginasi server'
+            : 'Pekerjaan ditugaskan · tahun aktif'}
         </Text>
       </View>
 
@@ -201,8 +219,7 @@ export default function DashboardScreen() {
                 <NeoSurface style={{ gap: 6 }}>
                   <Text style={{ fontWeight: '800', fontSize: 15 }}>{item.nama_paket}</Text>
                   <Text style={{ fontSize: 12, color: colors.mutedForeground }}>
-                    {[item.kecamatan?.nama_kecamatan, item.desa?.nama_desa].filter(Boolean).join(' · ') ||
-                      'Lokasi belum diisi'}
+                    {formatPekerjaanLokasi(item, { empty: 'Lokasi belum diisi' })}
                   </Text>
                   {elevated && item.pengawas?.nama ? (
                     <Text style={{ fontSize: 12, color: colors.mutedForeground }}>

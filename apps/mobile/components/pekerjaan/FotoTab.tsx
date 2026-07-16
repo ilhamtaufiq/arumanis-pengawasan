@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Foto, Output, PekerjaanDetail, Penerima } from '@pengawas/shared'
 import { formatApiError } from '@pengawas/api-client'
+import { getDesaName, getKecamatanName } from '@pengawas/shared/wilayah-fields'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { deleteFoto, getPekerjaanDetail, updateFoto } from '@/lib/api'
@@ -39,12 +40,14 @@ import { FotoEditKoordinatModal } from '@/components/pekerjaan/FotoEditKoordinat
 import { FotoUploadQueueBanner } from '@/components/pekerjaan/FotoUploadQueueBanner'
 import { FotoUploadModal } from '@/components/pekerjaan/FotoUploadModal'
 import { FotoSlotTile } from '@/components/pekerjaan/FotoSlotTile'
+import { ProgressCollageShareModal } from '@/components/pekerjaan/ProgressCollageShareModal'
 import type { UploadTarget } from '@/components/pekerjaan/FotoMatrixRow'
 import {
   ChoiceDialog,
   ConfirmDialog,
   EmptyState,
   NeoBadge,
+  NeoButton,
   NeoSurface,
   Spinner,
 } from '@/components/ui'
@@ -154,6 +157,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [uploadWaitingServer, setUploadWaitingServer] = useState(false)
   const [nav, setNav] = useState<NavLevel>({ kind: 'outputs' })
+  const [collageOpen, setCollageOpen] = useState(false)
   const pendingPickerRequestRef = useRef<SourceRequest | null>(null)
   /** Cegah handlePickerResult 2x (promise kamera + AppState getPendingResultAsync). */
   const handledPickerUriRef = useRef<string | null>(null)
@@ -660,6 +664,7 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
   }, [])
 
   const goBack = useCallback(() => {
+    setCollageOpen(false)
     setNav((current) => {
       if (current.kind === 'slots' && current.penerima) {
         return { kind: 'penerima', output: current.output }
@@ -920,6 +925,16 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
                 )
               })}
             </View>
+            <NeoButton
+              label="Share kolase progress 0–100%"
+              variant="primary"
+              fullWidth
+              onPress={() => setCollageOpen(true)}
+              disabled={isBusy || activeSlots.every((s) => !s.foto)}
+            />
+            <Text style={{ fontSize: 11, color: colors.mutedForeground, fontWeight: '600' }}>
+              Kolase story AMS: 5 slot dalam satu frame 1080×1920 (bagikan / simpan HD).
+            </Text>
           </NeoSurface>
           <Text style={{ fontSize: 11, color: colors.mutedForeground, fontWeight: '600' }}>
             Hanya 5 slot grup ini yang memuat gambar — grup lain tidak di-render.
@@ -930,12 +945,12 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
       {/* Modals — hanya mount state aktif; komponen tetap ringan */}
       {previewFoto ? (
         <FotoPreviewModal
-          visible={!pendingDelete && !editKoordinatFoto}
+          visible={!pendingDelete && !editKoordinatFoto && !collageOpen}
           foto={previewFoto}
           storyContext={{
             namaPaket: pekerjaan.nama_paket,
-            desa: pekerjaan.desa?.nama_desa,
-            kecamatan: pekerjaan.kecamatan?.nama_kecamatan,
+            desa: getDesaName(pekerjaan.desa) || undefined,
+            kecamatan: getKecamatanName(pekerjaan.kecamatan) || undefined,
             pengawas: pekerjaan.pengawas?.nama,
             tahunAnggaran: pekerjaan.kegiatan?.tahun_anggaran,
           }}
@@ -948,6 +963,23 @@ export function FotoTab({ pekerjaanId, pekerjaan }: FotoTabProps) {
           }}
           onDelete={handleDeleteFromPreview}
           isBusy={isBusy || editKoordinatMutation.isPending}
+        />
+      ) : null}
+
+      {collageOpen && nav.kind === 'slots' ? (
+        <ProgressCollageShareModal
+          visible
+          slots={activeSlots}
+          output={nav.output}
+          penerima={nav.penerima ?? null}
+          context={{
+            namaPaket: pekerjaan.nama_paket,
+            desa: getDesaName(pekerjaan.desa) || undefined,
+            kecamatan: getKecamatanName(pekerjaan.kecamatan) || undefined,
+            pengawas: pekerjaan.pengawas?.nama,
+            tahunAnggaran: pekerjaan.kegiatan?.tahun_anggaran,
+          }}
+          onClose={() => setCollageOpen(false)}
         />
       ) : null}
 

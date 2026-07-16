@@ -105,12 +105,19 @@ type ApiListEnvelope<T> = { data: T[]; links?: unknown; meta?: unknown }
 - Jika backend mengembalikan 403, tampilkan forbidden state, jangan retry tanpa aksi user.
 - Jangan membuat bypass role di frontend. Frontend hanya menyembunyikan action; backend tetap otoritas.
 
+## Field contract & domain
+
+- Baca [docs/API_FIELD_CONTRACT.md](docs/API_FIELD_CONTRACT.md) sebelum menambah type atau menampilkan lokasi.
+- **Wilayah:** API memakai `nama_kecamatan` / `nama_desa`; kolom DB `n_kec` / `n_desa`. Selalu lewat helper `@pengawas/shared/wilayah-fields` (`getKecamatanName`, `getDesaName`, `formatPekerjaanLokasi`) — jangan hardcode salah satu alias saja.
+- Shared package (`packages/shared`) dipakai **web + mobile**. Ubah kontrak display di shared, bukan duplikasi di masing-masing app.
+- Jangan port fitur admin Arumanis (data-quality, SPSE promote, WA bridge admin, document register admin) ke pengawas tanpa permintaan eksplisit.
+
 ## Pola Kode
 
-- Letakkan akses API di `src/lib/api`.
-- Letakkan komponen route di `src/app/routes`.
-- Letakkan komponen reusable di `src/components`.
-- Letakkan helper format uang, tanggal, persen, dan nomor di `src/lib/format`.
+- Letakkan akses API di `src/lib/api` (web) / `apps/mobile/lib` (mobile) / `packages/api-client` bila shared HTTP.
+- Letakkan komponen route di `src/pages` (web) / `apps/mobile/app` (Expo Router).
+- Letakkan komponen reusable di `src/components` atau `apps/mobile/components`.
+- Letakkan helper format uang, tanggal, persen, nomor di `@pengawas/shared` atau `src/lib/format`.
 - Gunakan TypeScript strict.
 - Validasi response penting dengan Zod sebelum masuk ke UI.
 - Gunakan TanStack Query key yang stabil, contoh:

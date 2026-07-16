@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Modal,
@@ -8,15 +8,15 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
+import { copyStoryCaption, STORY_PREVIEW_WIDTH } from '@/lib/story-share'
 import {
-  copyStoryCaption,
-  shareStoryImageFile,
-  STORY_HEIGHT,
-  STORY_PREVIEW_WIDTH,
-  STORY_WIDTH,
-} from '@/lib/story-share'
+  saveStoryFrameHd,
+  shareStoryFrameHd,
+  STORY_HD,
+} from '@/lib/story-capture'
 import type { StoryShareMeta } from '@/lib/story-share-meta'
 import { StoryFrameCard } from '@/components/pekerjaan/StoryFrameCard'
+import { StoryHdCaptureSurface } from '@/components/pekerjaan/StoryHdCaptureSurface'
 import { NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
 
@@ -28,29 +28,9 @@ type KegiatanStoryPreviewModalProps = {
   onClose: () => void
 }
 
-type CaptureRefFn = (
-  target: RefObject<View | null> | View,
-  options?: {
-    format?: 'png' | 'jpg' | 'webm' | 'raw'
-    quality?: number
-    result?: 'tmpfile' | 'base64' | 'data-uri' | 'zip-base64'
-    width?: number
-    height?: number
-  },
-) => Promise<string>
+type BusyMode = 'share' | 'save' | null
 
-function loadCaptureRef(): CaptureRefFn {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require('react-native-view-shot') as { captureRef?: CaptureRefFn }
-  if (typeof mod.captureRef !== 'function') {
-    throw new Error(
-      'Capture bingkai tidak tersedia. Perbarui native build agar react-native-view-shot terpasang.',
-    )
-  }
-  return mod.captureRef
-}
-
-/** Preview + share bingkai kegiatan lapangan (reuse StoryFrameCard). */
+/** Preview + share/simpan — capture dari surface HD 1080×1920 (bukan preview). */
 export function KegiatanStoryPreviewModal({
   visible,
   imageUri,
@@ -59,20 +39,34 @@ export function KegiatanStoryPreviewModal({
   onClose,
 }: KegiatanStoryPreviewModalProps) {
   const { height, width } = useWindowDimensions()
-  const frameRef = useRef<View>(null)
-  const [busy, setBusy] = useState(false)
+  /** Preview kecil untuk UI */
+  const previewRef = useRef<View>(null)
+  /** Capture target — full 1080×1920 offscreen */
+  const hdRef = useRef<View>(null)
+  const [busy, setBusy] = useState<BusyMode>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [imageReady, setImageReady] = useState(false)
+  const [savedMsg, setSavedMsg] = useState<string | null>(null)
+  const [hdImageReady, setHdImageReady] = useState(false)
 
   const previewWidth = Math.min(STORY_PREVIEW_WIDTH, Math.max(240, width - 56))
+  const isBusy = busy != null
 
   useEffect(() => {
     if (!visible) return
     setError(null)
     setCopied(false)
-    setImageReady(!imageUri)
+    setSavedMsg(null)
+    setHdImageReady(!imageUri)
   }, [visible, imageUri])
+
+  const waitForHdReady = useCallback(async () => {
+    // Surface HD butuh waktu layout + decode image di 1080px
+    if (imageUri && !hdImageReady) {
+      return 700
+    }
+    return 200
+  }, [hdImageReady, imageUri])
 
   const handleCopy = useCallback(async () => {
     if (!caption.trim()) return
@@ -86,34 +80,40 @@ export function KegiatanStoryPreviewModal({
   }, [caption])
 
   const handleShare = useCallback(async () => {
-    if (!imageUri || !meta || busy) return
-    setBusy(true)
+    if (!imageUri || !meta || isBusy) return
+    setBusy('share')
     setError(null)
+    setSavedMsg(null)
     try {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-      })
-      if (imageUri && !imageReady) {
-        await new Promise((r) => setTimeout(r, 400))
-      }
-      if (!frameRef.current) {
-        throw new Error('Bingkai belum siap. Tutup lalu buka lagi.')
-      }
-      const captureRef = loadCaptureRef()
-      const framedUri = await captureRef(frameRef, {
-        format: 'jpg',
-        quality: 0.92,
-        result: 'tmpfile',
-        width: STORY_WIDTH,
-        height: STORY_HEIGHT,
-      })
-      await shareStoryImageFile(framedUri)
+      const waitMs = await waitForHdReady()
+      await shareStoryFrameHd(hdRef, { waitMs })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Gagal membagikan story.')
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
-  }, [busy, imageReady, imageUri, meta])
+  }, [isBusy, imageUri, meta, waitForHdReady])
+
+  const handleSave = useCallback(async () => {
+    if (!imageUri || !meta || isBusy) return
+    setBusy('save')
+    setError(null)
+    setSavedMsg(null)
+    try {
+      const waitMs = await waitForHdReady()
+      const result = await saveStoryFrameHd(hdRef, { waitMs, quality: 1 })
+      setSavedMsg(
+        result.method === 'gallery'
+          ? `Tersimpan ke galeri (${STORY_HD.width}×${STORY_HD.height} HD)`
+          : 'Tersimpan di folder dokumen app (izin galeri belum aktif — rebuild native untuk simpan langsung ke galeri)',
+      )
+      setTimeout(() => setSavedMsg(null), 4000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Gagal menyimpan story HD.')
+    } finally {
+      setBusy(null)
+    }
+  }, [isBusy, imageUri, meta, waitForHdReady])
 
   if (!meta) return null
 
@@ -126,7 +126,23 @@ export function KegiatanStoryPreviewModal({
           justifyContent: 'flex-end',
         }}
       >
-        <Pressable style={{ flex: 1 }} onPress={busy ? undefined : onClose} />
+        <Pressable style={{ flex: 1 }} onPress={isBusy ? undefined : onClose} />
+
+        {/*
+          HD surface di luar NeoSurface (overflow clip bisa cegah render off-screen).
+          Harus di tree modal agar snapshot view-shot valid.
+        */}
+        <StoryHdCaptureSurface
+          ref={hdRef}
+          imageUri={imageUri}
+          meta={meta}
+          onImageLoad={() => setHdImageReady(true)}
+          onImageError={() => {
+            setHdImageReady(false)
+            setError('Gagal memuat foto di bingkai HD.')
+          }}
+        />
+
         <NeoSurface
           shadow="lg"
           style={{
@@ -157,22 +173,17 @@ export function KegiatanStoryPreviewModal({
               Kegiatan lapangan
             </Text>
             <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18, marginBottom: 12 }}>
-              Bingkai neobrutalism (logo Arumanis + Bidang AMS + @bidang_ams). Bagikan file berbingkai,
-              caption disalin terpisah.
+              Export nativ {STORY_HD.width}×{STORY_HD.height} (bukan scale preview). Pill kegiatan +
+              keterangan (jika diisi). Bagikan atau simpan ke galeri.
             </Text>
 
             <View style={{ alignItems: 'center', marginBottom: 14, paddingVertical: 8 }}>
               <View style={{ borderRadius: radius, backgroundColor: colors.background, ...shadows.lg }}>
                 <StoryFrameCard
-                  ref={frameRef}
+                  ref={previewRef}
                   imageUri={imageUri}
                   meta={meta}
                   width={previewWidth}
-                  onImageLoad={() => setImageReady(true)}
-                  onImageError={() => {
-                    setImageReady(false)
-                    setError('Gagal memuat foto di bingkai.')
-                  }}
                 />
               </View>
             </View>
@@ -221,28 +232,58 @@ export function KegiatanStoryPreviewModal({
               </View>
             ) : null}
 
+            {savedMsg ? (
+              <View
+                style={{
+                  backgroundColor: '#ecfdf5',
+                  borderWidth: 2,
+                  borderColor: '#059669',
+                  borderRadius: radius,
+                  padding: 10,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontWeight: '700', color: '#064e3b', fontSize: 13 }}>{savedMsg}</Text>
+              </View>
+            ) : null}
+
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               <NeoButton
                 label={copied ? 'Caption disalin ✓' : 'Salin caption'}
                 variant="secondary"
                 onPress={() => void handleCopy()}
-                disabled={busy || !caption.trim()}
+                disabled={isBusy || !caption.trim()}
               />
               <NeoButton
-                label={busy ? 'Menyiapkan…' : 'Bagikan story'}
+                label={busy === 'save' ? 'Menyimpan HD…' : 'Simpan HD'}
+                variant="neutral"
+                onPress={() => void handleSave()}
+                disabled={isBusy || !imageUri}
+              />
+              <NeoButton
+                label={busy === 'share' ? 'Menyiapkan…' : 'Bagikan story'}
                 variant="primary"
                 onPress={() => void handleShare()}
-                disabled={busy || !imageUri}
+                disabled={isBusy || !imageUri}
               />
-              <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={busy} />
+              <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={isBusy} />
             </View>
 
-            {busy ? (
+            {isBusy ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ActivityIndicator color={colors.foreground} />
-                <Text style={{ fontWeight: '700', fontSize: 12 }}>Merender bingkai 9:16…</Text>
+                <Text style={{ fontWeight: '700', fontSize: 12 }}>
+                  {busy === 'save'
+                    ? `Merender nativ ${STORY_HD.width}×${STORY_HD.height}…`
+                    : `Merender nativ HD ${STORY_HD.width}×${STORY_HD.height}…`}
+                </Text>
               </View>
-            ) : null}
+            ) : (
+              <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 15 }}>
+                Capture dari canvas 1080×1920 (bukan zoom preview). Instagram tetap bisa
+                kompres ulang di sisi mereka.
+              </Text>
+            )}
           </ScrollView>
         </NeoSurface>
       </View>

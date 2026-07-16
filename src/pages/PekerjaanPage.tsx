@@ -5,6 +5,7 @@ import { getPengawasPublicPath, redirectToMainAppSignIn } from '@/lib/sso-token'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/format'
 import { Badge, Button, EmptyState, ProgressFill, SectionHeader, Spinner, Surface } from '@/components/ui'
 import { useState } from 'react'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 
 export function PekerjaanPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -134,7 +135,7 @@ export function PekerjaanPage() {
                         <div className="table-subtitle">{item.kode_rekening || '-'}</div>
                       </div>
                     </td>
-                    <td>{item.kecamatan?.nama_kecamatan || item.desa?.nama_desa || '-'}</td>
+                    <td>{formatPekerjaanLokasi(item)}</td>
                     <td>{formatCurrency(item.pagu ?? 0)}</td>
                     <td>
                       <div className="progress-inline">

@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Pressable, Text, View } from 'react-native
 import { router } from 'expo-router'
 import { ApiError } from '@pengawas/api-client'
 import { formatCurrency, formatDate, formatPercent } from '@pengawas/shared/format'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 import { useAuth } from '@/lib/auth'
 import {
   PEKERJAAN_LIST_PER_PAGE,
@@ -29,7 +30,8 @@ export default function PekerjaanScreen() {
   const list = useServerPekerjaanList({
     enabled: canFetch,
     perPage: PEKERJAAN_LIST_PER_PAGE,
-    keepPagePlaceholder: true,
+    // Jangan tampilkan page lama saat ganti keyword (bikin seolah search gagal)
+    keepPagePlaceholder: false,
   })
 
   const error = list.query.error instanceof ApiError ? list.query.error : null
@@ -50,10 +52,28 @@ export default function PekerjaanScreen() {
           }}
         >
           <NeoBadge tone={elevated ? 'info' : 'success'}>{primaryRoleLabel(user)}</NeoBadge>
+          {list.tahunAktif ? <NeoBadge tone="info">TA {list.tahunAktif}</NeoBadge> : null}
           <NeoBadge tone="neutral">{`${list.perPage}/halaman · server`}</NeoBadge>
-          {list.total > 0 ? (
+          {list.total > 0 || list.debouncedSearch ? (
             <Text style={{ fontSize: 12, fontWeight: '700', color: colors.mutedForeground }}>
-              {list.from}–{list.to} dari {list.total}
+              {list.total > 0
+                ? `${list.from}–${list.to} dari ${list.total}`
+                : '0 hasil'}
+              {list.debouncedSearch ? ` · q="${list.debouncedSearch}"` : ''}
+              {` · page ${list.page}/${list.lastPage}`}
+            </Text>
+          ) : null}
+          {list.lastDebug ? (
+            <Text
+              selectable
+              style={{ fontSize: 10, color: colors.mutedForeground, width: '100%' }}
+            >
+              {list.lastDebug.mode === 'client-catalog'
+                ? 'Mode: katalog client (API ignore search) · '
+                : 'Mode: server · '}
+              {list.lastDebug.queryString}
+              {' → '}
+              rows={list.lastDebug.rows} total={list.lastDebug.total}
             </Text>
           ) : null}
           {list.searchPending || list.isPageLoading ? (
@@ -105,7 +125,7 @@ export default function PekerjaanScreen() {
           </View>
         ) : (
           <Text style={{ fontSize: 11, color: colors.mutedForeground, marginTop: 4, lineHeight: 15 }}>
-            Search memindai seluruh data (bukan hanya halaman ini).
+            Search lewat API: GET /pekerjaan?search=… (seluruh data di server, lalu paginate).
           </Text>
         )}
       </View>
@@ -174,8 +194,7 @@ export default function PekerjaanScreen() {
               <NeoSurface style={{ gap: 8 }}>
                 <Text style={{ fontSize: 16, fontWeight: '800' }}>{item.nama_paket}</Text>
                 <Text style={{ fontSize: 13, color: colors.mutedForeground }}>
-                  {[item.kecamatan?.nama_kecamatan, item.desa?.nama_desa].filter(Boolean).join(' · ') ||
-                    'Lokasi belum diisi'}
+                  {formatPekerjaanLokasi(item, { empty: 'Lokasi belum diisi' })}
                 </Text>
                 {elevated && item.pengawas?.nama ? (
                   <Text style={{ fontSize: 12, fontWeight: '700', color: colors.foreground }}>
@@ -217,19 +236,21 @@ export default function PekerjaanScreen() {
               marginBottom: 8,
             }}
           >
-            Halaman {list.currentPage} / {list.lastPage}
+            Halaman {list.page} / {list.lastPage}
             {list.total > 0 ? ` · ${list.total} paket · ${list.perPage}/halaman` : ''}
+            {list.debouncedSearch ? ` · search aktif` : ''}
           </Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
-              disabled={list.currentPage <= 1 || list.isPageLoading || list.searchPending}
+              disabled={list.page <= 1 || list.isPageLoading || list.searchPending}
               onPress={() => {
-                list.goToPage(list.currentPage - 1)
+                // Navigasi pakai page state (+ search tetap di query key)
+                list.goToPage(list.page - 1)
                 listRef.current?.scrollToOffset({ offset: 0, animated: true })
               }}
               style={{
                 flex: 1,
-                opacity: list.currentPage <= 1 || list.isPageLoading || list.searchPending ? 0.45 : 1,
+                opacity: list.page <= 1 || list.isPageLoading || list.searchPending ? 0.45 : 1,
                 borderWidth: 2,
                 borderColor: colors.border,
                 backgroundColor: colors.card,
@@ -241,15 +262,15 @@ export default function PekerjaanScreen() {
               <Text style={{ fontWeight: '800' }}>Sebelumnya</Text>
             </Pressable>
             <Pressable
-              disabled={list.currentPage >= list.lastPage || list.isPageLoading || list.searchPending}
+              disabled={list.page >= list.lastPage || list.isPageLoading || list.searchPending}
               onPress={() => {
-                list.goToPage(list.currentPage + 1)
+                list.goToPage(list.page + 1)
                 listRef.current?.scrollToOffset({ offset: 0, animated: true })
               }}
               style={{
                 flex: 1,
                 opacity:
-                  list.currentPage >= list.lastPage || list.isPageLoading || list.searchPending
+                  list.page >= list.lastPage || list.isPageLoading || list.searchPending
                     ? 0.45
                     : 1,
                 borderWidth: 2,

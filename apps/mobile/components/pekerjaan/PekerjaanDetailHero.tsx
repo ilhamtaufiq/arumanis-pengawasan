@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Text, View } from 'react-native'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { formatCurrency, formatDate, formatNumber, formatPercent } from '@pengawas/shared/format'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 import { resolveFotoStatus, statusFotoText, statusFotoTone } from '@pengawas/shared/foto-status'
 import { pickText } from '@/lib/pekerjaan-helpers'
 import { useResponsive } from '@/lib/responsive'
@@ -49,9 +50,7 @@ export const PekerjaanDetailHero = memo(function PekerjaanDetailHero({
   const { isCompact, contentPadding } = useResponsive()
   const statusFoto = resolveFotoStatus(pekerjaan)
 
-  const lokasiLabel = [pekerjaan.kecamatan?.nama_kecamatan, pekerjaan.desa?.nama_desa]
-    .filter(Boolean)
-    .join(' · ') || 'Lokasi belum diisi'
+  const lokasiLabel = formatPekerjaanLokasi(pekerjaan, { empty: 'Lokasi belum diisi' })
 
   const kegiatanLabel = pickText(
     pekerjaan.kegiatan?.nama_sub_kegiatan,

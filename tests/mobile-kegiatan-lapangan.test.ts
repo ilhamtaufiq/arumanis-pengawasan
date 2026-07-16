@@ -65,7 +65,7 @@ describe('extractKegiatanContext', () => {
 })
 
 describe('draftToStoryMeta', () => {
-  test('uses dynamic nama kegiatan as title/badge and AMS theme', () => {
+  test('uses nama paket as title, kegiatan as badge, and AMS theme', () => {
     const draft: KegiatanLapanganDraft = {
       id: 'kl-1',
       createdAt: '2026-03-01T10:00:00Z',
@@ -85,14 +85,14 @@ describe('draftToStoryMeta', () => {
       caption: 'x',
     }
     const meta = draftToStoryMeta(draft)
-    expect(meta.title).toBe('Provisional Hand Over')
-    expect(meta.subtitle).toBe('Paket Z')
+    // Title = paket; badge/pill = nama kegiatan (tidak diulang di title)
+    expect(meta.title).toBe('Paket Z')
+    expect(meta.subtitle).toBe('SR')
     expect(meta.badge).toBe('PROVISIONAL HAND OVER')
     expect(meta.theme).toBe('ams')
     expect(meta.outputLine).toBe('SR')
     expect(meta.slotLine).toBe('Outcome A')
-    expect(meta.penerimaLine).toBe('Siap serah terima')
-    expect(meta.penerimaLabel).toBe('KETERANGAN')
+    expect(meta.keteranganLine).toBe('Siap serah terima')
     expect(meta.brandLine).toContain('TA 2026')
   })
 })

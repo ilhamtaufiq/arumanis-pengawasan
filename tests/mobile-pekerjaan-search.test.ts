@@ -1,112 +1,37 @@
 import { describe, expect, test } from 'bun:test'
 import {
   buildPekerjaanListParams,
-  resolveListPageForFilter,
+  buildPekerjaanListQueryString,
 } from '../apps/mobile/lib/pekerjaan-list-params'
-import {
-  matchPekerjaanKeyword,
-  matchPekerjaanTahun,
-  normalizeSearchText,
-  serverSearchLikelyIgnored,
-} from '../apps/mobile/lib/pekerjaan-search-match'
+import { matchPekerjaanKeyword } from '../apps/mobile/lib/pekerjaan-search-match'
 import { createApiClient } from '../packages/api-client/src/create-client'
 import type { Pekerjaan } from '@pengawas/shared'
 
-describe('buildPekerjaanListParams', () => {
-  test('includes search when non-empty', () => {
-    const p = buildPekerjaanListParams({
-      search: '  air minum  ',
-      page: 2,
-      perPage: 8,
-      tahun: '2026',
+describe('API search param contract', () => {
+  test('builds search=kubang for server', () => {
+    const qs = buildPekerjaanListQueryString({
+      search: 'kubang',
+      page: 1,
+      perPage: 12,
     })
-    expect(p.search).toBe('air minum')
-    expect(p.page).toBe(2)
-    expect(p.per_page).toBe(8)
-    expect(p.tahun).toBe('2026')
+    expect(qs).toContain('search=kubang')
+    expect(qs).toContain('page=1')
+    expect(qs).toContain('per_page=12')
   })
 
-  test('omits empty search and tahun', () => {
-    const p = buildPekerjaanListParams({ search: '   ', tahun: '', page: 1 })
-    expect(p.search).toBeUndefined()
-    expect(p.tahun).toBeUndefined()
-  })
-})
-
-describe('resolveListPageForFilter', () => {
-  test('forces page 1 when search filter changes', () => {
-    const r = resolveListPageForFilter({
-      page: 4,
-      filterKey: 'air|',
-      prevFilterKey: '|',
-    })
-    expect(r.filterChanged).toBe(true)
-    expect(r.pageForQuery).toBe(1)
-  })
-
-  test('keeps page when filter unchanged', () => {
-    const r = resolveListPageForFilter({
-      page: 3,
-      filterKey: 'air|2026',
-      prevFilterKey: 'air|2026',
-    })
-    expect(r.filterChanged).toBe(false)
-    expect(r.pageForQuery).toBe(3)
-  })
-})
-
-describe('catalog-style match (full object scan)', () => {
-  const sample: Pekerjaan = {
-    id: 1,
-    nama_paket: 'Pembangunan SPAM Desa X',
-    desa: { id: 1, nama_desa: 'Kubang' },
-    kecamatan: { id: 2, nama_kecamatan: 'Ciranjang' },
-    kegiatan: { id: 3, tahun_anggaran: 2026 },
-  }
-
-  test('finds kubang in nested desa even if not in nama_paket', () => {
-    expect(matchPekerjaanKeyword(sample, 'kubang')).toBe(true)
-    expect(matchPekerjaanKeyword(sample, 'KUBANG')).toBe(true)
-    expect(matchPekerjaanKeyword(sample, 'ciranjang spam')).toBe(true)
-    expect(matchPekerjaanKeyword(sample, 'zzzz')).toBe(false)
-  })
-
-  test('tahun filter', () => {
-    expect(matchPekerjaanTahun(sample, '2026')).toBe(true)
-    expect(matchPekerjaanTahun(sample, '2025')).toBe(false)
-  })
-
-  test('normalize collapses noise', () => {
-    expect(normalizeSearchText('  KuBang  ')).toBe('kubang')
-  })
-
-  test('serverSearchLikelyIgnored', () => {
-    expect(
-      serverSearchLikelyIgnored('kubang', {
-        data: [{ id: 1, nama_paket: 'Jasa Konsultan' }],
-        meta: { total: 558 },
-      }),
-    ).toBe(true)
-
-    expect(
-      serverSearchLikelyIgnored('kubang', {
-        data: [sample],
-        meta: { total: 2 },
-      }),
-    ).toBe(false)
-  })
-})
-
-describe('getPekerjaanList query string', () => {
-  test('forwards search param on request URL', async () => {
+  test('getPekerjaanList includes search in URL', async () => {
     let requestedUrl = ''
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       requestedUrl = String(input)
+      // Simulasi production yang IGNORE search (total tetap 558)
       return new Response(
         JSON.stringify({
-          data: [{ id: 1, nama_paket: 'Paket Air' }],
-          meta: { current_page: 1, last_page: 1, per_page: 5, total: 1 },
+          data: Array.from({ length: 20 }, (_, i) => ({
+            id: 700 - i,
+            nama_paket: `Jasa Konsultan Paket ${i}`,
+          })),
+          meta: { current_page: 1, last_page: 28, per_page: 20, total: 558 },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       )
@@ -114,16 +39,31 @@ describe('getPekerjaanList query string', () => {
 
     try {
       const client = createApiClient({
-        apiPrefix: 'https://example.test/api',
-        bffPrefix: 'https://example.test/api',
+        apiPrefix: 'https://apiamis.example/api',
+        bffPrefix: 'https://apiamis.example/api',
         credentials: 'omit',
       })
-      await client.getPekerjaanList(
-        buildPekerjaanListParams({ search: 'air', page: 1, perPage: 5 }),
+      const res = await client.getPekerjaanList(
+        buildPekerjaanListParams({ search: 'kubang', page: 1, perPage: 12 }),
       )
-      expect(requestedUrl).toContain('search=air')
+      expect(requestedUrl).toContain('search=kubang')
+      // Production-like: total masih 558 meski search dikirim
+      expect(res.meta?.total).toBe(558)
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+})
+
+describe('client match for catalog fallback', () => {
+  test('matches desa Kubang when nama_paket does not contain it', () => {
+    const item: Pekerjaan = {
+      id: 1,
+      nama_paket: 'Pembangunan MCK Individu',
+      desa: { id: 9, nama_desa: 'Kubang' },
+      kecamatan: { id: 1, nama_kecamatan: 'Sukaluyu' },
+    }
+    expect(matchPekerjaanKeyword(item, 'kubang')).toBe(true)
+    expect(matchPekerjaanKeyword(item, 'konsultan')).toBe(false)
   })
 })

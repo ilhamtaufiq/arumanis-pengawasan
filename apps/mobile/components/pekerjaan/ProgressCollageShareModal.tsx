@@ -8,38 +8,47 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native'
-import type { Foto } from '@pengawas/shared'
+import type { Output, Penerima } from '@pengawas/shared'
 import {
-  buildStoryCaption,
-  buildStoryShareMeta,
-  copyStoryCaption,
-  STORY_PREVIEW_WIDTH,
-  type StoryShareContext,
-} from '@/lib/story-share'
+  buildCollageSlots,
+  buildProgressCollageCaption,
+  buildProgressCollageMeta,
+  countCollageFilled,
+} from '@/lib/progress-collage'
 import {
   saveStoryFrameHd,
   shareStoryFrameHd,
   STORY_HD,
 } from '@/lib/story-capture'
-import { StoryFrameCard } from '@/components/pekerjaan/StoryFrameCard'
-import { StoryHdCaptureSurface } from '@/components/pekerjaan/StoryHdCaptureSurface'
+import { copyStoryCaption, STORY_PREVIEW_WIDTH, type StoryShareContext } from '@/lib/story-share'
+import { STORY_HEIGHT, STORY_WIDTH } from '@/lib/story-share-meta'
+import { ProgressCollageFrame } from '@/components/pekerjaan/ProgressCollageFrame'
 import { NeoButton, NeoSurface } from '@/components/ui'
 import { colors, radius, shadows } from '@/theme/tokens'
 
-type StoryShareModalProps = {
+type ProgressCollageShareModalProps = {
   visible: boolean
-  foto: Foto | null
-  context: StoryShareContext | null
+  slots: Array<{ slot: string; foto?: import('@pengawas/shared').Foto }>
+  output: Output
+  penerima?: Penerima | null
+  context: StoryShareContext
   onClose: () => void
 }
 
 type BusyMode = 'share' | 'save' | null
 
 /**
- * Share/simpan story foto tab — capture dari surface HD 1080×1920
- * (bukan scale-up preview), selaras kegiatan lapangan.
+ * Preview + share/simpan kolase progress 0–100%.
+ * Capture dari surface HD 1080×1920 (bukan scale preview).
  */
-export function StoryShareModal({ visible, foto, context, onClose }: StoryShareModalProps) {
+export function ProgressCollageShareModal({
+  visible,
+  slots,
+  output,
+  penerima,
+  context,
+  onClose,
+}: ProgressCollageShareModalProps) {
   const { height, width } = useWindowDimensions()
   const previewRef = useRef<View>(null)
   const hdRef = useRef<View>(null)
@@ -47,35 +56,37 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
-  const [hdImageReady, setHdImageReady] = useState(false)
+  const [hdReady, setHdReady] = useState(false)
 
-  // Utamakan URL full, bukan thumb — penting untuk ketajaman di Instagram
-  const imageUri = (foto?.foto_url || foto?.foto_thumb_url || '').trim()
-  const meta = useMemo(() => {
-    if (!foto || !context) return null
-    return buildStoryShareMeta(foto, context)
-  }, [foto, context])
-
-  const caption = useMemo(() => (meta ? buildStoryCaption(meta) : ''), [meta])
+  const collageSlots = useMemo(() => buildCollageSlots(slots), [slots])
+  const filled = useMemo(() => countCollageFilled(collageSlots), [collageSlots])
+  const meta = useMemo(
+    () => buildProgressCollageMeta({ slots, output, penerima, context }),
+    [slots, output, penerima, context],
+  )
+  const caption = useMemo(
+    () => buildProgressCollageCaption({ meta, filled }),
+    [meta, filled],
+  )
   const previewWidth = Math.min(STORY_PREVIEW_WIDTH, Math.max(240, width - 56))
   const isBusy = busy != null
+  const canExport = filled > 0
 
   useEffect(() => {
     if (!visible) return
     setError(null)
     setCopied(false)
     setSavedMsg(null)
-    setHdImageReady(!imageUri)
-  }, [visible, imageUri, foto?.id])
+    setHdReady(filled === 0)
+  }, [visible, filled, output.id, penerima?.id])
 
-  const waitForHdReady = useCallback(async () => {
-    if (imageUri && !hdImageReady) return 700
-    return 200
-  }, [hdImageReady, imageUri])
+  const waitForHd = useCallback(async () => {
+    if (!hdReady && filled > 0) return 800
+    return 250
+  }, [hdReady, filled])
 
-  const handleCopyCaption = useCallback(async () => {
+  const handleCopy = useCallback(async () => {
     if (!caption.trim()) return
-    setError(null)
     try {
       await copyStoryCaption(caption)
       setCopied(true)
@@ -85,43 +96,41 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
     }
   }, [caption])
 
-  const handleShareFramed = useCallback(async () => {
-    if (!imageUri || isBusy || !meta) return
+  const handleShare = useCallback(async () => {
+    if (!canExport || isBusy) return
     setBusy('share')
     setError(null)
     setSavedMsg(null)
     try {
-      const waitMs = await waitForHdReady()
+      const waitMs = await waitForHd()
       await shareStoryFrameHd(hdRef, { waitMs })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal membagikan bingkai story.')
+      setError(e instanceof Error ? e.message : 'Gagal membagikan kolase.')
     } finally {
       setBusy(null)
     }
-  }, [isBusy, imageUri, meta, waitForHdReady])
+  }, [canExport, isBusy, waitForHd])
 
-  const handleSaveFramed = useCallback(async () => {
-    if (!imageUri || isBusy || !meta) return
+  const handleSave = useCallback(async () => {
+    if (!canExport || isBusy) return
     setBusy('save')
     setError(null)
     setSavedMsg(null)
     try {
-      const waitMs = await waitForHdReady()
+      const waitMs = await waitForHd()
       const result = await saveStoryFrameHd(hdRef, { waitMs, quality: 1 })
       setSavedMsg(
         result.method === 'gallery'
           ? `Tersimpan ke galeri (${STORY_HD.width}×${STORY_HD.height} HD)`
-          : 'Tersimpan di folder dokumen app (izin galeri belum aktif — rebuild native untuk simpan langsung ke galeri)',
+          : 'Tersimpan di folder dokumen app (izin galeri belum aktif)',
       )
       setTimeout(() => setSavedMsg(null), 4000)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Gagal menyimpan story HD.')
+      setError(e instanceof Error ? e.message : 'Gagal menyimpan kolase HD.')
     } finally {
       setBusy(null)
     }
-  }, [isBusy, imageUri, meta, waitForHdReady])
-
-  if (!foto || !meta) return null
+  }, [canExport, isBusy, waitForHd])
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -134,17 +143,31 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
       >
         <Pressable style={{ flex: 1 }} onPress={isBusy ? undefined : onClose} />
 
-        {/* Di luar NeoSurface agar tidak ter-clip overflow — capture nativ 1080×1920 */}
-        <StoryHdCaptureSurface
-          ref={hdRef}
-          imageUri={imageUri}
-          meta={meta}
-          onImageLoad={() => setHdImageReady(true)}
-          onImageError={() => {
-            setHdImageReady(false)
-            setError('Gagal memuat foto di bingkai HD. Periksa koneksi atau URL foto.')
+        {/* HD offscreen — di luar NeoSurface agar tidak ter-clip */}
+        <View
+          pointerEvents="none"
+          collapsable={false}
+          style={{
+            position: 'absolute',
+            left: -STORY_WIDTH - 40,
+            top: 0,
+            width: STORY_WIDTH,
+            height: STORY_HEIGHT,
+            opacity: 1,
+            overflow: 'hidden',
           }}
-        />
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <ProgressCollageFrame
+            ref={hdRef}
+            meta={meta}
+            slots={collageSlots}
+            width={STORY_WIDTH}
+            onAllImagesReady={() => setHdReady(true)}
+            onImageError={() => setError('Sebagian foto gagal dimuat di canvas HD.')}
+          />
+        </View>
 
         <NeoSurface
           shadow="lg"
@@ -170,22 +193,23 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
                 marginBottom: 4,
               }}
             >
-              PREVIEW STORY
+              KOLASE STORY
             </Text>
             <Text style={{ fontSize: 18, fontWeight: '900', color: colors.foreground, marginBottom: 6 }}>
-              Dokumentasi foto
+              Progress 0–100%
             </Text>
             <Text style={{ fontSize: 13, color: colors.mutedForeground, lineHeight: 18, marginBottom: 12 }}>
-              Export nativ {STORY_HD.width}×{STORY_HD.height} (bukan scale preview). Pill slot +
-              keterangan (jika ada). Bagikan atau simpan ke galeri.
+              Kolase 5 slot (0 · 25 · 50 · 75 · 100). Export nativ {STORY_HD.width}×{STORY_HD.height}.
+              Slot kosong tetap ditampilkan sebagai placeholder.
+              {filled > 0 ? ` · ${filled}/5 terisi` : ' · Belum ada foto di grup ini'}
             </Text>
 
             <View style={{ alignItems: 'center', marginBottom: 14, paddingVertical: 8 }}>
               <View style={{ borderRadius: radius, backgroundColor: colors.background, ...shadows.lg }}>
-                <StoryFrameCard
+                <ProgressCollageFrame
                   ref={previewRef}
-                  imageUri={imageUri}
                   meta={meta}
+                  slots={collageSlots}
                   width={previewWidth}
                 />
               </View>
@@ -254,20 +278,20 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
               <NeoButton
                 label={copied ? 'Caption disalin ✓' : 'Salin caption'}
                 variant="secondary"
-                onPress={() => void handleCopyCaption()}
+                onPress={() => void handleCopy()}
                 disabled={isBusy || !caption.trim()}
               />
               <NeoButton
                 label={busy === 'save' ? 'Menyimpan HD…' : 'Simpan HD'}
                 variant="neutral"
-                onPress={() => void handleSaveFramed()}
-                disabled={isBusy || !imageUri}
+                onPress={() => void handleSave()}
+                disabled={isBusy || !canExport}
               />
               <NeoButton
                 label={busy === 'share' ? 'Menyiapkan…' : 'Bagikan story'}
                 variant="primary"
-                onPress={() => void handleShareFramed()}
-                disabled={isBusy || !imageUri}
+                onPress={() => void handleShare()}
+                disabled={isBusy || !canExport}
               />
               <NeoButton label="Tutup" variant="ghost" onPress={onClose} disabled={isBusy} />
             </View>
@@ -276,15 +300,16 @@ export function StoryShareModal({ visible, foto, context, onClose }: StoryShareM
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ActivityIndicator color={colors.foreground} />
                 <Text style={{ fontWeight: '700', fontSize: 12 }}>
-                  {busy === 'save'
-                    ? `Merender nativ ${STORY_HD.width}×${STORY_HD.height}…`
-                    : `Merender nativ HD ${STORY_HD.width}×${STORY_HD.height}…`}
+                  Merender kolase HD {STORY_HD.width}×{STORY_HD.height}…
                 </Text>
               </View>
+            ) : !canExport ? (
+              <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 15 }}>
+                Isi minimal 1 slot foto dulu untuk share kolase.
+              </Text>
             ) : (
               <Text style={{ fontSize: 11, color: colors.mutedForeground, lineHeight: 15 }}>
-                Capture dari canvas 1080×1920 (bukan zoom preview). Instagram bisa kompres ulang
-                setelah di-share.
+                Sama konsep story: bagikan ke Instagram/WhatsApp atau simpan ke galeri.
               </Text>
             )}
           </ScrollView>

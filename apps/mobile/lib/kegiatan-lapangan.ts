@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import type { PekerjaanDetail } from '@pengawas/shared'
 import { formatDateTime } from '@pengawas/shared/format'
+import { getDesaName, getKecamatanName } from '@pengawas/shared/wilayah-fields'
 import type { StoryShareMeta } from './story-share-meta'
 
 const STORAGE_KEY = 'pengawas.kegiatan-lapangan.drafts.v1'
@@ -67,8 +68,8 @@ export function formatOutputWithVolume(
 }
 
 export function extractKegiatanContext(detail: PekerjaanDetail): KegiatanPekerjaanContext {
-  const desa = detail.desa?.nama_desa?.trim() || null
-  const kecamatan = detail.kecamatan?.nama_kecamatan?.trim() || null
+  const desa = getDesaName(detail.desa) || null
+  const kecamatan = getKecamatanName(detail.kecamatan) || null
   const outputLine = formatOutputWithVolume(detail.output ?? [])
   const outcomeParts = [
     detail.kegiatan?.nama_kegiatan?.trim(),
@@ -136,24 +137,35 @@ export function draftToStoryMeta(draft: KegiatanLapanganDraft): StoryShareMeta {
   const year = draft.tahunAnggaran != null ? String(draft.tahunAnggaran) : null
   const namaKegiatan = draft.namaKegiatan?.trim() || 'Kegiatan Lapangan'
   const namaPaket = draft.namaPaket?.trim() || 'Pekerjaan'
+  const keterangan = draft.keterangan?.trim() || null
+
+  const output = draft.outputLine?.trim() || null
+  const outcome = draft.outcomeLine?.trim() || null
 
   return {
-    title: namaKegiatan,
-    subtitle: namaPaket,
+    /**
+     * Nama kegiatan HANYA di badge/pill — jangan diulang sebagai title.
+     * Title = nama paket; subtitle = output/outcome ringkas (opsional).
+     */
+    title: namaPaket,
+    subtitle: output || outcome || null,
     locationLine: loc.length ? loc.join(' · ') : 'Lokasi belum diisi',
-    outputLine: draft.outputLine?.trim() || '-',
-    slotLine: draft.outcomeLine?.trim() || 'Kegiatan Lapangan',
-    penerimaLine: draft.keterangan?.trim() || null,
+    outputLine: output || '-',
+    slotLine: outcome || 'Kegiatan Lapangan',
+    /** Tidak dipakai di panel info AMS; keterangan pakai keteranganLine di bawah pill */
+    penerimaLine: null,
     pengawasLine: draft.pengawas?.trim() || null,
     koordinatLine: draft.koordinat?.trim() || 'Koordinat tidak tersedia',
     tanggalLine: formatDateTime(draft.updatedAt || draft.createdAt) || '-',
     brandLine: year
       ? `ARUMANIS · Pengawasan · TA ${year}`
       : 'ARUMANIS · Pengawasan Lapangan',
+    /** Pill saja untuk nama kegiatan (input user) */
     badge: namaKegiatan.toUpperCase(),
     theme: 'ams',
     slotLabel: 'OUTCOME',
-    penerimaLabel: draft.keterangan?.trim() ? 'KETERANGAN' : undefined,
+    /** Hanya terisi jika user menulis keterangan — kosong = tidak digambar di frame */
+    keteranganLine: keterangan,
   }
 }
 

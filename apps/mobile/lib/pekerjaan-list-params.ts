@@ -1,5 +1,8 @@
 /**
- * Pure builders for pekerjaan list API params — unit-testable without React.
+ * Pure builders for GET /pekerjaan — unit-testable without React.
+ *
+ * Backend contract (PekerjaanController::index):
+ *   search, tahun, page, per_page, sort_by, sort_direction
  */
 
 export type PekerjaanListQueryInput = {
@@ -11,36 +14,40 @@ export type PekerjaanListQueryInput = {
   sortDirection?: 'asc' | 'desc'
 }
 
-/** Params dikirim ke GET /pekerjaan — harus include `search` bila non-empty. */
-export function buildPekerjaanListParams(input: PekerjaanListQueryInput): Record<string, string | number> {
+/** Params dikirim ke GET /pekerjaan. `search` hanya di-set bila non-empty. */
+export function buildPekerjaanListParams(
+  input: PekerjaanListQueryInput,
+): Record<string, string | number> {
   const params: Record<string, string | number> = {
-    per_page: input.perPage ?? 5,
     page: Math.max(1, input.page ?? 1),
+    per_page: Math.max(1, Math.min(100, input.perPage ?? 5)),
     sort_by: input.sortBy ?? 'created_at',
     sort_direction: input.sortDirection ?? 'desc',
   }
 
   const search = input.search?.trim()
-  if (search) params.search = search
+  if (search) {
+    params.search = search
+  }
 
   const tahun = input.tahun?.trim()
-  if (tahun) params.tahun = tahun
+  if (tahun) {
+    params.tahun = tahun
+  }
 
   return params
 }
 
-/**
- * Saat keyword search/tahun berubah, page query HARUS 1 (bukan page list sebelumnya).
- * Bug lama: effect setPage(1) async → 1 request salah dengan page lama.
- */
-export function resolveListPageForFilter(args: {
-  page: number
-  filterKey: string
-  prevFilterKey: string
-}): { pageForQuery: number; filterChanged: boolean } {
-  const filterChanged = args.filterKey !== args.prevFilterKey
-  return {
-    filterChanged,
-    pageForQuery: filterChanged ? 1 : Math.max(1, args.page),
-  }
+/** Build query string for logging / tests (order: search first when present). */
+export function buildPekerjaanListQueryString(input: PekerjaanListQueryInput): string {
+  const params = buildPekerjaanListParams(input)
+  const sp = new URLSearchParams()
+  // Prefer search first so logs/screenshots clearly show it
+  if (params.search != null) sp.set('search', String(params.search))
+  if (params.tahun != null) sp.set('tahun', String(params.tahun))
+  sp.set('page', String(params.page))
+  sp.set('per_page', String(params.per_page))
+  sp.set('sort_by', String(params.sort_by))
+  sp.set('sort_direction', String(params.sort_direction))
+  return sp.toString()
 }

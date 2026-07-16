@@ -7,6 +7,7 @@ import { formatNumber, formatPercent } from '@/lib/format'
 import { AnchorButton, Badge, Button, EmptyState, MetricCard, SectionHeader, Spinner, Surface } from '@/components/ui'
 import { resolveFotoCount, resolveFotoStatus } from '@/lib/foto-status'
 import { getEstimasiFisik, getEstimasiFisikDeviasi, getEstimasiKeuangan } from '@/lib/progress-estimasi-metrics'
+import { formatPekerjaanLokasi } from '@pengawas/shared/wilayah-fields'
 
 export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -238,7 +239,7 @@ export function DashboardPage() {
                         <div className="table-title">
                           <Link to={`/pekerjaan/${item.id}`}>{item.nama_paket}</Link>
                           <div className="table-subtitle">
-                            {item.kecamatan?.nama_kecamatan || item.desa?.nama_desa || '-'} - {item.kode_rekening || '-'}
+                            {formatPekerjaanLokasi(item)} - {item.kode_rekening || '-'}
                           </div>
                         </div>
                       </td>
@@ -315,7 +316,7 @@ export function DashboardPage() {
               <div key={entry.item.id} className="summary-row summary-row--wrap">
                 <div className="summary-row-copy">
                   <strong>{entry.item.nama_paket}</strong>
-                  <span>{entry.item.kecamatan?.nama_kecamatan || entry.item.desa?.nama_desa || '-'}</span>
+                  <span>{formatPekerjaanLokasi(entry.item)}</span>
                 </div>
                   <div className="dashboard-issues">
                     {getEstimasiFisik(entry.item) <= 0 ? <Badge tone="warning">Fisik</Badge> : null}

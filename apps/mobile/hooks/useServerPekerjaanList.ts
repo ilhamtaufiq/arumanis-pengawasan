@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@pengawas/shared/query-keys'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useTahunAnggaranAktif } from '@/hooks/useTahunAnggaranAktif'
 import { readPaginationMeta } from '@/lib/pagination'
-import { resolveListPageForFilter } from '@/lib/pekerjaan-list-params'
 import {
   clearPekerjaanCatalogCache,
   fetchPekerjaanListWithSearch,
+  getLastPekerjaanSearchDebug,
 } from '@/lib/pekerjaan-search'
 
 export const PEKERJAAN_LIST_PER_PAGE = 5
@@ -18,154 +19,167 @@ type UseServerPekerjaanListOptions = {
   keepPagePlaceholder?: boolean
   searchDebounceMs?: number
   source?: string
-}
-
-type ListKeyFilters = {
-  search: string
-  tahun: string
-  page: number
-  per_page: number
-  source: string
+  /**
+   * Pakai tahun anggaran aktif dari AppSetting (default true).
+   * List/search hanya data tahun itu → lebih ringan.
+   */
+  useTahunAktif?: boolean
 }
 
 /**
- * List pekerjaan.
- * Search: filter di SELURUH katalog (cache memory), bukan halaman aktif.
+ * List/search pekerjaan lewat API server + filter tahun anggaran aktif.
+ *
+ * GET /pekerjaan?tahun={tahun_aktif}&search=&page=&per_page=
  */
 export function useServerPekerjaanList(options: UseServerPekerjaanListOptions) {
   const queryClient = useQueryClient()
   const perPage = options.perPage ?? PEKERJAAN_LIST_PER_PAGE
   const debounceMs = options.searchDebounceMs ?? SEARCH_DEBOUNCE_MS
   const source = options.source ?? 'server-list'
+  const useTahunAktif = options.useTahunAktif !== false
+
+  const { tahunAktif, isLoading: tahunLoading } = useTahunAnggaranAktif({
+    enabled: options.enabled && useTahunAktif,
+  })
 
   const [searchInput, setSearchInput] = useState('')
   const [tahunInput, setTahunInput] = useState('')
+  const [querySearch, setQuerySearch] = useState('')
+  const [queryTahun, setQueryTahun] = useState('')
   const [page, setPage] = useState(1)
-  /** Query yang benar-benar dijalankan (setelah debounce atau commit). */
-  const [appliedSearch, setAppliedSearch] = useState('')
-  const [appliedTahun, setAppliedTahun] = useState('')
+  const tahunSeeded = useRef(false)
+
+  // Seed filter tahun dari AppSetting sekali saat tersedia
+  useEffect(() => {
+    if (!useTahunAktif || !tahunAktif || tahunSeeded.current) return
+    tahunSeeded.current = true
+    setTahunInput(tahunAktif)
+    setQueryTahun(tahunAktif)
+    setPage(1)
+  }, [tahunAktif, useTahunAktif])
 
   const debouncedSearch = useDebouncedValue(searchInput.trim(), debounceMs)
   const debouncedTahun = useDebouncedValue(tahunInput.trim(), debounceMs)
 
-  // Auto-apply debounce → applied
-  const lastAutoRef = useRef(`${debouncedSearch}|${debouncedTahun}`)
-  const autoKey = `${debouncedSearch}|${debouncedTahun}`
-  if (autoKey !== lastAutoRef.current) {
-    lastAutoRef.current = autoKey
-    if (appliedSearch !== debouncedSearch) setAppliedSearch(debouncedSearch)
-    if (appliedTahun !== debouncedTahun) setAppliedTahun(debouncedTahun)
-  }
+  const prevDebounced = useRef({ s: debouncedSearch, t: debouncedTahun })
+  useEffect(() => {
+    const prev = prevDebounced.current
+    if (prev.s === debouncedSearch && prev.t === debouncedTahun) return
+    prevDebounced.current = { s: debouncedSearch, t: debouncedTahun }
+    setQuerySearch(debouncedSearch)
+    // Jangan timpa tahun aktif dengan debounce kosong sebelum seed
+    if (debouncedTahun || !useTahunAktif || tahunSeeded.current) {
+      setQueryTahun(debouncedTahun || (useTahunAktif ? tahunAktif || '' : ''))
+    }
+    setPage(1)
+  }, [debouncedSearch, debouncedTahun, tahunAktif, useTahunAktif])
 
-  const filterKey = `${appliedSearch}|${appliedTahun}`
-  const prevFilterKeyRef = useRef(filterKey)
-  const { pageForQuery, filterChanged } = resolveListPageForFilter({
-    page,
-    filterKey,
-    prevFilterKey: prevFilterKeyRef.current,
-  })
-  if (filterChanged) {
-    prevFilterKeyRef.current = filterKey
-    if (page !== 1) setPage(1)
-  }
+  // Tahun efektif untuk API: input user, fallback tahun aktif
+  const apiTahun =
+    queryTahun.trim() ||
+    (useTahunAktif ? tahunAktif?.trim() || '' : '')
 
+  const hasFilter = Boolean(querySearch || apiTahun)
   const searchPending =
-    searchInput.trim() !== appliedSearch || tahunInput.trim() !== appliedTahun
+    searchInput.trim() !== querySearch ||
+    (tahunInput.trim() !== queryTahun && tahunInput.trim() !== apiTahun)
 
-  const listFilters = useMemo<ListKeyFilters>(
+  const listReady =
+    options.enabled && (!useTahunAktif || Boolean(tahunAktif) || !tahunLoading)
+
+  const listKey = useMemo(
     () => ({
-      search: appliedSearch,
-      tahun: appliedTahun,
-      page: pageForQuery,
+      search: querySearch,
+      tahun: apiTahun,
+      page,
       per_page: perPage,
       source,
     }),
-    [appliedSearch, appliedTahun, pageForQuery, perPage, source],
+    [querySearch, apiTahun, page, perPage, source],
   )
 
   const query = useQuery({
-    queryKey: queryKeys.pekerjaan.list(listFilters),
+    queryKey: queryKeys.pekerjaan.list(listKey),
     queryFn: async ({ queryKey }) => {
-      const filters = (queryKey[2] || {}) as ListKeyFilters
+      const f = (queryKey[2] || {}) as {
+        search?: string
+        tahun?: string
+        page?: number
+        per_page?: number
+      }
       return fetchPekerjaanListWithSearch({
-        search: (filters.search || '').trim() || undefined,
-        tahun: (filters.tahun || '').trim() || undefined,
-        page: Math.max(1, Number(filters.page) || 1),
-        perPage: Math.max(1, Number(filters.per_page) || perPage),
+        search: String(f.search || '').trim() || undefined,
+        tahun: String(f.tahun || '').trim() || undefined,
+        page: Math.max(1, Number(f.page) || 1),
+        perPage: Math.max(1, Math.min(100, Number(f.per_page) || perPage)),
         sortBy: 'created_at',
         sortDirection: 'desc',
       })
     },
-    enabled: options.enabled,
+    enabled: listReady,
     retry: 1,
     networkMode: 'online',
     refetchOnMount: 'always',
-    staleTime: appliedSearch || appliedTahun ? 0 : 15_000,
+    staleTime: hasFilter ? 0 : 15_000,
     gcTime: 5 * 60_000,
-    placeholderData:
-      options.keepPagePlaceholder === false
-        ? undefined
-        : (previousData, previousQuery) => {
-            const prevKey = previousQuery?.queryKey?.[2] as ListKeyFilters | undefined
-            const sameFilter =
-              (prevKey?.search || '') === appliedSearch &&
-              (prevKey?.tahun || '') === appliedTahun
-            return sameFilter ? previousData : undefined
-          },
+    placeholderData: undefined,
   })
 
   const commitSearch = useCallback(() => {
     const s = searchInput.trim()
-    const t = tahunInput.trim()
-    setAppliedSearch(s)
-    setAppliedTahun(t)
+    const t =
+      tahunInput.trim() || (useTahunAktif ? tahunAktif?.trim() || '' : '')
+    setQuerySearch(s)
+    setQueryTahun(t)
+    setTahunInput(t)
     setPage(1)
-    // Invalidate semua list di source ini agar fetch ulang
-    void queryClient.invalidateQueries({
-      predicate: (q) => {
-        const key = q.queryKey
-        return key[0] === 'pekerjaan' && key[1] === 'list'
-      },
-    })
-  }, [queryClient, searchInput, tahunInput])
+    prevDebounced.current = { s, t }
+  }, [searchInput, tahunInput, tahunAktif, useTahunAktif])
+
+  const clearFilters = useCallback(() => {
+    setSearchInput('')
+    setQuerySearch('')
+    // Tetap pakai tahun aktif (jangan load semua 558 baris)
+    const t = useTahunAktif ? tahunAktif?.trim() || '' : ''
+    setTahunInput(t)
+    setQueryTahun(t)
+    setPage(1)
+    prevDebounced.current = { s: '', t }
+  }, [tahunAktif, useTahunAktif])
 
   const items = query.data?.data ?? []
-  const pagination = readPaginationMeta(
-    query.data?.meta as Record<string, unknown> | undefined,
-    {
-      page: pageForQuery,
-      perPage,
-      total: Number((query.data?.meta as Record<string, unknown> | undefined)?.total ?? 0),
-    },
-  )
+  const meta = query.data?.meta as Record<string, unknown> | undefined
+  const pagination = readPaginationMeta(meta, {
+    page,
+    perPage,
+    total: Number(meta?.total ?? 0),
+  })
 
   const perPageSafe = pagination.perPage > 0 ? pagination.perPage : perPage
-  const currentPage = Math.max(1, pagination.currentPage || pageForQuery)
+  const lastPage = Math.max(1, pagination.lastPage)
+  const currentPage = Math.min(Math.max(1, page), lastPage)
   const total = Math.max(0, pagination.total)
-  const lastPage = Math.max(
-    1,
-    pagination.lastPage || (total > 0 ? Math.ceil(total / perPageSafe) : 1),
-  )
   const from = total === 0 ? 0 : (currentPage - 1) * perPageSafe + 1
   const to = Math.min(currentPage * perPageSafe, total)
-  const showPager = total > perPageSafe || lastPage > 1
-  const isPageLoading = query.isFetching && !query.isPending
-  const usedClientScan = Boolean(
-    (query.data?.meta as Record<string, unknown> | undefined)?.client_catalog ||
-      (query.data?.meta as Record<string, unknown> | undefined)?.client_scan,
-  )
+
+  useEffect(() => {
+    if (page > lastPage) setPage(lastPage)
+  }, [page, lastPage])
+
+  const lastDebug = getLastPekerjaanSearchDebug()
 
   return {
     search: searchInput,
     setSearch: setSearchInput,
     tahun: tahunInput,
     setTahun: setTahunInput,
-    page: pageForQuery,
+    page: currentPage,
     setPage,
-    debouncedSearch: appliedSearch,
-    debouncedTahun: appliedTahun,
-    searchPending,
-    filterKey,
+    debouncedSearch: querySearch,
+    debouncedTahun: apiTahun,
+    tahunAktif: tahunAktif,
+    searchPending: searchPending || (useTahunAktif && tahunLoading),
+    filterKey: `${querySearch}|${apiTahun}`,
     query,
     items,
     perPage: perPageSafe,
@@ -174,25 +188,18 @@ export function useServerPekerjaanList(options: UseServerPekerjaanListOptions) {
     total,
     from,
     to,
-    showPager,
-    isPageLoading,
-    usedClientScan,
+    showPager: lastPage > 1,
+    isPageLoading: query.isFetching && !query.isPending,
+    usedClientScan: lastDebug?.mode === 'client-catalog' || Boolean(meta?.client_catalog),
+    lastDebug,
     commitSearch,
-    clearFilters: () => {
-      setSearchInput('')
-      setTahunInput('')
-      setAppliedSearch('')
-      setAppliedTahun('')
-      setPage(1)
-    },
+    clearFilters,
     refreshCatalog: () => {
       clearPekerjaanCatalogCache()
       void queryClient.invalidateQueries({
         predicate: (q) => q.queryKey[0] === 'pekerjaan' && q.queryKey[1] === 'list',
       })
     },
-    goToPage: (next: number) => {
-      setPage(Math.max(1, Math.min(lastPage, next)))
-    },
+    goToPage: (next: number) => setPage(Math.max(1, Math.min(lastPage, next))),
   }
 }

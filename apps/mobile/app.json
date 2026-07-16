@@ -75,6 +75,14 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Aplikasi membutuhkan akses galeri untuk menyimpan foto story HD.",
+          "savePhotosPermission": "Aplikasi membutuhkan izin menyimpan foto story ke galeri.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "Aplikasi membutuhkan lokasi untuk koordinat foto dokumentasi.",
