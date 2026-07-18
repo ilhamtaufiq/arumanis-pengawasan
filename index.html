@@ -5,76 +5,126 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Arumanis • Air Minum &amp; Sanitasi</title>
     <meta name="description" content="Arumanis dashboard pengawasan berbasis Bun untuk backend apiamis" />
+    <!-- Filled by Vite transformIndexHtml in production; present early for recovery script. -->
+    <meta name="app-version" content="" />
+    <meta name="app-build-id" content="" />
+    <meta name="app-built-at" content="" />
     <script>
+      /**
+       * Early recovery before entry JS loads.
+       * Handles: (1) build-id mismatch after deploy, (2) 404 on hashed /assets/* entry chunk
+       * when HTML was stale — without this, main.tsx error handlers never run.
+       */
       (function () {
         try {
-          var servedMeta = document.querySelector('meta[name="app-build-id"]');
-          var servedId = servedMeta && servedMeta.content;
-          if (!servedId) return;
-
-          var storageKey = 'pengawas-app-build-id';
-          var lastKnown = localStorage.getItem(storageKey);
-
-          var SSO_KEYS = ['token', 'access_token', 'auth_token'];
+          var storageKey = 'pengawas-app-build-id'
+          var reloadGuardKey = 'pengawas-entry-reload-at'
+          var SSO_KEYS = ['token', 'access_token', 'auth_token']
+          var reloadInProgress = false
 
           function isBootstrapPath(pathname) {
-            var normalized = pathname.replace(/\/$/, '') || '/';
-            return /\/(login|sign-in)$/.test(normalized);
+            var normalized = pathname.replace(/\/$/, '') || '/'
+            return /\/(login|sign-in)$/.test(normalized)
           }
 
           function sanitizeUrl(url) {
-            var keptToken = null;
+            var keptToken = null
             if (isBootstrapPath(url.pathname)) {
               for (var i = 0; i < SSO_KEYS.length; i++) {
-                var value = url.searchParams.get(SSO_KEYS[i]);
+                var value = url.searchParams.get(SSO_KEYS[i])
                 if (value) {
-                  keptToken = value;
-                  break;
+                  keptToken = value
+                  break
                 }
               }
             }
 
             for (var j = 0; j < SSO_KEYS.length; j++) {
-              url.searchParams.delete(SSO_KEYS[j]);
+              url.searchParams.delete(SSO_KEYS[j])
             }
 
             if (keptToken) {
-              url.searchParams.set('token', keptToken);
+              url.searchParams.set('token', keptToken)
             }
 
-            return url;
-          }
-
-          function hardReload() {
-            var url = sanitizeUrl(new URL(window.location.href));
-            url.searchParams.set('_cb', Date.now().toString(36));
-            window.location.replace(url.toString());
+            // Keep handoff one-time code (?code=) for SSO from Arumanis.
+            return url
           }
 
           function clearClientCaches() {
             if ('caches' in window) {
               caches.keys().then(function (names) {
-                return Promise.all(names.map(function (name) { return caches.delete(name); }));
-              }).catch(function () {});
+                return Promise.all(names.map(function (name) { return caches.delete(name) }))
+              }).catch(function () {})
             }
             if ('serviceWorker' in navigator) {
               navigator.serviceWorker.getRegistrations().then(function (regs) {
-                return Promise.all(regs.map(function (reg) { return reg.unregister(); }));
-              }).catch(function () {});
+                return Promise.all(regs.map(function (reg) { return reg.unregister() }))
+              }).catch(function () {})
             }
           }
 
-          if (lastKnown && lastKnown !== servedId) {
-            clearClientCaches();
-            hardReload();
-            return;
+          function hardReload() {
+            if (reloadInProgress) return
+
+            var now = Date.now()
+            var last = Number(sessionStorage.getItem(reloadGuardKey) || '0')
+            // Prevent infinite loop if origin itself is broken (max 1 auto-reload / 20s).
+            if (last && now - last < 20000) return
+
+            reloadInProgress = true
+            sessionStorage.setItem(reloadGuardKey, String(now))
+
+            try {
+              localStorage.removeItem(storageKey)
+            } catch (e) { /* ignore */ }
+
+            clearClientCaches()
+
+            var url = sanitizeUrl(new URL(window.location.href))
+            url.searchParams.set('_cb', now.toString(36))
+            window.location.replace(url.toString())
           }
+
+          function checkBuildIdMismatch() {
+            var servedMeta = document.querySelector('meta[name="app-build-id"]')
+            var servedId = servedMeta && servedMeta.content
+            if (!servedId) return
+
+            var lastKnown = localStorage.getItem(storageKey)
+            if (lastKnown && lastKnown !== servedId) {
+              hardReload()
+            }
+          }
+
+          checkBuildIdMismatch()
+
+          // Entry / stylesheet 404: stale HTML after deploy (Ctrl+Shift+R case).
+          window.addEventListener('error', function (event) {
+            var target = event && event.target
+            if (!target || !target.tagName) return
+
+            var tag = String(target.tagName).toUpperCase()
+            var src = ''
+            if (tag === 'SCRIPT') {
+              src = target.src || ''
+            } else if (tag === 'LINK') {
+              var rel = String(target.rel || '').toLowerCase()
+              if (rel !== 'stylesheet' && rel !== 'modulepreload' && rel !== 'preload') return
+              src = target.href || ''
+            } else {
+              return
+            }
+
+            if (!src || src.indexOf('/assets/') === -1) return
+            hardReload()
+          }, true)
         } catch (e) { /* ignore */ }
-      })();
+      })()
     </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
- </html>
+</html>

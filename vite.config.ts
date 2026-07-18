@@ -42,12 +42,21 @@ export default defineConfig({
     {
       name: 'generate-version-json',
       transformIndexHtml(html) {
-        const metaTags = `
-    <meta name="app-version" content="${appVersion}" />
-    <meta name="app-build-id" content="${buildId}" />
-    <meta name="app-built-at" content="${builtAt}" />`
-
-        return html.replace('</head>', `${metaTags}\n</head>`)
+        // Fill early <meta> placeholders in index.html (before recovery script runs).
+        // Avoid appending a second set of tags — querySelector would hit empty content first.
+        return html
+          .replace(
+            /<meta\s+name="app-version"\s+content="[^"]*"\s*\/?>/i,
+            `<meta name="app-version" content="${appVersion}" />`,
+          )
+          .replace(
+            /<meta\s+name="app-build-id"\s+content="[^"]*"\s*\/?>/i,
+            `<meta name="app-build-id" content="${buildId}" />`,
+          )
+          .replace(
+            /<meta\s+name="app-built-at"\s+content="[^"]*"\s*\/?>/i,
+            `<meta name="app-built-at" content="${builtAt}" />`,
+          )
       },
       closeBundle() {
         writeFileSync(
