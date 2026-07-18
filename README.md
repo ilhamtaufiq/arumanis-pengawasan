@@ -8,7 +8,7 @@
 
 Aplikasi ringan untuk pengawas: pantau paket yang ditugaskan, unggah foto + GPS, catat progress, kelola tiket. Berpasangan dengan [**APIAMIS**](https://github.com/ilhamtaufiq/apiamis) dan portal [**Arumanis**](https://github.com/ilhamtaufiq/arumanis).
 
-[![version](https://img.shields.io/badge/version-0.7.0-674bb5?style=for-the-badge&labelColor=111111)](package.json)
+[![version](https://img.shields.io/badge/version-0.8.0-674bb5?style=for-the-badge&labelColor=111111)](package.json)
 [![bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?style=for-the-badge&labelColor=111111&logo=bun&logoColor=f9f1e1)](https://bun.sh/)
 [![base](https://img.shields.io/badge/base_path-%2Fpengawasan-ffde59?style=for-the-badge&labelColor=111111)](#deployment)
 [![license](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge&labelColor=111111)](LICENSE)
