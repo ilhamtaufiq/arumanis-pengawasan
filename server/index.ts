@@ -267,6 +267,8 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
 
     const headers = new Headers()
     headers.set('Accept', 'application/json')
+    // Dual-role operator+pengawas: APIAMIS byUserRole membatasi ke assign di konteks lapangan.
+    headers.set('X-Arumanis-App', 'pengawas')
     const incomingContentType = c.req.header('content-type')
     if (incomingContentType) {
       headers.set('Content-Type', incomingContentType)

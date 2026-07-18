@@ -50,6 +50,10 @@ async function buildHeaders(
 ) {
   const next = new Headers(headers)
   next.set('Accept', 'application/json')
+  // Konteks app lapangan — dual operator+pengawas di APIAMIS dibatasi user_pekerjaan.
+  if (!next.has('X-Arumanis-App')) {
+    next.set('X-Arumanis-App', 'pengawas')
+  }
 
   const authHeader = await Promise.resolve(getAuthHeader?.())
   if (authHeader) {

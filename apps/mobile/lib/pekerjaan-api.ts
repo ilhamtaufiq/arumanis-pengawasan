@@ -51,6 +51,8 @@ export async function fetchPekerjaanFromApi(
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
+      // Dual operator+pengawas: filter assign (sama seperti panel web)
+      'X-Arumanis-App': 'mobile',
     },
   })
 
