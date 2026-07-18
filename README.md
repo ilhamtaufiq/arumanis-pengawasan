@@ -1,344 +1,234 @@
+<div align="center">
+
+<img src="public/arumanis.png" alt="Arumanis Pengawasan" width="120" />
+
 # Arumanis Pengawasan
 
-**Panel pengawas lapangan** untuk ekosistem **Arumanis** — aplikasi web ringan yang membantu pengawas memantau pekerjaan, mendokumentasikan progress, dan mengelola tiket dukungan di lapangan.
+### Panel pengawas lapangan · subpath `/pengawasan`
 
-Aplikasi ini berjalan sebagai layanan terpisah di subpath `/pengawasan`, berpasangan dengan backend [**APIAMIS**](https://github.com/ilhamtaufiq/apiamis) (Laravel) dan terintegrasi dengan portal utama [**Arumanis**](https://github.com/ilhamtaufiq/arumanis).
+Aplikasi ringan untuk pengawas: pantau paket yang ditugaskan, unggah foto + GPS, catat progress, kelola tiket. Berpasangan dengan [**APIAMIS**](https://github.com/ilhamtaufiq/apiamis) dan portal [**Arumanis**](https://github.com/ilhamtaufiq/arumanis).
 
-| | |
-|---|---|
-| **Versi** | 1.0.0 |
-| **Branch aktif** | `main` |
-| **Runtime** | [Bun](https://bun.sh/) |
-| **Base path** | `/pengawasan` |
-| **Backend** | [apiamis](https://github.com/ilhamtaufiq/apiamis) |
+[![version](https://img.shields.io/badge/version-0.7.0-674bb5?style=for-the-badge&labelColor=111111)](package.json)
+[![bun](https://img.shields.io/badge/runtime-Bun-f9f1e1?style=for-the-badge&labelColor=111111&logo=bun&logoColor=f9f1e1)](https://bun.sh/)
+[![base](https://img.shields.io/badge/base_path-%2Fpengawasan-ffde59?style=for-the-badge&labelColor=111111)](#deployment)
+[![license](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge&labelColor=111111)](LICENSE)
 
----
+<p>
+  <a href="https://arumanis.cianjur.space/pengawasan"><strong>Production</strong></a>
+  ·
+  <a href="USER_GUIDE.md"><strong>User guide (web)</strong></a>
+  ·
+  <a href="apps/mobile/README.md"><strong>Mobile app</strong></a>
+</p>
 
-## Daftar Isi
+| Branch | Base path | Backend | Repo |
+|:------:|:---------:|:-------:|:----:|
+| `main` | `/pengawasan` | [apiamis](https://github.com/ilhamtaufiq/apiamis) | [arumanis-pengawasan](https://github.com/ilhamtaufiq/arumanis-pengawasan) |
 
-- [Gambaran Umum](#gambaran-umum)
-- [Fitur Utama](#fitur-utama)
-- [Arsitektur](#arsitektur)
-- [Tech Stack](#tech-stack)
-- [Persiapan Lingkungan](#persiapan-lingkungan)
-- [Instalasi & Pengembangan](#instalasi--pengembangan)
-- [Konfigurasi](#konfigurasi)
-- [Struktur Proyek](#struktur-proyek)
-- [Skrip Tersedia](#skrip-tersedia)
-- [Aplikasi Mobile (Expo)](#aplikasi-mobile-expo)
-- [Deployment](#deployment)
-- [Dokumentasi Pengguna](#dokumentasi-pengguna)
-- [Repositori Terkait](#repositori-terkait)
+</div>
 
 ---
 
-## Gambaran Umum
+## Peran di ekosistem
 
-Arumanis Pengawasan dirancang sebagai **dashboard operasional** untuk pengawas lapangan — bukan portal administrasi penuh. Pengguna hanya melihat pekerjaan yang menjadi tanggung jawab akun mereka, sesuai aturan assignment dan role di backend.
-
-**Peran aplikasi:**
-
-| Tanggung jawab | Di aplikasi ini | Di APIAMIS |
-|---|---|---|
-| UI dashboard pengawas | Ya | Tidak |
-| Auth proxy & sesi cookie | Ya (BFF) | Token & validasi |
-| Business logic & RBAC | Tidak | Ya |
-| Penyimpanan data | Tidak | Ya |
-
----
-
-## Fitur Utama
-
-### Dashboard & Pekerjaan
-- Ringkasan KPI pengawas (lokasi, pagu, statistik pekerjaan)
-- Daftar pekerjaan yang diawasi dengan filter dan pencarian
-- Detail pekerjaan per tab: informasi umum, progress, foto, output, penerima
-
-### Dokumentasi Lapangan
-- Upload foto dengan ekstraksi koordinat GPS dari EXIF
-- Validasi lokasi foto terhadap area proyek (geo-fencing via backend)
-- Input dan pembaruan progress fisik pekerjaan
-
-### Tiket & Profil
-- Manajemen tiket dukungan teknis
-- Halaman profil pengguna
-- Panduan penggunaan aplikasi bawaan (`/panduan`)
-
-### Autentikasi & Sesi
-- Login manual (email/password via APIAMIS)
-- Dukungan SSO/token dari portal Arumanis
-- Sesi disimpan sebagai httpOnly cookie — token tidak disimpan di `localStorage`
-- Mode impersonasi admin (banner peringatan saat aktif)
-
----
-
-## Arsitektur
+Ini **bukan** portal admin penuh. Hanya pekerjaan yang ditugaskan ke akun pengawas (aturan assignment di APIAMIS).
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│              Arumanis Pengawasan (Bun)                  │
-│  ┌─────────────────┐       ┌─────────────────────────┐  │
-│  │  React + Vite   │       │   Hono BFF (server/)    │  │
-│  │  (UI dashboard) │ ────▶ │  auth proxy · API proxy │  │
-│  └─────────────────┘       │  cookie · cache · CORS  │  │
-│                            └────────────┬────────────┘  │
-└─────────────────────────────────────────┼───────────────┘
-                                          │ Bearer token
-                                          ▼
-                               ┌─────────────────────┐
-                               │      APIAMIS        │
-                               │   Laravel REST API  │
-                               └─────────────────────┘
+  Portal Arumanis ──SSO / deep-link──►  /pengawasan  (repo ini)
+                                              │
+                     httpOnly cookie + BFF    │
+                                              ▼
+                                         APIAMIS (Laravel)
 ```
 
-**Alur autentikasi:**
-
-```text
-Browser → POST /bff/auth/login → BFF → POST /api/auth/login (APIAMIS)
-       ← httpOnly cookie      ← Bearer token disimpan di cookie server-side
-Browser → GET /bff/...       → BFF → GET /api/... (dengan Bearer token)
-```
-
-Frontend tidak pernah menyimpan token secara langsung. Semua request ke APIAMIS dilalui Backend-for-Frontend (BFF) di `server/index.ts`.
+| Tanggung jawab | Web panel ini | APIAMIS |
+|----------------|:-------------:|:-------:|
+| UI dashboard pengawas | ya | — |
+| Auth proxy & cookie | BFF | token & validasi |
+| Business rules / RBAC | — | ya |
+| Persistensi data | — | ya |
 
 ---
 
-## Tech Stack
+## Fitur
 
-| Kategori | Teknologi |
-|---|---|
-| Runtime & server | Bun, Hono |
-| UI | React 18, TypeScript |
-| Build | Vite 5 |
-| Routing | React Router 6 |
-| Server state | TanStack Query |
-| Form | React Hook Form, Zod |
-| Peta | Leaflet |
-| OCR | Tesseract.js |
-| Testing | Bun test |
+| Area | Isi |
+|------|-----|
+| **Dashboard** | KPI lokasi, pagu, ringkasan paket yang diawasi |
+| **Pekerjaan** | Daftar + detail (info, progress, foto, output, penerima) |
+| **Foto lapangan** | EXIF/GPS, geo-fence via backend, slot progress |
+| **Tiket** | Dukungan teknis per pekerjaan |
+| **Auth** | Login APIAMIS, SSO dari Arumanis, impersonasi (banner) |
+| **Mobile** | Expo di `apps/mobile` (Bearer + SecureStore, offline, OTA) |
+
+Stack: Bun · Hono BFF · React 18 · Vite 5 · React Router 6 · TanStack Query · Leaflet · workspaces (`packages/*`, `apps/*`).
 
 ---
 
-## Persiapan Lingkungan
+## Mulai lokal
 
-| Kebutuhan | Versi |
-|---|---|
-| [Bun](https://bun.sh/) | 1.2+ |
-| Backend APIAMIS | Berjalan dan dapat diakses |
-| Git | 2.x |
-
-**Layout repositori lokal (disarankan):**
+**Butuh:** Bun 1.2+ · APIAMIS hidup · Git
 
 ```text
 C:\laragon\www\
-  pengawas\   # panel pengawasan — repo ini
-  apiamis\    # backend API
-  bun\        # frontend Arumanis (admin)
+  pengawas\   ← repo ini
+  apiamis\
+  bun\        ← portal admin Arumanis
 ```
 
----
-
-## Instalasi & Pengembangan
-
 ```bash
-# Clone repository
 git clone https://github.com/ilhamtaufiq/arumanis-pengawasan.git
 cd arumanis-pengawasan
-
-# Install dependensi
 bun install
-
-# Salin konfigurasi environment
 cp .env.example .env
+# set APIAMIS_BASE_URL
 
-# Jalankan development server (client + BFF)
 bun run dev
 ```
 
-Aplikasi tersedia di **http://localhost:3000** (development).
+Dev default: **http://localhost:3000**
 
-Pastikan backend APIAMIS sudah berjalan di `http://apiamis.test/api` atau sesuaikan `APIAMIS_BASE_URL` di `.env`.
+```bash
+bun run dev:client   # Vite :3000
+bun run dev:server   # BFF watch
+```
 
 ---
 
 ## Konfigurasi
 
-Buat file `.env` di root proyek:
-
 ```env
-# Environment
 BUN_ENV=development
 PORT=3000
 APP_URL=http://localhost:3000
 
-# Backend API (wajib)
 APIAMIS_BASE_URL=http://apiamis.test/api
 API_TIMEOUT_MS=15000
 
-# Sesi cookie
 SESSION_COOKIE_NAME=pengawas_session
 SESSION_COOKIE_SECURE=false
 ```
 
-### Variabel production
+### Production
 
-| Variabel | Nilai production | Deskripsi |
-|---|---|---|
-| `APIAMIS_BASE_URL` | `https://apiamis.cianjur.space/api` | URL REST API backend |
-| `APP_PUBLIC_BASE_PATH` | `/pengawasan` | Subpath deployment |
-| `SESSION_COOKIE_PATH` | `/pengawasan` | Path cookie sesi |
-| `SESSION_COOKIE_SECURE` | `true` | Wajib HTTPS di production |
-| `BUN_ENV` | `production` | Mode runtime |
+| Variabel | Contoh | Catatan |
+|----------|--------|---------|
+| `APIAMIS_BASE_URL` | `https://apiamis.cianjur.space/api` | REST backend |
+| `APP_PUBLIC_BASE_PATH` | `/pengawasan` | Subpath di reverse proxy |
+| `SESSION_COOKIE_PATH` | `/pengawasan` | Samakan dengan base path |
+| `SESSION_COOKIE_SECURE` | `true` | Wajib HTTPS |
+| `VITE_REVERB_*` | host/port/scheme | Realtime (opsional) |
 
-> **Catatan:** Jangan hardcode URL backend di source code. Selalu gunakan variabel environment.
+Jangan hardcode URL API di source; pakai env.
 
 ---
 
-## Struktur Proyek
+## Struktur
 
 ```text
-server/
-└── index.ts              # Hono BFF — auth proxy, API proxy, static serve
-
+server/index.ts          Hono BFF — auth, proxy, static
 src/
-├── pages/                # Halaman route (Dashboard, Pekerjaan, Tiket, ...)
-├── components/           # Komponen UI reusable
-├── lib/
-│   ├── api.ts            # Client API ke BFF
-│   ├── format.ts         # Formatter rupiah, tanggal, persen
-│   └── types.ts          # Type definitions
-├── hooks/                # Custom React hooks
-└── styles/               # Global CSS
-
-scripts/
-└── dev.ts                # Orchestrator dev server
-
-tests/                    # Unit test (Bun test)
+  pages/                 Dashboard, Pekerjaan, Tiket, …
+  components/
+  lib/api.ts             Client ke BFF (bukan langsung APIAMIS)
+  hooks/
+apps/mobile/             Expo native (Android/iOS)
+packages/                shared + api-client (workspaces)
+scripts/dev.ts
+tests/
 ```
 
-**Konvensi pengembangan:**
-
-- Akses API → `src/lib/api.ts` (ke endpoint BFF, bukan langsung ke APIAMIS)
-- Token & sesi → dikelola BFF via httpOnly cookie
-- Validasi response penting → Zod di boundary API
-- State server → TanStack Query dengan query key yang stabil
+- API browser → `src/lib/api.ts` → `/bff/*` → APIAMIS  
+- Token tidak di `localStorage` (web); mobile: SecureStore  
 
 ---
 
-## Skrip Tersedia
+## Skrip
 
 | Perintah | Fungsi |
-|---|---|
-| `bun run dev` | Development server (client Vite + BFF Hono) |
-| `bun run dev:client` | Hanya Vite dev server |
-| `bun run dev:server` | Hanya BFF server (watch mode) |
-| `bun run build` | Build production ke `dist/` |
-| `bun run start` | Jalankan server production |
-| `bun run preview` | Preview build production |
-| `bun run typecheck` | Pengecekan tipe TypeScript |
-| `bun test` | Unit test |
-| `bun run mobile` | Expo dev server (`apps/mobile`) |
-| `bun run mobile:web` | Mobile app di browser |
-| `bun run mobile:typecheck` | Typecheck app mobile |
-| `bun run mobile:build-android` | Build APK di VPS (Gradle lokal) |
+|----------|--------|
+| `bun run dev` | Vite + BFF |
+| `bun run build` / `start` | Build & serve production |
+| `bun run typecheck` | TypeScript |
+| `bun test` | Unit test Bun |
+| `bun run mobile` | Expo dev |
+| `bun run mobile:web` | Mobile di browser |
+| `bun run mobile:build-android` | APK (Gradle / VPS) |
 
 ---
 
-## Aplikasi Mobile (Expo)
+## Mobile (Expo)
 
-Aplikasi native **`apps/mobile`** (**Arumanis Pengawasan**) untuk pengawas lapangan di Android/iOS. Auth langsung ke APIAMIS (Bearer + SecureStore), tanpa BFF web.
-
-**Panduan lengkap:** [apps/mobile/README.md](apps/mobile/README.md) — setup developer, panduan penggunaan lapangan, offline, GPS, foto, dan OTA.
-
-### Ringkasan fitur mobile
-
-| Fitur | Keterangan |
-|---|---|
-| Dashboard & daftar pekerjaan | Hanya paket yang diawasi akun login |
-| Detail pekerjaan 6 tab | Ringkasan, Output, Penerima, Foto, Progress, Tiket |
-| Upload foto + koordinat | EXIF / GPS / seluler; antrean saat offline |
-| Mode offline | Cache 24 jam untuk detail & tab yang pernah dibuka online |
-| GPS wajib | Pelacakan background + presence ke server |
-| OTA update | Pembaruan JS tanpa instal ulang APK |
-
-### Setup cepat (developer)
+Auth langsung ke APIAMIS (tanpa BFF web). Offline cache ~24 jam, GPS presence, foto antri, OTA JS.
 
 ```bash
 bun install
 cp apps/mobile/.env.example apps/mobile/.env
-# Edit EXPO_PUBLIC_APIAMIS_BASE_URL (IP LAN untuk device fisik)
+# EXPO_PUBLIC_APIAMIS_BASE_URL = IP LAN untuk device fisik
 bun run mobile
 ```
 
-### Panduan penggunaan (pengawas lapangan)
-
-1. **Login** — email/password atau Google; izinkan GPS & lokasi *Selalu*.
-2. **Dashboard / Pekerjaan** — tap kartu untuk buka detail.
-3. **Tab Foto** — pilih slot %, kamera/galeri, unggah (koordinat otomatis).
-4. **Tab Progress** — catat rencana/realisasi per tanggal.
-5. **Offline** — buka pekerjaan & tab yang dibutuhkan saat masih online; data tersimpan 24 jam di HP.
-6. **Profil** (ikon header) — status GPS, logout.
-
-Detail langkah demi langkah, troubleshooting, dan build APK: **[apps/mobile/README.md](apps/mobile/README.md)**.
+Panduan lapangan lengkap: **[apps/mobile/README.md](apps/mobile/README.md)**.
 
 ---
 
-## Deployment
-
-### Docker
+## Deploy
 
 ```bash
 docker build -t arumanis-pengawasan .
 docker run -d -p 3000:3000 arumanis-pengawasan
 ```
 
-Image production dikonfigurasi untuk:
-
-- Base path `/pengawasan`
-- Cookie secure (`SESSION_COOKIE_SECURE=true`)
-- API backend `https://apiamis.cianjur.space/api`
-
-### Reverse proxy
-
-Aplikasi dirancang untuk di-mount di subpath `/pengawasan` di belakang reverse proxy (Nginx, Caddy, Coolify). Endpoint health check:
+Mount di reverse proxy (Nginx / Caddy / Coolify) path **`/pengawasan`**.
 
 ```text
 GET /pengawasan/health
 ```
 
-Response contoh:
-
 ```json
 {
   "ok": true,
   "env": "production",
-  "apiBase": "https://apiamis.cianjur.space/api",
-  "now": "2026-06-24T00:00:00.000Z"
+  "apiBase": "https://apiamis.cianjur.space/api"
 }
 ```
 
-### Integrasi dengan Arumanis
-
-Portal utama Arumanis mengarahkan pengawas ke aplikasi ini melalui `VITE_PENGAWAS_APP_BASE_URL=/pengawasan`. Login SSO dari Arumanis didukung via parameter token di URL callback.
+Portal Arumanis mengarahkan ke panel lewat `VITE_PENGAWAS_APP_BASE_URL=/pengawasan`. SSO token lewat callback URL didukung.
 
 ---
 
-## Dokumentasi Pengguna
+## Docs pengguna
 
 | Dokumen | Isi |
-|---|---|
-| [apps/mobile/README.md](apps/mobile/README.md) | **Panduan aplikasi mobile** — login, tab pekerjaan, foto, offline, GPS, OTA |
-| [USER_GUIDE.md](USER_GUIDE.md) | Panduan panel web `/pengawasan` — fitur, alur kerja, FAQ |
-| [TUTORIAL-PANDUAN.md](TUTORIAL-PANDUAN.md) | Tutorial visual langkah demi langkah (web) |
+|---------|-----|
+| [USER_GUIDE.md](USER_GUIDE.md) | Panel web |
+| [TUTORIAL-PANDUAN.md](TUTORIAL-PANDUAN.md) | Tutorial visual web |
+| [apps/mobile/README.md](apps/mobile/README.md) | App lapangan |
 
 ---
 
-## Repositori Terkait
+## Platform (tiga repo)
 
 | Repo | Peran |
-|---|---|
-| [arumanis-pengawasan](https://github.com/ilhamtaufiq/arumanis-pengawasan) | Panel pengawas lapangan (repo ini) |
-| [apiamis](https://github.com/ilhamtaufiq/apiamis) | Backend Laravel REST API |
-| [arumanis](https://github.com/ilhamtaufiq/arumanis) | Frontend administrasi & operasional |
+|------|--------|
+| [arumanis-pengawasan](https://github.com/ilhamtaufiq/arumanis-pengawasan) | Panel ini + mobile |
+| [apiamis](https://github.com/ilhamtaufiq/apiamis) | Laravel REST |
+| [arumanis](https://github.com/ilhamtaufiq/arumanis) | Portal admin / operasional |
 
-Perubahan yang menyentuh kontrak API atau aturan akses pengawas harus dilakukan di APIAMIS terlebih dahulu, kemudian disesuaikan di aplikasi ini.
+Ubah kontrak assignment / endpoint pengawas di **APIAMIS dulu**, baru sesuaikan panel ini.
+
+---
+
+## Lisensi
+
+MIT (lihat [LICENSE](LICENSE) bila ada di repo).
+
+<div align="center">
+
+<br />
+
+<img src="public/arumanis.png" alt="" width="48" />
+
+<sub>Pengawasan lapangan · Air Minum &amp; Sanitasi Cianjur</sub>
+
+</div>
