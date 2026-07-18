@@ -117,6 +117,10 @@ export type Pekerjaan = {
   kode_rekening?: string | null
   nama_paket: string
   pagu?: number
+  /** active | canceled — null/legacy dihitung active di API */
+  status?: 'active' | 'canceled' | string | null
+  /** Catatan paket (DB). Dashboard web memakai kolom Catatan untuk isu kelengkapan, bukan field ini. */
+  catatan?: string | null
   progress_total?: number
   deviasi?: number
   progress_estimasi_fisik?: number | null

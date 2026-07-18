@@ -15,12 +15,32 @@ export function DashboardPage() {
   const [search, setSearch] = useState(searchParams.get('search') || '')
 
   const pekerjaanQuery = useQuery({
-    queryKey: ['pekerjaan', 'dashboard', 'summary'],
-    queryFn: () =>
-      getPekerjaanList({
-        per_page: -1,
-        summary: 1,
-      }),
+    queryKey: ['pekerjaan', 'dashboard', 'summary', 'active'],
+    queryFn: async () => {
+      // status=active: exclude paket dibatalkan (selaras portal ProgressRekap / data-quality).
+      // summary=1: isi progress_estimasi_* + foto metrics.
+      // Paginate (bukan per_page=-1) agar summary relations ter-load penuh (output+foto).
+      const perPage = 100
+      let page = 1
+      let lastPage = 1
+      const all: Awaited<ReturnType<typeof getPekerjaanList>>['data'] = []
+
+      do {
+        const batch = await getPekerjaanList({
+          page,
+          per_page: perPage,
+          summary: 1,
+          status: 'active',
+          sort_by: 'updated_at',
+          sort_direction: 'desc',
+        })
+        all.push(...(batch.data ?? []))
+        lastPage = Number(batch.meta?.last_page ?? 1)
+        page += 1
+      } while (page <= lastPage && page <= 20)
+
+      return { data: all }
+    },
     retry: false,
   })
 
@@ -28,6 +48,8 @@ export function DashboardPage() {
   const pekerjaanError = pekerjaanQuery.error instanceof ApiError ? pekerjaanQuery.error : null
   const filteredPekerjaan = useMemo(() => {
     return pekerjaanData.filter((item) => {
+      // Guard FE: status canceled tidak ikut KPI/tabel (meski API sudah status=active).
+      if (item.status === 'canceled') return false
       const matchesSearch = !search || `${item.nama_paket} ${item.kode_rekening || ''}`.toLowerCase().includes(search.toLowerCase())
       const matchesYear = !tahun || `${item.kegiatan?.tahun_anggaran || ''}` === tahun
       return matchesSearch && matchesYear
@@ -80,7 +102,7 @@ export function DashboardPage() {
     <div className="stack">
       <SectionHeader
         title="Ringkasan pekerjaan diawasi"
-        description="Ikhtisar paket yang diawasi akun ini, dengan progress estimasi fisik & keuangan, deviasi, dan foto."
+        description="Ikhtisar paket aktif (bukan dibatalkan) yang diawasi akun ini: progress estimasi fisik & keuangan, deviasi, foto, dan catatan kelengkapan."
         action={
           <div className="toolbar">
             <form
@@ -164,7 +186,7 @@ export function DashboardPage() {
           </div>
         ) : (
           <>
-            <MetricCard label="Jumlah paket pekerjaan" value={formatNumber(totalPekerjaan)} hint="Paket yang masuk filter aktif" tone="info" />
+            <MetricCard label="Jumlah paket pekerjaan" value={formatNumber(totalPekerjaan)} hint="Paket status aktif yang diawasi" tone="info" />
             <MetricCard
               label="Belum isi progress"
               value={formatNumber(belumProgressCount)}
@@ -190,7 +212,7 @@ export function DashboardPage() {
       <Surface className="panel">
         <SectionHeader
           title="Pekerjaan yang diawas"
-          description="Progress fisik & keuangan dari estimasi (bukan laporan mingguan RAB)."
+          description="Hanya paket aktif. Fisik–Deviasi dari progress estimasi; Foto dari kelengkapan dokumentasi; Catatan = isu kelengkapan (bukan field catatan paket)."
         />
         {pekerjaanQuery.isPending ? (
           <div className="empty-state">
