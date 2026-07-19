@@ -3,6 +3,9 @@ import { getUmamiConfig, isUmamiEnabled, loadUmamiScript, trackUmamiEvent } from
 export type PengawasVisitorEventName =
   | 'pekerjaan_view'
   | 'laporan_submit'
+  | 'laporan_import_nego'
+  | 'laporan_autofill_rencana'
+  | 'laporan_export'
   | 'foto_upload'
 
 export type PengawasVisitorEventPayload = Record<string, string | number | boolean>

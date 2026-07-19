@@ -183,6 +183,9 @@ export type ProgressReportView = {
     nama_sub_kegiatan?: string | null
     sumber_dana?: string | null
     tahun_anggaran?: number | string | null
+    /** PPTK sub kegiatan → pejabat Mengetahui (export) */
+    nama_pptk?: string | null
+    nip_pptk?: string | null
   } | null
   kontrak?: {
     tgl_spmk?: string | null
@@ -195,6 +198,12 @@ export type ProgressReportView = {
   penyedia?: {
     nama?: string | null
     direktur?: string | null
+  } | null
+  /** Pengawas paket → pejabat Diperiksa (export) */
+  pengawas?: {
+    nama?: string | null
+    nip?: string | null
+    jabatan?: string | null
   } | null
   items?: ProgressItem[]
   totals?: {

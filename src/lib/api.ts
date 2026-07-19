@@ -67,6 +67,8 @@ export const {
   deleteFoto,
   getProgressReport,
   updateProgress,
+  getMasterFasePekerjaan,
+  getAppSettings,
   getPekerjaanChecklist,
   togglePekerjaanChecklist,
   getTiketList,

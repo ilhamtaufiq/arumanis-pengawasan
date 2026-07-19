@@ -304,6 +304,26 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<unknown>(payload)
     },
 
+    async getMasterFasePekerjaan(params: { jenisProyek?: string; activeOnly?: boolean } = {}) {
+      const query = new URLSearchParams()
+      if (params.jenisProyek) query.set('jenis_proyek', params.jenisProyek)
+      if (params.activeOnly) query.set('is_active', '1')
+      const qs = query.size ? `?${query}` : ''
+      const payload = await requestApi<ApiEnvelope<unknown[]> | { data?: unknown[] }>(
+        `/master-fase-pekerjaan${qs}`,
+      )
+      return unwrapCollection<Record<string, unknown>>(payload).data
+    },
+
+    async getAppSettings() {
+      const payload = await requestApi<
+        ApiEnvelope<Array<{ key: string; value?: string | null }>> | {
+          data?: Array<{ key: string; value?: string | null }>
+        }
+      >('/app-settings')
+      return unwrapCollection<{ key: string; value?: string | null }>(payload).data
+    },
+
     async getPekerjaanChecklist(params: Record<string, string | number | undefined | null> = {}) {
       const query = new URLSearchParams()
 
