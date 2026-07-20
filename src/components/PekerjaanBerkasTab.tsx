@@ -1,8 +1,12 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FileText, RefreshCcw, Upload } from 'lucide-react'
-import { createBerkas, formatApiError, getBerkasList } from '@/lib/api'
+import { createBerkas, formatApiError, getAppSettings, getBerkasList } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
+import {
+  getPengawasVisibleBerkasJuduls,
+  matchesPengawasSharedBerkasJudul,
+} from '@/lib/pengawas-berkas-settings'
 import {
   AlertModal,
   Button,
@@ -26,6 +30,50 @@ function formatFileSize(bytes: number | null | undefined) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function BerkasCard({ item }: { item: Berkas }) {
+  const title = item.jenis_dokumen || item.file_name || `Berkas #${item.id}`
+  const href = item.berkas_url || undefined
+
+  return (
+    <div className="detail-output-card">
+      <div className="detail-output-card-head">
+        <div>
+          <div className="output-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FileText size={16} aria-hidden />
+            {title}
+          </div>
+          <div className="output-meta">
+            {item.file_name ? <span>{item.file_name}</span> : null}
+            {item.file_name && item.size != null ? <span> · </span> : null}
+            <span>{formatFileSize(item.size)}</span>
+            {item.created_at ? (
+              <>
+                <span> · </span>
+                <span>{formatDateTime(item.created_at)}</span>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      <div className="detail-inline-controls" style={{ marginTop: 12 }}>
+        {href ? (
+          <a
+            className="neo-button neo-button--sm neo-button--neutral"
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Download size={14} />
+            Lihat / unduh
+          </a>
+        ) : (
+          <span className="detail-muted-line">URL file tidak tersedia</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -35,8 +83,19 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
+  const settingsQuery = useQuery({
+    queryKey: ['app-settings'],
+    queryFn: getAppSettings,
+    staleTime: 60_000,
+  })
+
+  const sharedJuduls = useMemo(
+    () => getPengawasVisibleBerkasJuduls(settingsQuery.data),
+    [settingsQuery.data],
+  )
+
   const berkasQuery = useQuery({
-    queryKey: ['pekerjaan', 'berkas', pekerjaanId, 'mine'],
+    queryKey: ['pekerjaan', 'berkas', pekerjaanId, 'mine', sharedJuduls.join('|')],
     queryFn: () =>
       getBerkasList({
         pekerjaan_id: pekerjaanId,
@@ -47,6 +106,19 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
   })
 
   const list = useMemo(() => berkasQuery.data?.data ?? [], [berkasQuery.data])
+
+  const { sharedList, ownList } = useMemo(() => {
+    const shared: Berkas[] = []
+    const own: Berkas[] = []
+    for (const item of list) {
+      if (matchesPengawasSharedBerkasJudul(item.jenis_dokumen, sharedJuduls)) {
+        shared.push(item)
+      } else {
+        own.push(item)
+      }
+    }
+    return { sharedList: shared, ownList: own }
+  }, [list, sharedJuduls])
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -89,8 +161,13 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
     <div className="stack stack--compact">
       <div className="detail-status-bar">
         <StatusChip>
-          File saya: <strong>{formatNumber(list.length)}</strong>
+          File saya: <strong>{formatNumber(ownList.length)}</strong>
         </StatusChip>
+        {sharedJuduls.length > 0 ? (
+          <StatusChip>
+            Bersama ({sharedJuduls.join(', ')}): <strong>{formatNumber(sharedList.length)}</strong>
+          </StatusChip>
+        ) : null}
         <Button
           type="button"
           variant="neutral"
@@ -104,11 +181,50 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
         </Button>
       </div>
 
+      {sharedJuduls.length > 0 ? (
+        <div className="detail-section-full">
+          <div className="detail-tab-header">
+            <div className="detail-tab-header-left">
+              <h2>Berkas bersama</h2>
+              <p>
+                Dokumen pekerjaan dengan judul {sharedJuduls.join(', ')} (diaktifkan admin di
+                Pengaturan Arumanis).
+              </p>
+            </div>
+          </div>
+
+          {berkasQuery.isPending ? (
+            <LoadingRow>Memuat berkas bersama...</LoadingRow>
+          ) : berkasQuery.isError ? (
+            <EmptyState
+              title="Gagal memuat berkas"
+              description={formatApiError(berkasQuery.error) || 'Coba muat ulang.'}
+              action={
+                <Button type="button" variant="neutral" size="sm" onClick={() => berkasQuery.refetch()}>
+                  Coba lagi
+                </Button>
+              }
+            />
+          ) : sharedList.length === 0 ? (
+            <EmptyState
+              title="Belum ada berkas bersama"
+              description={`Belum ada file dengan judul ${sharedJuduls.join(', ')} untuk pekerjaan ini.`}
+            />
+          ) : (
+            <div className="detail-output-grid">
+              {sharedList.map((item) => (
+                <BerkasCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div className="detail-section-full">
         <div className="detail-tab-header">
           <div className="detail-tab-header-left">
             <h2>Upload berkas</h2>
-            <p>Hanya unggah dokumen. Anda hanya melihat file yang diunggah akun ini.</p>
+            <p>Hanya unggah dokumen. Anda melihat file unggahan akun ini ditambah berkas bersama (jika diaktifkan).</p>
           </div>
         </div>
 
@@ -172,55 +288,16 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
               </Button>
             }
           />
-        ) : list.length === 0 ? (
+        ) : ownList.length === 0 ? (
           <EmptyState
             title="Belum ada berkas"
-            description="Unggah dokumen pertama menggunakan form di atas. File orang lain tidak ditampilkan di sini."
+            description="Unggah dokumen pertama menggunakan form di atas."
           />
         ) : (
           <div className="detail-output-grid">
-            {list.map((item: Berkas) => {
-              const title = item.jenis_dokumen || item.file_name || `Berkas #${item.id}`
-              const href = item.berkas_url || undefined
-              return (
-                <div key={item.id} className="detail-output-card">
-                  <div className="detail-output-card-head">
-                    <div>
-                      <div className="output-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <FileText size={16} aria-hidden />
-                        {title}
-                      </div>
-                      <div className="output-meta">
-                        {item.file_name ? <span>{item.file_name}</span> : null}
-                        {item.file_name && item.size != null ? <span> · </span> : null}
-                        <span>{formatFileSize(item.size)}</span>
-                        {item.created_at ? (
-                          <>
-                            <span> · </span>
-                            <span>{formatDateTime(item.created_at)}</span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="detail-inline-controls" style={{ marginTop: 12 }}>
-                    {href ? (
-                      <a
-                        className="neo-button neo-button--sm neo-button--neutral"
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Download size={14} />
-                        Lihat / unduh
-                      </a>
-                    ) : (
-                      <span className="detail-muted-line">URL file tidak tersedia</span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+            {ownList.map((item) => (
+              <BerkasCard key={item.id} item={item} />
+            ))}
           </div>
         )}
       </div>
