@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AlertTriangle, ArrowLeft, Camera, ChevronDown, Edit3, FileText, FileUp, FolderOpen, History, Link2, MapPin, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, ChevronDown, Download, Edit3, FileSpreadsheet, FileText, FileUp, FolderOpen, History, Link2, MapPin, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import { PekerjaanBerkasTab } from '@/components/PekerjaanBerkasTab'
 import { ImportPenerimaDialog } from '@/components/ImportPenerimaDialog'
 import {
@@ -55,6 +55,7 @@ import {
 } from '@/components/ui'
 import { trackPengawasEvent } from '@/lib/analytics/visitor-events'
 import { enqueueFotoUpload } from '@/lib/foto-upload-queue'
+import { exportPenerimaExcel, exportPenerimaPdf } from '@/lib/penerima-export'
 import { shouldQueueAfterFailedUpload, uploadFotoWithRetry } from '@/lib/resilient-foto-upload'
 import { fotoUploadQueueKey } from '@/hooks/useFotoUploadQueue'
 import type { Foto, Output, PekerjaanDetail, Penerima, Tiket } from '@/lib/types'
@@ -703,6 +704,27 @@ export function PekerjaanDetailPage() {
     })
     setPenerimaFormOpen(true)
     setActiveTab('penerima')
+  }
+
+  function handleExportPenerima(format: 'excel' | 'pdf') {
+    if (!penerimaList.length) {
+      alert('Tidak ada data penerima untuk diekspor')
+      return
+    }
+
+    try {
+      const options = pekerjaan?.nama_paket
+        ? { pekerjaanName: pekerjaan.nama_paket }
+        : undefined
+      if (format === 'excel') {
+        exportPenerimaExcel(penerimaList, options)
+      } else {
+        exportPenerimaPdf(penerimaList, options)
+      }
+    } catch (error) {
+      console.error('Failed to export penerima:', error)
+      alert(format === 'excel' ? 'Gagal mengekspor Excel' : 'Gagal mengekspor PDF')
+    }
   }
 
   function openUploadTarget(output: Output, slot: string, penerima?: Penerima | undefined) {
@@ -1666,16 +1688,38 @@ export function PekerjaanDetailPage() {
                     </Button>
                   </>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setImportPenerimaOpen(true)}
-                    disabled={outputList.length === 0}
-                  >
-                    <FileUp size={14} />
-                    <span>Impor Excel</span>
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleExportPenerima('excel')}
+                      disabled={penerimaList.length === 0}
+                    >
+                      <FileSpreadsheet size={14} />
+                      <span>Excel</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleExportPenerima('pdf')}
+                      disabled={penerimaList.length === 0}
+                    >
+                      <Download size={14} />
+                      <span>PDF</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setImportPenerimaOpen(true)}
+                      disabled={outputList.length === 0}
+                    >
+                      <FileUp size={14} />
+                      <span>Impor Excel</span>
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
