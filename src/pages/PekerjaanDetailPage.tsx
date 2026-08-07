@@ -15,6 +15,7 @@ import {
   deleteOutput,
   deletePenerima,
   formatApiError,
+  getAppSettings,
   getPekerjaanDetail,
   getPekerjaanProgressEstimasi,
   getTiketList,
@@ -228,7 +229,22 @@ export function PekerjaanDetailPage() {
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState(false)
 
-  const savedPin = typeof localStorage !== 'undefined' ? (localStorage.getItem('penerima_pin') || '123456') : '123456'
+  const [savedPin, setSavedPin] = useState(() => '123456')
+
+  useEffect(() => {
+    let cancelled = false
+    getAppSettings()
+      .then((settings) => {
+        if (cancelled) return
+        const pin = settings?.find((s) => s.key === 'penerima_pin')?.value ?? '123456'
+        setSavedPin(pin)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSavedPin('123456')
+      })
+    return () => { cancelled = true }
+  }, [])
 
   function handleTogglePenerimaUnlockRequest() {
     if (penerimaUnlocked) {
