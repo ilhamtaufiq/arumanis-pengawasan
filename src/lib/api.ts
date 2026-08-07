@@ -53,6 +53,7 @@ export const {
   getPekerjaanDetail,
   getPekerjaanMedia,
   getBerkasList,
+  getBerkasJenisDokumen,
   createBerkas,
   getPenerimaByPekerjaan,
   createPenerima,

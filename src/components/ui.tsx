@@ -368,6 +368,7 @@ export function PhotoMatrix({
   selectedFotoIds,
   onToggleFotoSelect,
   className,
+  penerimaUnlocked = false,
 }: {
   entries: PhotoMatrixEntry[]
   formatVolume: (volume: Output['volume'], satuan?: string | null) => ReactNode
@@ -376,6 +377,7 @@ export function PhotoMatrix({
   selectedFotoIds?: number[]
   onToggleFotoSelect?: (fotoId: number, checked: boolean) => void
   className?: string
+  penerimaUnlocked?: boolean
 }) {
   const selected = selectedFotoIds ?? []
   return (
@@ -398,13 +400,13 @@ export function PhotoMatrix({
                     {!penerima.is_komunal ? (
                       <>
                         <span className="penerima-meta-label">NIK</span>
-                        <span>: {penerima.nik || '-'}</span>
+                        <span>: {penerimaUnlocked ? (penerima.nik || '-') : '••••••••••••••••'}</span>
                         <span className="penerima-meta-label">Jumlah Jiwa</span>
                         <span>: {penerima.jumlah_jiwa || '-'}</span>
                       </>
                     ) : null}
                     <span className="penerima-meta-label">Alamat</span>
-                    <span>: {penerima.alamat || '-'}</span>
+                    <span>: {penerimaUnlocked ? (penerima.alamat || '-') : '••••••••'}</span>
                   </div>
                 </NeoSurface>
               ) : null}

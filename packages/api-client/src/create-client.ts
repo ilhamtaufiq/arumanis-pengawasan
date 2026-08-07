@@ -499,6 +499,14 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<Berkas>(payload)
     },
 
+    /** Distinct jenis_dokumen untuk dropdown seragam. */
+    async getBerkasJenisDokumen() {
+      const payload = await requestApi<ApiEnvelope<string[]> | { data?: string[] }>(
+        '/berkas/jenis-dokumen',
+      )
+      return unwrapCollection<string>(payload).data
+    },
+
     async submitKontrakAddendum(addendumId: number | string) {
       const payload = await requestApi<ApiEnvelope<KontrakAddendum>>(`/kontrak-addendums/${addendumId}/submit`, {
         method: 'POST',

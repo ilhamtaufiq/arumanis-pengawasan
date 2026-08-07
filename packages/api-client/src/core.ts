@@ -60,6 +60,13 @@ async function buildHeaders(
     next.set('Authorization', authHeader)
   }
 
+  if (typeof sessionStorage !== 'undefined') {
+    const pin = sessionStorage.getItem('penerima_session_pin')
+    if (pin) {
+      next.set('X-PIN', pin)
+    }
+  }
+
   if (body && !(body instanceof FormData) && !(body instanceof Blob) && !(body instanceof URLSearchParams)) {
     next.set('Content-Type', 'application/json')
   }

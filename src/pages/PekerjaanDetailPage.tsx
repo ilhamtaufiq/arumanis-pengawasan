@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } 
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { AlertTriangle, ArrowLeft, Camera, ChevronDown, Download, Edit3, FileSpreadsheet, FileText, FileUp, FolderOpen, History, Link2, MapPin, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, ChevronDown, Download, Edit3, FileSpreadsheet, FileText, FileUp, FolderOpen, History, Link2, Lock, LockOpen, MapPin, MessageSquareText, Printer, RefreshCcw, Shield, Trash2, Upload, X } from 'lucide-react'
 import { PekerjaanBerkasTab } from '@/components/PekerjaanBerkasTab'
 import { ImportPenerimaDialog } from '@/components/ImportPenerimaDialog'
 import {
@@ -221,6 +221,19 @@ export function PekerjaanDetailPage() {
     loading: boolean
   } | null>(null)
   const [editErrorMessage, setEditErrorMessage] = useState<string | null>(null)
+  const [penerimaUnlocked, setPenerimaUnlocked] = useState(
+    () => typeof sessionStorage !== 'undefined' && !!sessionStorage.getItem('penerima_session_pin'),
+  )
+
+  function handleTogglePenerimaUnlock(checked: boolean) {
+    if (checked) {
+      sessionStorage.setItem('penerima_session_pin', '1')
+      setPenerimaUnlocked(true)
+    } else {
+      sessionStorage.removeItem('penerima_session_pin')
+      setPenerimaUnlocked(false)
+    }
+  }
 
   const penerimaForm = useForm({
     resolver: zodResolver(penerimaSchema),
@@ -1580,6 +1593,21 @@ export function PekerjaanDetailPage() {
                 <p>Gunakan mode komunal untuk penerima kelompok</p>
               </div>
               <div className="detail-inline-controls">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {penerimaUnlocked ? (
+                    <LockOpen size={14} className="text-green-600" />
+                  ) : (
+                    <Lock size={14} className="text-muted-foreground" />
+                  )}
+                  <label className="neo-chip chip-toggle" style={{ cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={penerimaUnlocked}
+                      onChange={(e) => handleTogglePenerimaUnlock(e.target.checked)}
+                    />
+                    <span>{penerimaUnlocked ? 'NIK Terbuka' : 'NIK Disembunyikan'}</span>
+                  </label>
+                </div>
                 <Button
                   type="button"
                   variant="secondary"
@@ -1779,10 +1807,10 @@ export function PekerjaanDetailPage() {
                           <div className="table-subtitle">
                             Jiwa {stringValue(penerima.jumlah_jiwa)}
                             <br />
-                            NIK {stringValue(penerima.nik)}
+                            NIK {penerimaUnlocked ? stringValue(penerima.nik) : '••••••••••••••••'}
                           </div>
                         </td>
-                        <td>{penerima.alamat || '-'}</td>
+                        <td>{penerimaUnlocked ? (penerima.alamat || '-') : '••••••••'}</td>
                         <td>{formatDateTime(penerima.created_at)}</td>
                         <td>
                           <div className="badge-row-inline">
@@ -1945,6 +1973,7 @@ export function PekerjaanDetailPage() {
                 }))}
                 selectedFotoIds={selectedFotoIds}
                 onToggleFotoSelect={toggleFotoSelection}
+                penerimaUnlocked={penerimaUnlocked}
                 formatVolume={(volume, satuan) => (
                   <>
                     {formatNumber(volume)} {satuan}

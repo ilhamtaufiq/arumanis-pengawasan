@@ -1,12 +1,22 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, FileText, RefreshCcw, Upload } from 'lucide-react'
-import { createBerkas, formatApiError, getAppSettings, getBerkasList } from '@/lib/api'
+import {
+  createBerkas,
+  formatApiError,
+  getAppSettings,
+  getBerkasJenisDokumen,
+  getBerkasList,
+} from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 import {
   getPengawasVisibleBerkasJuduls,
   matchesPengawasSharedBerkasJudul,
 } from '@/lib/pengawas-berkas-settings'
+import {
+  JENIS_DOKUMEN_CREATE_VALUE,
+  mergeJenisDokumenOptions,
+} from '@/lib/jenis-dokumen'
 import {
   AlertModal,
   Button,
@@ -79,6 +89,9 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [jenisDokumen, setJenisDokumen] = useState('')
+  const [jenisSelect, setJenisSelect] = useState('')
+  const [customJenis, setCustomJenis] = useState('')
+  const [localJenisExtras, setLocalJenisExtras] = useState<string[]>([])
   const [file, setFile] = useState<File | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -88,6 +101,17 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
     queryFn: getAppSettings,
     staleTime: 60_000,
   })
+
+  const jenisQuery = useQuery({
+    queryKey: ['berkas-jenis-dokumen'],
+    queryFn: getBerkasJenisDokumen,
+    staleTime: 60_000,
+  })
+
+  const jenisOptions = useMemo(
+    () => mergeJenisDokumenOptions(jenisQuery.data ?? [], localJenisExtras, jenisDokumen),
+    [jenisQuery.data, localJenisExtras, jenisDokumen],
+  )
 
   const sharedJuduls = useMemo(
     () => getPengawasVisibleBerkasJuduls(settingsQuery.data),
@@ -125,15 +149,27 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
       if (!file) {
         throw new Error('Pilih file terlebih dahulu.')
       }
-      const label = jenisDokumen.trim() || file.name
+      const label = jenisDokumen.trim()
+      if (!label) {
+        throw new Error('Pilih jenis dokumen.')
+      }
       const formData = new FormData()
       formData.append('pekerjaan_id', String(pekerjaanId))
       formData.append('jenis_dokumen', label)
       formData.append('file', file)
       return createBerkas(formData)
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, _vars, _ctx) => {
+      const savedLabel = jenisDokumen.trim()
+      if (savedLabel) {
+        setLocalJenisExtras((prev) => {
+          if (prev.some((item) => item.toLowerCase() === savedLabel.toLowerCase())) return prev
+          return [...prev, savedLabel]
+        })
+      }
       setJenisDokumen('')
+      setJenisSelect('')
+      setCustomJenis('')
       setFile(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
@@ -141,6 +177,7 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
       setSuccessMessage('Berkas berhasil diunggah.')
       setErrorMessage(null)
       await queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'berkas', pekerjaanId] })
+      await queryClient.invalidateQueries({ queryKey: ['berkas-jenis-dokumen'] })
     },
     onError: (error) => {
       setSuccessMessage(null)
@@ -148,10 +185,29 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
     },
   })
 
+  function applyJenisSelection(value: string) {
+    setJenisSelect(value)
+    if (value === JENIS_DOKUMEN_CREATE_VALUE) {
+      setJenisDokumen(customJenis.trim())
+      return
+    }
+    setCustomJenis('')
+    setJenisDokumen(value)
+  }
+
+  function applyCustomJenis(value: string) {
+    setCustomJenis(value)
+    setJenisDokumen(value.trim())
+  }
+
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (!file) {
       setErrorMessage('Pilih file yang akan diunggah.')
+      return
+    }
+    if (!jenisDokumen.trim()) {
+      setErrorMessage('Pilih jenis dokumen dari daftar, atau tambah jenis baru.')
       return
     }
     uploadMutation.mutate()
@@ -231,16 +287,33 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
         <form className="neo-form" onSubmit={handleSubmit}>
           <div className="detail-grid detail-grid--auto">
             <FieldGroup
-              label="Jenis / keterangan dokumen"
-              hint="Opsional — jika kosong, nama file dipakai."
+              label="Jenis dokumen"
+              hint="Pilih dari daftar agar seragam. Pilih “Tambah jenis baru…” jika belum ada."
             >
-              <Input
+              <select
                 id="berkas-jenis"
-                value={jenisDokumen}
-                onChange={(e) => setJenisDokumen(e.target.value)}
-                placeholder="Contoh: Berita acara, SK, laporan"
-                maxLength={255}
-              />
+                className="neo-input"
+                value={jenisSelect}
+                onChange={(e) => applyJenisSelection(e.target.value)}
+              >
+                <option value="">— Pilih jenis dokumen —</option>
+                {jenisOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value={JENIS_DOKUMEN_CREATE_VALUE}>+ Tambah jenis baru…</option>
+              </select>
+              {jenisSelect === JENIS_DOKUMEN_CREATE_VALUE ? (
+                <Input
+                  id="berkas-jenis-custom"
+                  className="mt-2"
+                  value={customJenis}
+                  onChange={(e) => applyCustomJenis(e.target.value)}
+                  placeholder="Contoh: SK, BA Serah Terima"
+                  maxLength={255}
+                />
+              ) : null}
             </FieldGroup>
             <FieldGroup label="File" hint="Maks. 50 MB. PDF, gambar, Office, dll.">
               <input
@@ -260,7 +333,10 @@ export function PekerjaanBerkasTab({ pekerjaanId }: PekerjaanBerkasTabProps) {
           ) : null}
 
           <div className="detail-inline-controls">
-            <Button type="submit" disabled={uploadMutation.isPending || !file}>
+            <Button
+              type="submit"
+              disabled={uploadMutation.isPending || !file || !jenisDokumen.trim()}
+            >
               {uploadMutation.isPending ? <Spinner /> : <Upload size={14} />}
               {uploadMutation.isPending ? 'Mengunggah...' : 'Unggah berkas'}
             </Button>
