@@ -224,14 +224,32 @@ export function PekerjaanDetailPage() {
   const [penerimaUnlocked, setPenerimaUnlocked] = useState(
     () => typeof sessionStorage !== 'undefined' && !!sessionStorage.getItem('penerima_session_pin'),
   )
+  const [pinDialogOpen, setPinDialogOpen] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState(false)
 
-  function handleTogglePenerimaUnlock(checked: boolean) {
-    if (checked) {
-      sessionStorage.setItem('penerima_session_pin', '1')
-      setPenerimaUnlocked(true)
-    } else {
+  const savedPin = typeof localStorage !== 'undefined' ? (localStorage.getItem('penerima_pin') || '123456') : '123456'
+
+  function handleTogglePenerimaUnlockRequest() {
+    if (penerimaUnlocked) {
       sessionStorage.removeItem('penerima_session_pin')
       setPenerimaUnlocked(false)
+    } else {
+      setPinError(false)
+      setPinInput('')
+      setPinDialogOpen(true)
+    }
+  }
+
+  function handlePinSubmit() {
+    if (pinInput === savedPin) {
+      sessionStorage.setItem('penerima_session_pin', pinInput)
+      setPenerimaUnlocked(true)
+      setPinDialogOpen(false)
+      setPinInput('')
+      setPinError(false)
+    } else {
+      setPinError(true)
     }
   }
 
@@ -1599,14 +1617,14 @@ export function PekerjaanDetailPage() {
                   ) : (
                     <Lock size={14} className="text-muted-foreground" />
                   )}
-                  <label className="neo-chip chip-toggle" style={{ cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={penerimaUnlocked}
-                      onChange={(e) => handleTogglePenerimaUnlock(e.target.checked)}
-                    />
+                  <Button
+                    type="button"
+                    variant={penerimaUnlocked ? 'neutral' : 'secondary'}
+                    size="sm"
+                    onClick={handleTogglePenerimaUnlockRequest}
+                  >
                     <span>{penerimaUnlocked ? 'NIK Terbuka' : 'NIK Disembunyikan'}</span>
-                  </label>
+                  </Button>
                 </div>
                 <Button
                   type="button"
@@ -2464,6 +2482,66 @@ export function PekerjaanDetailPage() {
           void queryClient.invalidateQueries({ queryKey: ['pekerjaan', 'detail', pekerjaanId] })
         }}
       />
+
+      {/* PIN dialog for unlocking penerima data */}
+      {pinDialogOpen && (
+        <div className="upload-modal-backdrop" onClick={() => setPinDialogOpen(false)}>
+          <div onClick={(event) => event.stopPropagation()}>
+            <div className="neo-surface neo-surface--shadow upload-modal-shell">
+              <div className="modal-header-row">
+                <div>
+                  <div className="modal-eyebrow">PIN Keamanan</div>
+                  <div className="modal-title">Masukkan PIN untuk membuka data NIK/alamat</div>
+                  <div className="modal-subcopy">
+                    Data NIK dan Alamat penerima disensor untuk privasi. PIN default: 123456.
+                  </div>
+                </div>
+                <Button type="button" variant="neutral" onClick={() => setPinDialogOpen(false)}>
+                  <X size={16} />
+                </Button>
+              </div>
+              <div className="upload-modal-content">
+                <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={pinInput}
+                    onChange={(e) => { setPinInput(e.target.value); setPinError(false) }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handlePinSubmit() }}
+                    autoFocus
+                    style={{
+                      width: 180,
+                      textAlign: 'center',
+                      fontSize: 28,
+                      letterSpacing: 12,
+                      fontFamily: 'monospace',
+                      padding: '8px 16px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: 8,
+                      outline: 'none',
+                      ...(pinError ? { borderColor: '#dc2626', boxShadow: '0 0 0 2px #fecaca' } : {}),
+                    }}
+                  />
+                </div>
+                {pinError && (
+                  <div style={{ color: '#dc2626', textAlign: 'center', fontSize: 13, marginBottom: 8 }}>
+                    PIN salah, silakan coba lagi.
+                  </div>
+                )}
+                <div className="neo-form-actions">
+                  <Button type="button" variant="neutral" onClick={() => setPinDialogOpen(false)}>
+                    Batal
+                  </Button>
+                  <Button type="button" onClick={handlePinSubmit}>
+                    Verifikasi
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {currentPreviewFoto ? (
         <div className="upload-modal-backdrop" onClick={closePhotoPreview}>
