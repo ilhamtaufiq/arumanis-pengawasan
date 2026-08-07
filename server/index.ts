@@ -279,6 +279,12 @@ for (const prefix of ['', PUBLIC_BASE_PATH]) {
       headers.set('Authorization', `Bearer ${token}`)
     }
 
+    // Forward X-PIN untuk unmask penerima NIK/alamat
+    const incomingPin = c.req.header('x-pin')
+    if (incomingPin) {
+      headers.set('X-PIN', incomingPin)
+    }
+
     const body = ['GET', 'HEAD'].includes(c.req.method) ? undefined : await c.req.arrayBuffer()
     const init: RequestInit = {
       method: c.req.method,

@@ -16,6 +16,7 @@ import {
   deletePenerima,
   formatApiError,
   getAppSettings,
+  getPenerimaByPekerjaan,
   getPekerjaanDetail,
   getPekerjaanProgressEstimasi,
   getTiketList,
@@ -250,6 +251,7 @@ export function PekerjaanDetailPage() {
     if (penerimaUnlocked) {
       sessionStorage.removeItem('penerima_session_pin')
       setPenerimaUnlocked(false)
+      queryClient.invalidateQueries({ queryKey: ['penerima', 'detail', pekerjaanId] })
     } else {
       setPinError(false)
       setPinInput('')
@@ -264,6 +266,8 @@ export function PekerjaanDetailPage() {
       setPinDialogOpen(false)
       setPinInput('')
       setPinError(false)
+      // Fetch unmasked penerima data after unlock
+      queryClient.invalidateQueries({ queryKey: ['penerima', 'detail', pekerjaanId] })
     } else {
       setPinError(true)
     }
@@ -502,8 +506,19 @@ export function PekerjaanDetailPage() {
   }, [pekerjaan, pekerjaanId])
 
   const fotoList = pekerjaan?.foto ?? []
-  const penerimaList = pekerjaan?.penerima ?? []
   const outputList = pekerjaan?.output ?? []
+
+  const { data: penerimaApiRes } = useQuery({
+    queryKey: ['penerima', 'detail', pekerjaanId],
+    queryFn: () => getPenerimaByPekerjaan(pekerjaanId, { per_page: -1 }),
+    enabled: Number.isFinite(pekerjaanId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  })
+
+  const penerimaList = penerimaApiRes
+    ? penerimaApiRes.data
+    : (pekerjaan?.penerima ?? [])
   const tiketList = tiketQuery.data?.data ?? []
   const totalFoto = fotoList.length
   const fotoKoordinatSummary = useMemo(() => summarizeFotoKoordinatStatus(fotoList), [fotoList])
