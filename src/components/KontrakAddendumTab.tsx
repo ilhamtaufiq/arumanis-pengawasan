@@ -12,7 +12,6 @@ import {
   buildKontrakAddendumFormData,
   ADDENDUM_REGISTER_GAP_HEADLINE,
   getAddendumMissingAttachmentLabels,
-  getMissingAttachmentLabels,
   getRegisterGapStatusLines,
   isAddendumIncomplete,
   KONTRAK_ADDENDUM_ATTACHMENT_TYPES,
@@ -77,8 +76,9 @@ function buildDefaultForm(kontrak: {
     addendum_ke: nextAddendumKe,
     tanggal_addendum: new Date().toISOString().slice(0, 10),
     jenis_addendum: 'lainnya',
-    alasan: '',
-    deskripsi_perubahan: '',
+    alasan: 'Penambahan dan/atau pengurangan volume pekerjaan',
+    deskripsi_perubahan:
+      'Berdasarkan hasil perhitungan ulang volume pekerjaan di lapangan (Mutual Check/MC-0), ditemukan beberapa kondisi yang mengharuskan dilakukannya perubahan beberapa volume pekerjaan.',
     nilai_kontrak_sebelum: defaultNilai,
     nilai_kontrak_sesudah: defaultNilai,
     tgl_selesai_sebelum: defaultTglSelesai,
@@ -126,14 +126,15 @@ function buildVersions(kontrak: {
 }
 
 const emptyAttachments = (): Partial<Record<KontrakAddendumAttachmentType, File | null>> => ({
-  surat_permohonan: null,
-  surat_undangan_pembahasan: null,
-  risalah_rapat_pembahasan: null,
-  surat_perintah_pelaksanaan_kerja_sesuai_addendum: null,
   cco: null,
-  laporan_pekerjaan: null,
-  berita_acara: null,
-  sk_peneliti_kontrak: null,
+  dokumen_nego_addendum: null,
+  surat_permohonan_pembahasan: null,
+  surat_undangan_pembahasan: null,
+  berita_acara_negosiasi_harga: null,
+  risalah_rapat_pembahasan: null,
+  berita_acara_penelitian: null,
+  ba_cco_addendum: null,
+  surat_perintah_pelaksanaan: null,
 })
 
 export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTabProps) {
@@ -173,11 +174,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
         throw new Error('Data kontrak belum siap.')
       }
 
-      const missing = getMissingAttachmentLabels(attachments)
-      if (missing.length > 0) {
-        throw new Error(`Lampiran wajib belum lengkap: ${missing.join(', ')}`)
-      }
-
+      // Lampiran boleh belum lengkap — simpan draft dulu, lengkapi bertahap.
+      // Wajib penuh baru saat submit (di-backend ensureRequiredAttachmentsExist).
       const formData = buildKontrakAddendumFormData(form, attachments)
       return createKontrakAddendum(kontrak.id, formData)
     },
@@ -211,7 +209,12 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
         ? {
             ...baseForm,
             tanggal_addendum: gap.tanggal_register || baseForm.tanggal_addendum,
-            alasan: `Pelengkapan data addendum untuk register nomor ${gap.nomor_register}.`,
+            // Prefill nilai dari register bila ada (rekomendasi #2).
+            nilai_kontrak_sebelum: baseForm.nilai_kontrak_sebelum ?? 0,
+            nilai_kontrak_sesudah: gap.nilai ?? baseForm.nilai_kontrak_sesudah ?? 0,
+            alasan: gap.description
+              ? `${gap.description} — Pelengkapan data addendum untuk register nomor ${gap.nomor_register}.`
+              : `Pelengkapan data addendum untuk register nomor ${gap.nomor_register}.`,
             deskripsi_perubahan: `Nomor addendum ${gap.nomor_register} sudah terdaftar di Register Dokumen, namun belum tercatat di sistem. Mohon lengkapi pengajuan addendum dengan nomor yang sama.`,
           }
         : baseForm,
@@ -315,6 +318,12 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                   Register: {formatDate(gap.tanggal_register)}
                   {gap.type_name ? ` · ${gap.type_name}` : ''}
                 </p>
+                {gap.description ? (
+                  <p className="hint-text">Keterangan: {gap.description}</p>
+                ) : null}
+                {gap.nilai != null ? (
+                  <p className="hint-text">Nilai register: {formatCurrency(gap.nilai)}</p>
+                ) : null}
                 <div className="neo-form-actions">
                   <Button type="button" size="sm" onClick={() => openForm(gap)}>
                     Lengkapi detail addendum

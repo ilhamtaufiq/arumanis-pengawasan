@@ -24,6 +24,7 @@ export function DashboardPage() {
       let page = 1
       let lastPage = 1
       const all: Awaited<ReturnType<typeof getPekerjaanList>>['data'] = []
+      const seen = new Set<number>()
 
       do {
         const batch = await getPekerjaanList({
@@ -34,7 +35,14 @@ export function DashboardPage() {
           sort_by: 'updated_at',
           sort_direction: 'desc',
         })
-        all.push(...(batch.data ?? []))
+        // Sort by updated_at tak stabil antar-page → item bisa muncul di 2 page.
+        // Dedupe by id agar key React unik.
+        for (const item of batch.data ?? []) {
+          if (item?.id != null && !seen.has(item.id)) {
+            seen.add(item.id)
+            all.push(item)
+          }
+        }
         lastPage = Number(batch.meta?.last_page ?? 1)
         page += 1
       } while (page <= lastPage && page <= 20)

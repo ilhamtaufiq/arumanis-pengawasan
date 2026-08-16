@@ -405,14 +405,15 @@ export type KontrakAddendumJenis = 'teknis' | 'biaya' | 'waktu' | 'teknis_biaya'
 export type KontrakAddendumStatus = 'draft' | 'diajukan' | 'disetujui' | 'ditolak'
 
 export type KontrakAddendumAttachmentType =
-  | 'surat_permohonan'
-  | 'surat_undangan_pembahasan'
-  | 'risalah_rapat_pembahasan'
-  | 'surat_perintah_pelaksanaan_kerja_sesuai_addendum'
   | 'cco'
-  | 'laporan_pekerjaan'
-  | 'berita_acara'
-  | 'sk_peneliti_kontrak'
+  | 'dokumen_nego_addendum'
+  | 'surat_permohonan_pembahasan'
+  | 'surat_undangan_pembahasan'
+  | 'berita_acara_negosiasi_harga'
+  | 'risalah_rapat_pembahasan'
+  | 'berita_acara_penelitian'
+  | 'ba_cco_addendum'
+  | 'surat_perintah_pelaksanaan'
 
 export type KontrakAddendumAttachment = {
   id: number
@@ -493,6 +494,8 @@ export type KontrakAddendumRegisterGap = {
   type_name?: string | null
   kontrak_id: number
   addendum_count: number
+  description?: string | null
+  nilai?: number | null
   pekerjaan?: {
     id: number
     nama_paket: string

@@ -21,25 +21,25 @@ describe('kontrak addendum helpers', () => {
         tgl_selesai_sesudah: '2027-03-31',
       },
       {
-        surat_permohonan: file,
+        surat_permohonan_pembahasan: file,
       },
     )
 
     expect(formData.get('addendum_ke')).toBe('2')
     expect(formData.get('jenis_addendum')).toBe('waktu')
-    expect(formData.get('attachments[surat_permohonan]')).toBeInstanceOf(File)
+    expect(formData.get('attachments[surat_permohonan_pembahasan]')).toBeInstanceOf(File)
   })
 
   test('getMissingAttachmentLabels lists required documents that are not uploaded', () => {
     const missing = getMissingAttachmentLabels({
-      surat_permohonan: new File(['a'], 'a.pdf'),
+      surat_permohonan_pembahasan: new File(['a'], 'a.pdf'),
       cco: new File(['b'], 'b.xlsx'),
     })
 
-    expect(missing).toContain('Surat Undangan Pembahasan')
-    expect(missing).not.toContain('Surat Permohonan')
+    expect(missing).toContain('Surat Undangan Pembahasan (PPK)')
+    expect(missing).not.toContain('Surat Permohonan Pembahasan Adendum (Penyedia)')
     expect(missing).not.toContain('CCO')
-    expect(missing.length).toBe(6)
+    expect(missing.length).toBe(7)
   })
 
   test('getAddendumMissingAttachmentLabels detects missing uploaded documents on draft addendum', () => {
@@ -70,7 +70,7 @@ describe('kontrak addendum helpers', () => {
       ],
     })
 
-    expect(missing).toContain('Surat Undangan Pembahasan')
+    expect(missing).toContain('Surat Undangan Pembahasan (PPK)')
     expect(missing).not.toContain('Surat Permohonan')
     expect(isAddendumIncomplete({
       id: 1,

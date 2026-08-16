@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { CommandSearch } from '@/components/CommandSearch'
 import { useNotificationRealtime } from '@/hooks/useNotificationRealtime'
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat'
 import { LiveChatWidget } from '@/features/live-chat/LiveChatWidget'
@@ -70,6 +71,7 @@ export function AppLayout({
   })
   const [welcomeDismissed, setWelcomeDismissed] = useState(false)
   const [notificationPopupBlocking, setNotificationPopupBlocking] = useState(true)
+  const [commandOpen, setCommandOpen] = useState(false)
   const welcomeEligible =
     typeof window !== 'undefined' && window.localStorage.getItem('arumanis.welcome-hidden') !== 'true'
   const welcomeOpen = welcomeEligible && !welcomeDismissed && !notificationPopupBlocking
@@ -82,6 +84,18 @@ export function AppLayout({
   useEffect(() => {
     window.localStorage.setItem('arumanis.sidebar-open', String(sidebarOpen))
   }, [sidebarOpen])
+
+  // Alt+A: buka command search paket pekerjaan.
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'a' && e.altKey) {
+        e.preventDefault()
+        setCommandOpen(true)
+      }
+    }
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [])
 
   function handleNavClick() {
     if (window.innerWidth < 1100) {
@@ -188,6 +202,8 @@ export function AppLayout({
       />
 
       <LiveChatWidget user={user} />
+
+      <CommandSearch open={commandOpen} onClose={() => setCommandOpen(false)} />
     </div>
   )
 }
