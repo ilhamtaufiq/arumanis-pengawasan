@@ -21,7 +21,7 @@ import {
   KONTRAK_ADDENDUM_ATTACHMENT_TYPES,
   KONTRAK_ADDENDUM_JENIS_OPTIONS,
 } from '@/lib/kontrak-addendum'
-import { formatCurrency, formatDate } from '@/lib/format'
+import { formatCurrency, formatDate, formatNumber } from '@/lib/format'
 import type {
   DocumentRegister,
   KontrakAddendum,
@@ -38,6 +38,7 @@ import {
   EmptyState,
   FieldGroup,
   Input,
+  Label,
   LoadingRow,
   StatusChip,
   Surface,
@@ -47,6 +48,15 @@ import {
 type KontrakAddendumTabProps = {
   pekerjaanId: number
   kontrakId?: number | null
+}
+
+function formatRupiah(value: number) {
+  return value ? formatNumber(value) : ''
+}
+
+function parseRupiah(raw: string) {
+  const digits = raw.replace(/[^\d]/g, '')
+  return digits ? Number(digits) : 0
 }
 
 const statusTone: Record<string, 'neutral' | 'info' | 'success' | 'danger' | 'warning'> = {
@@ -732,13 +742,12 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
               </FieldGroup>
               <FieldGroup label="Nilai sebelum">
                 <Input
-                  type="number"
-                  min={0}
-                  value={form.nilai_kontrak_sebelum ?? ''}
+                  inputMode="numeric"
+                  value={formatRupiah(form.nilai_kontrak_sebelum ?? 0)}
                   onChange={(event) =>
                     setForm((current) =>
                       current
-                        ? { ...current, nilai_kontrak_sebelum: Number(event.target.value) || 0 }
+                        ? { ...current, nilai_kontrak_sebelum: parseRupiah(event.target.value) }
                         : current,
                     )
                   }
@@ -746,13 +755,12 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
               </FieldGroup>
               <FieldGroup label="Nilai sesudah">
                 <Input
-                  type="number"
-                  min={0}
-                  value={form.nilai_kontrak_sesudah ?? ''}
+                  inputMode="numeric"
+                  value={formatRupiah(form.nilai_kontrak_sesudah ?? 0)}
                   onChange={(event) =>
                     setForm((current) =>
                       current
-                        ? { ...current, nilai_kontrak_sesudah: Number(event.target.value) || 0 }
+                        ? { ...current, nilai_kontrak_sesudah: parseRupiah(event.target.value) }
                         : current,
                     )
                   }
@@ -815,22 +823,23 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
               </div>
             </div>
 
-            <div className="neo-form-grid">
+            <div className="stack stack--compact">
               {(Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[]).map((type) => (
-                <FieldGroup
-                  key={type}
-                  label={KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type]}
-                  hint={type === 'cco' ? 'PDF, XLS, atau XLSX' : 'PDF'}
-                >
-                  <Input
-                    type="file"
-                    accept={type === 'cco' ? '.pdf,.xls,.xlsx' : '.pdf'}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null
-                      setAttachments((current) => ({ ...current, [type]: { ...current[type], file } }))
-                    }}
-                  />
-                  <div className="neo-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <div key={type} className="attach-row">
+                  <div className="attach-row-head">
+                    <Label className="field-group-label">{KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type]}</Label>
+                    {type === 'cco' ? <span className="hint-text">PDF, XLS, atau XLSX</span> : <span className="hint-text">PDF</span>}
+                  </div>
+                  <div className="attach-row-fields">
+                    <Input
+                      type="file"
+                      accept={type === 'cco' ? '.pdf,.xls,.xlsx' : '.pdf'}
+                      className="attach-file"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null
+                        setAttachments((current) => ({ ...current, [type]: { ...current[type], file } }))
+                      }}
+                    />
                     <Input
                       placeholder="Nomor dokumen"
                       value={attachments[type]?.nomor ?? ''}
@@ -846,7 +855,7 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                       }
                     />
                   </div>
-                </FieldGroup>
+                </div>
               ))}
             </div>
 

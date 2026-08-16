@@ -2948,6 +2948,38 @@ button {
   align-items: center;
 }
 
+.attach-row {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border);
+  min-width: 0;
+}
+
+.attach-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.attach-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.attach-row-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.attach-file {
+  min-width: 0;
+}
+
 /* Neobrutalism additional components */
 .field-group {
   display: grid;
@@ -4126,6 +4158,10 @@ button {
   }
 
   .neo-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .attach-row-fields {
     grid-template-columns: 1fr;
   }
 
