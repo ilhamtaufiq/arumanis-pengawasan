@@ -21,7 +21,7 @@ describe('kontrak addendum helpers', () => {
         tgl_selesai_sesudah: '2027-03-31',
       },
       {
-        surat_permohonan_pembahasan: file,
+        surat_permohonan_pembahasan: { file, nomor: '001', tanggal: '2026-06-27' },
       },
     )
 

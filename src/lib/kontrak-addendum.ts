@@ -36,9 +36,15 @@ export const KONTRAK_ADDENDUM_JENIS_OPTIONS = [
   { value: 'lainnya', label: 'Lainnya' },
 ] as const
 
+export type AddendumAttachmentInput = {
+  file: File | null
+  nomor: string
+  tanggal: string
+}
+
 export function buildKontrakAddendumFormData(
   payload: KontrakAddendumPayload,
-  attachments: Partial<Record<KontrakAddendumAttachmentType, File | null | undefined>>,
+  attachments: Partial<Record<KontrakAddendumAttachmentType, AddendumAttachmentInput>>,
 ) {
   const formData = new FormData()
 
@@ -58,9 +64,11 @@ export function buildKontrakAddendumFormData(
   if (payload.tgl_selesai_sebelum) formData.append('tgl_selesai_sebelum', payload.tgl_selesai_sebelum)
   if (payload.tgl_selesai_sesudah) formData.append('tgl_selesai_sesudah', payload.tgl_selesai_sesudah)
 
-  for (const [type, file] of Object.entries(attachments) as Array<[KontrakAddendumAttachmentType, File | null | undefined]>) {
-    if (file) {
-      formData.append(`attachments[${type}]`, file)
+  for (const [type, input] of Object.entries(attachments) as Array<[KontrakAddendumAttachmentType, AddendumAttachmentInput]>) {
+    if (input?.file) {
+      formData.append(`attachments[${type}]`, input.file)
+      if (input.nomor) formData.append(`attachment_nomor[${type}]`, input.nomor)
+      if (input.tanggal) formData.append(`attachment_tanggal[${type}]`, input.tanggal)
     }
   }
 

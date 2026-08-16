@@ -12,6 +12,7 @@ import {
   uploadKontrakAddendum,
 } from '@/lib/api'
 import {
+  AddendumAttachmentInput,
   buildKontrakAddendumFormData,
   ADDENDUM_REGISTER_GAP_HEADLINE,
   getAddendumMissingAttachmentLabels,
@@ -130,16 +131,16 @@ function buildVersions(kontrak: {
   ]
 }
 
-const emptyAttachments = (): Partial<Record<KontrakAddendumAttachmentType, File | null>> => ({
-  cco: null,
-  dokumen_nego_addendum: null,
-  surat_permohonan_pembahasan: null,
-  surat_undangan_pembahasan: null,
-  berita_acara_negosiasi_harga: null,
-  risalah_rapat_pembahasan: null,
-  berita_acara_penelitian: null,
-  ba_cco_addendum: null,
-  surat_perintah_pelaksanaan: null,
+const emptyAttachments = (): Partial<Record<KontrakAddendumAttachmentType, AddendumAttachmentInput>> => ({
+  cco: { file: null, nomor: '', tanggal: '' },
+  dokumen_nego_addendum: { file: null, nomor: '', tanggal: '' },
+  surat_permohonan_pembahasan: { file: null, nomor: '', tanggal: '' },
+  surat_undangan_pembahasan: { file: null, nomor: '', tanggal: '' },
+  berita_acara_negosiasi_harga: { file: null, nomor: '', tanggal: '' },
+  risalah_rapat_pembahasan: { file: null, nomor: '', tanggal: '' },
+  berita_acara_penelitian: { file: null, nomor: '', tanggal: '' },
+  ba_cco_addendum: { file: null, nomor: '', tanggal: '' },
+  surat_perintah_pelaksanaan: { file: null, nomor: '', tanggal: '' },
 })
 
 export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTabProps) {
@@ -826,9 +827,25 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                     accept={type === 'cco' ? '.pdf,.xls,.xlsx' : '.pdf'}
                     onChange={(event) => {
                       const file = event.target.files?.[0] ?? null
-                      setAttachments((current) => ({ ...current, [type]: file }))
+                      setAttachments((current) => ({ ...current, [type]: { ...current[type], file } }))
                     }}
                   />
+                  <div className="neo-form-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    <Input
+                      placeholder="Nomor dokumen"
+                      value={attachments[type]?.nomor ?? ''}
+                      onChange={(event) =>
+                        setAttachments((current) => ({ ...current, [type]: { ...current[type], nomor: event.target.value } }))
+                      }
+                    />
+                    <Input
+                      type="date"
+                      value={attachments[type]?.tanggal ?? ''}
+                      onChange={(event) =>
+                        setAttachments((current) => ({ ...current, [type]: { ...current[type], tanggal: event.target.value } }))
+                      }
+                    />
+                  </div>
                 </FieldGroup>
               ))}
             </div>
