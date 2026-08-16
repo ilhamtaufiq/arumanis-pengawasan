@@ -4,6 +4,7 @@ import type {
   Berkas,
   ChecklistMatrixResponse,
   DashboardStats,
+  DocumentRegister,
   Foto,
   KontrakAddendum,
   KontrakAddendumRegisterGapResponse,
@@ -455,6 +456,24 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<KontrakAddendumRegisterGapResponse>(payload)
     },
 
+    async getDocumentRegistersByAddendum(addendumId: number | string) {
+      const payload = await requestApi<ApiEnvelope<DocumentRegister[]>>(
+        `/document-registers?addendum_id=${addendumId}&per_page=100`,
+      )
+      return unwrapEntity<DocumentRegister[]>(payload)
+    },
+
+    async uploadKontrakAddendum(addendumId: number | string, type: string, file: File) {
+      const formData = new FormData()
+      formData.append('type', type)
+      formData.append('file', file)
+      const payload = await requestApi<ApiEnvelope<KontrakAddendum>>(`/kontrak-addendums/${addendumId}/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+      return unwrapEntity<KontrakAddendum>(payload)
+    },
+
     async createKontrakAddendum(kontrakId: number | string, formData: FormData) {
       const payload = await requestApi<ApiEnvelope<KontrakAddendum>>(`/kontrak/${kontrakId}/addendums`, {
         method: 'POST',
@@ -505,6 +524,16 @@ export function createApiClient(config: ApiClientConfig) {
         '/berkas/jenis-dokumen',
       )
       return unwrapCollection<string>(payload).data
+    },
+
+    async updateKontrakAddendum(addendumId: number | string, data: Record<string, unknown>) {
+      const payload = await requestApi<ApiEnvelope<KontrakAddendum>>(`/kontrak-addendums/${addendumId}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      return unwrapEntity<KontrakAddendum>(payload)
     },
 
     async submitKontrakAddendum(addendumId: number | string) {

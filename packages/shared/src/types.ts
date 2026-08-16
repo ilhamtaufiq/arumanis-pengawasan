@@ -402,7 +402,7 @@ export type SavePekerjaanProgressEstimasiPayload = {
 }
 
 export type KontrakAddendumJenis = 'teknis' | 'biaya' | 'waktu' | 'teknis_biaya' | 'lainnya'
-export type KontrakAddendumStatus = 'draft' | 'diajukan' | 'disetujui' | 'ditolak'
+export type KontrakAddendumStatus = 'draft' | 'diajukan' | 'diproses' | 'disetujui' | 'ditolak'
 
 export type KontrakAddendumAttachmentType =
   | 'cco'
@@ -476,6 +476,7 @@ export type KontrakDetail = {
 
 export type KontrakAddendumPayload = {
   addendum_ke: number
+  nomor_addendum?: string
   tanggal_addendum: string
   jenis_addendum: KontrakAddendumJenis
   alasan?: string
@@ -515,4 +516,19 @@ export type KontrakAddendumRegisterGapResponse = {
   total: number
   items: KontrakAddendumRegisterGap[]
   type_codes: string[]
+}
+
+export type DocumentRegister = {
+  id: number
+  kontrak_id: number
+  type_id: number
+  addendum_id?: number | null
+  attachment_type?: string | null
+  nomor: string
+  tanggal: string
+  sequence_number: number
+  year: number
+  description?: string | null
+  nilai?: number | null
+  type?: { id: number; name: string; code: string } | null
 }

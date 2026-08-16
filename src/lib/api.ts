@@ -81,5 +81,8 @@ export const {
   getKontrakDetail,
   getKontrakAddendumRegisterGaps,
   createKontrakAddendum,
+  updateKontrakAddendum,
   submitKontrakAddendum,
+  getDocumentRegistersByAddendum,
+  uploadKontrakAddendum,
 } = client

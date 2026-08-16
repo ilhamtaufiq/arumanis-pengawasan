@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ChevronDown, ExternalLink, FileText, Send } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ExternalLink, FileText, Send, Upload } from 'lucide-react'
 import {
   createKontrakAddendum,
   formatApiError,
+  getDocumentRegistersByAddendum,
   getKontrakAddendumRegisterGaps,
   getKontrakDetail,
   submitKontrakAddendum,
+  updateKontrakAddendum,
+  uploadKontrakAddendum,
 } from '@/lib/api'
 import {
   buildKontrakAddendumFormData,
@@ -19,6 +22,7 @@ import {
 } from '@/lib/kontrak-addendum'
 import { formatCurrency, formatDate } from '@/lib/format'
 import type {
+  DocumentRegister,
   KontrakAddendum,
   KontrakAddendumAttachmentType,
   KontrakAddendumJenis,
@@ -48,6 +52,7 @@ const statusTone: Record<string, 'neutral' | 'info' | 'success' | 'danger' | 'wa
   utama: 'neutral',
   draft: 'neutral',
   diajukan: 'info',
+  diproses: 'warning',
   disetujui: 'success',
   ditolak: 'danger',
 }
@@ -143,6 +148,7 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
   const [formError, setFormError] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [form, setForm] = useState<KontrakAddendumPayload | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [attachments, setAttachments] = useState(emptyAttachments())
 
   const kontrakQuery = useQuery({
@@ -190,6 +196,38 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     onError: (error) => setFormError(formatApiError(error, 'Gagal menyimpan pengajuan addendum.')),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: async () => {
+      if (!form || !editingId) {
+        throw new Error('Data addendum belum siap.')
+      }
+
+      const { addendum_ke, tanggal_addendum, jenis_addendum, alasan, deskripsi_perubahan, nomor_addendum, nilai_kontrak_sebelum, nilai_kontrak_sesudah, tgl_selesai_sebelum, tgl_selesai_sesudah } = form
+      return updateKontrakAddendum(editingId, {
+        addendum_ke,
+        tanggal_addendum,
+        jenis_addendum,
+        alasan,
+        deskripsi_perubahan,
+        nomor_addendum,
+        nilai_kontrak_sebelum,
+        nilai_kontrak_sesudah,
+        tgl_selesai_sebelum,
+        tgl_selesai_sesudah,
+      })
+    },
+    onSuccess: () => {
+      setActionMessage('Perbaikan addendum berhasil disimpan.')
+      setFormError(null)
+      setFormOpen(false)
+      setEditingId(null)
+      setAttachments(emptyAttachments())
+      if (kontrak) setForm(buildDefaultForm(kontrak))
+      invalidate()
+    },
+    onError: (error) => setFormError(formatApiError(error, 'Gagal menyimpan perbaikan addendum.')),
+  })
+
   const submitMutation = useMutation({
     mutationFn: (addendumId: number) => submitKontrakAddendum(addendumId),
     onSuccess: () => {
@@ -200,6 +238,26 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     onError: (error) => setFormError(formatApiError(error, 'Gagal mengajukan addendum.')),
   })
 
+  const processedAddendum = addendums.find((item) => item.status === 'diproses')
+
+  const registersQuery = useQuery({
+    queryKey: ['kontrak', 'addendum-registers', processedAddendum?.id],
+    queryFn: () => getDocumentRegistersByAddendum(processedAddendum!.id),
+    enabled: Boolean(processedAddendum?.id),
+  })
+  const docRegisters = registersQuery.data ?? []
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ addendumId, type, file }: { addendumId: number; type: string; file: File }) =>
+      uploadKontrakAddendum(addendumId, type, file),
+    onSuccess: () => {
+      setActionMessage('Dokumen berhasil diunggah.')
+      invalidate()
+      registersQuery.refetch()
+    },
+    onError: (error) => setFormError(formatApiError(error, 'Gagal mengunggah dokumen.')),
+  })
+
   const openForm = (gap?: KontrakAddendumRegisterGap) => {
     if (!kontrak) return
     const baseForm = buildDefaultForm(kontrak)
@@ -208,6 +266,7 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
       gap
         ? {
             ...baseForm,
+            nomor_addendum: gap.nomor_register,
             tanggal_addendum: gap.tanggal_register || baseForm.tanggal_addendum,
             // Prefill nilai dari register bila ada (rekomendasi #2).
             nilai_kontrak_sebelum: baseForm.nilai_kontrak_sebelum ?? 0,
@@ -219,6 +278,25 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
           }
         : baseForm,
     )
+    setAttachments(emptyAttachments())
+    setFormError(null)
+    setFormOpen(true)
+  }
+
+  const openEdit = (addendum: KontrakAddendum) => {
+    setEditingId(addendum.id)
+    setForm({
+      addendum_ke: addendum.addendum_ke,
+      nomor_addendum: addendum.nomor_addendum ?? '',
+      tanggal_addendum: addendum.tanggal_addendum,
+      jenis_addendum: addendum.jenis_addendum,
+      alasan: addendum.alasan ?? '',
+      deskripsi_perubahan: addendum.deskripsi_perubahan ?? '',
+      nilai_kontrak_sebelum: addendum.nilai_kontrak_sebelum ?? 0,
+      nilai_kontrak_sesudah: addendum.nilai_kontrak_sesudah ?? 0,
+      tgl_selesai_sebelum: addendum.tgl_selesai_sebelum ?? '',
+      tgl_selesai_sesudah: addendum.tgl_selesai_sesudah ?? '',
+    })
     setAttachments(emptyAttachments())
     setFormError(null)
     setFormOpen(true)
@@ -353,6 +431,56 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                 </div>
               )
             })}
+
+            {processedAddendum && (
+              <div className="detail-output-card">
+                <div className="detail-output-card-head">
+                  <div>
+                    <div className="output-title">
+                      Addendum ke-{processedAddendum.addendum_ke}
+                      {processedAddendum.nomor_addendum ? ` — ${processedAddendum.nomor_addendum}` : ''}
+                    </div>
+                    <div className="output-meta">Diproses admin · unggah dokumen wajib berikut</div>
+                  </div>
+                  <Badge tone="warning">Di Proses</Badge>
+                </div>
+                <div className="stack stack--compact">
+                  {docRegisters.length === 0 ? (
+                    <p className="hint-text">Belum ada nomor dokumen dari admin.</p>
+                  ) : (
+                    docRegisters.map((register) => (
+                      <div key={register.id} className="detail-inline-controls">
+                        <div>
+                          <div className="output-title">{register.description || register.type?.name || 'Dokumen'}</div>
+                          <div className="output-meta">
+                            Nomor: {register.nomor} · {formatDate(register.tanggal)}
+                          </div>
+                        </div>
+                        <label className="neo-button neo-button--neutral neo-button--sm">
+                          <Upload size={14} />
+                          <span>Upload</span>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                            style={{ display: 'none' }}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0]
+                              if (file && register.attachment_type) {
+                                uploadMutation.mutate({
+                                  addendumId: processedAddendum.id,
+                                  type: register.attachment_type,
+                                  file,
+                                })
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </Surface>
       ) : null}
@@ -424,22 +552,35 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                       <Badge tone={statusTone[version.status] || 'neutral'}>{version.status}</Badge>
                     </td>
                     <td>
-                      {addendum && canSubmitAddendum(addendum) ? (
-                        <Button
-                          type="button"
-                          variant="neutral"
-                          size="sm"
-                          isLoading={submitMutation.isPending && submitMutation.variables === addendum.id}
-                          onClick={() => submitMutation.mutate(addendum.id)}
-                        >
-                          <Send size={14} />
-                          Ajukan
-                        </Button>
-                      ) : addendum?.attachments?.length ? (
-                        <span className="hint-text">{addendum.attachments.length} lampiran</span>
-                      ) : (
-                        <span className="hint-text">-</span>
-                      )}
+                      <div className="detail-inline-controls">
+                        {addendum && canSubmitAddendum(addendum) ? (
+                          <Button
+                            type="button"
+                            variant="neutral"
+                            size="sm"
+                            isLoading={submitMutation.isPending && submitMutation.variables === addendum.id}
+                            onClick={() => submitMutation.mutate(addendum.id)}
+                          >
+                            <Send size={14} />
+                            Ajukan
+                          </Button>
+                        ) : addendum?.attachments?.length ? (
+                          <span className="hint-text">{addendum.attachments.length} lampiran</span>
+                        ) : (
+                          <span className="hint-text">-</span>
+                        )}
+                        {addendum?.status === 'ditolak' && (
+                          <Button
+                            type="button"
+                            variant="neutral"
+                            size="sm"
+                            onClick={() => openEdit(addendum)}
+                          >
+                            <FileText size={14} />
+                            Perbaiki
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -512,8 +653,12 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
       <div className="detail-section-full">
         <div className="detail-tab-header">
           <div className="detail-tab-header-left">
-            <h2>Request addendum baru</h2>
-            <p>Buat draft pengajuan beserta 8 lampiran wajib, lalu ajukan ke admin</p>
+            <h2>{editingId ? 'Perbaiki addendum' : 'Request addendum baru'}</h2>
+            <p>
+              {editingId
+                ? 'Perbaiki data addendum yang ditolak, lalu ajukan kembali ke admin'
+                : 'Buat draft pengajuan beserta 8 lampiran wajib, lalu ajukan ke admin'}
+            </p>
           </div>
           <div className="detail-inline-controls">
             <button
@@ -533,7 +678,11 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
             className="neo-form"
             onSubmit={(event) => {
               event.preventDefault()
-              createMutation.mutate()
+              if (editingId) {
+                updateMutation.mutate()
+              } else {
+                createMutation.mutate()
+              }
             }}
           >
             <div className="neo-form-grid">
@@ -685,8 +834,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
             </div>
 
             <div className="neo-form-actions">
-              <Button type="submit" isLoading={createMutation.isPending}>
-                Simpan draft addendum
+              <Button type="submit" isLoading={editingId ? updateMutation.isPending : createMutation.isPending}>
+                {editingId ? 'Simpan perbaikan' : 'Simpan draft addendum'}
               </Button>
               <Button type="button" variant="neutral" onClick={() => setFormOpen(false)}>
                 Batal

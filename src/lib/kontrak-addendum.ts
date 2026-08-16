@@ -45,6 +45,7 @@ export function buildKontrakAddendumFormData(
   formData.append('addendum_ke', String(payload.addendum_ke))
   formData.append('tanggal_addendum', payload.tanggal_addendum)
   formData.append('jenis_addendum', payload.jenis_addendum)
+  if (payload.nomor_addendum) formData.append('nomor_addendum', payload.nomor_addendum)
 
   if (payload.alasan) formData.append('alasan', payload.alasan)
   if (payload.deskripsi_perubahan) formData.append('deskripsi_perubahan', payload.deskripsi_perubahan)
