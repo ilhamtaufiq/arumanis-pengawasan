@@ -67,8 +67,13 @@ export function buildKontrakAddendumFormData(
   for (const [type, input] of Object.entries(attachments) as Array<[KontrakAddendumAttachmentType, AddendumAttachmentInput]>) {
     if (input?.file) {
       formData.append(`attachments[${type}]`, input.file)
-      if (input.nomor) formData.append(`attachment_nomor[${type}]`, input.nomor)
-      if (input.tanggal) formData.append(`attachment_tanggal[${type}]`, input.tanggal)
+    }
+    // Kirim nomor dan tanggal berkas walaupun filenya belum diunggah, agar backend tahu sequence nomornya
+    if (input?.nomor) {
+      formData.append(`attachment_nomor[${type}]`, input.nomor)
+    }
+    if (input?.tanggal) {
+      formData.append(`attachment_tanggal[${type}]`, input.tanggal)
     }
   }
 
