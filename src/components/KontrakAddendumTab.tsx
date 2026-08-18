@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ChevronDown, ExternalLink, FileText, Send, Upload } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ExternalLink, FileText, Send, Trash2, Upload, Wand2 } from 'lucide-react'
 import {
   createKontrakAddendum,
   formatApiError,
+  generateAddendumNumbers,
   getDocumentRegistersByAddendum,
   getKontrakAddendumRegisterGaps,
   getKontrakDetail,
   submitKontrakAddendum,
+  deleteKontrakAddendum,
   updateKontrakAddendum,
   uploadKontrakAddendum,
 } from '@/lib/api'
@@ -161,6 +163,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
   const [form, setForm] = useState<KontrakAddendumPayload | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [attachments, setAttachments] = useState(emptyAttachments())
+  const [generatedNumbers, setGeneratedNumbers] = useState<string[]>([])
+  const [generateError, setGenerateError] = useState<string | null>(null)
 
   const kontrakQuery = useQuery({
     queryKey: ['kontrak', 'detail', kontrakId],
@@ -249,6 +253,16 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     onError: (error) => setFormError(formatApiError(error, 'Gagal mengajukan addendum.')),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (addendumId: number) => deleteKontrakAddendum(addendumId),
+    onSuccess: () => {
+      setActionMessage('Addendum berhasil dihapus.')
+      setFormError(null)
+      invalidate()
+    },
+    onError: (error) => setFormError(formatApiError(error, 'Gagal menghapus addendum.')),
+  })
+
   const processedAddendum = addendums.find((item) => item.status === 'diproses')
 
   const registersQuery = useQuery({
@@ -268,6 +282,42 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
     },
     onError: (error) => setFormError(formatApiError(error, 'Gagal mengunggah dokumen.')),
   })
+
+  // Jumlah nomor = 1 nomor addendum + 8 lampiran wajib.
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!kontrak) throw new Error('Data kontrak belum siap.')
+      const tanggal = form?.tanggal_addendum || new Date().toISOString().slice(0, 10)
+      return generateAddendumNumbers(kontrak.id, {
+        tanggal,
+        count: 1 + Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES).length,
+      })
+    },
+    onSuccess: (result) => {
+      setGeneratedNumbers(result.numbers)
+      setGenerateError(null)
+      setActionMessage('Nomor berhasil di-generate. Lengkapi scan berkas lalu simpan draft.')
+    },
+    onError: (error) => setGenerateError(formatApiError(error, 'Gagal generate nomor.')),
+  })
+
+  // Isi otomatis nomor_addendum + field nomor tiap lampiran dari hasil generate.
+  useEffect(() => {
+    const nomorAddendum = generatedNumbers[0]
+    if (!nomorAddendum) return
+    setForm((current) =>
+      current ? { ...current, nomor_addendum: nomorAddendum } : current,
+    )
+    const types = Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[]
+    setAttachments((current) => {
+      const next = { ...current }
+      types.forEach((type, i) => {
+        const num = generatedNumbers[i + 1]
+        if (num) next[type] = { ...next[type]!, nomor: num }
+      })
+      return next
+    })
+  }, [generatedNumbers])
 
   const openForm = (gap?: KontrakAddendumRegisterGap) => {
     if (!kontrak) return
@@ -290,6 +340,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
         : baseForm,
     )
     setAttachments(emptyAttachments())
+    setGeneratedNumbers([])
+    setGenerateError(null)
     setFormError(null)
     setFormOpen(true)
   }
@@ -591,6 +643,22 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                             Perbaiki
                           </Button>
                         )}
+                        {addendum && addendum.status !== 'disetujui' && (
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
+                            isLoading={deleteMutation.isPending && deleteMutation.variables === addendum.id}
+                            onClick={() => {
+                              if (window.confirm('Yakin ingin menghapus pengajuan addendum ini? Data lampiran dan draft akan hilang.')) {
+                                deleteMutation.mutate(addendum.id)
+                              }
+                            }}
+                          >
+                            <Trash2 size={14} />
+                            Hapus
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -813,6 +881,53 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                 placeholder="Rincikan perubahan teknis, biaya, atau waktu"
               />
             </FieldGroup>
+
+            <div className="detail-tab-header">
+              <div className="detail-tab-header-left">
+                <h2>
+                  <Wand2 size={16} /> Generate nomor
+                </h2>
+                <p>
+                  Nomor addendum dibuat otomatis dari sequence register dokumen (tipe ADD/Addendum).
+                  Berkas lampiran menggunakan nomor addendum tersebut sebagai prefix.
+                </p>
+              </div>
+            </div>
+
+            <div className="neo-form-actions">
+              <Button
+                type="button"
+                size="sm"
+                isLoading={generateMutation.isPending}
+                disabled={!form?.tanggal_addendum}
+                onClick={() => generateMutation.mutate()}
+              >
+                <Wand2 size={14} />
+                <span>Generate {1 + Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES).length} nomor</span>
+              </Button>
+              {!form?.tanggal_addendum && (
+                <span className="hint-text">Isi tanggal addendum terlebih dahulu</span>
+              )}
+            </div>
+
+            {generateError ? (
+              <div className="form-error" role="alert">
+                {generateError}
+              </div>
+            ) : null}
+
+            {generatedNumbers.length > 0 ? (
+              <ul className="stack stack--compact">
+                <li className="hint-text">
+                  <strong>Nomor addendum:</strong> {generatedNumbers[0]}
+                </li>
+                {(Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[]).map((type, i) => (
+                  <li key={type} className="hint-text">
+                    <strong>{KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type]}:</strong> {generatedNumbers[i + 1]}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
             <div className="detail-tab-header">
               <div className="detail-tab-header-left">

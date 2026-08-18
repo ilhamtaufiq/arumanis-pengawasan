@@ -83,6 +83,8 @@ export const {
   createKontrakAddendum,
   updateKontrakAddendum,
   submitKontrakAddendum,
+  deleteKontrakAddendum,
   getDocumentRegistersByAddendum,
   uploadKontrakAddendum,
+  generateAddendumNumbers,
 } = client

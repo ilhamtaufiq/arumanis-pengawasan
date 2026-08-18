@@ -463,6 +463,17 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<DocumentRegister[]>(payload)
     },
 
+    async generateAddendumNumbers(kontrakId: number | string, input: { tanggal: string; count: number }) {
+      const payload = await requestApi<ApiEnvelope<{ numbers: string[] }> | { numbers: string[] }>(
+        `/kontrak/${kontrakId}/addendum-numbers`,
+        { method: 'POST', body: JSON.stringify(input) },
+      )
+      if (payload && typeof payload === 'object' && 'numbers' in payload) {
+        return payload as { numbers: string[] }
+      }
+      return unwrapEntity<{ numbers: string[] }>(payload)
+    },
+
     async uploadKontrakAddendum(addendumId: number | string, type: string, file: File) {
       const formData = new FormData()
       formData.append('type', type)
@@ -481,6 +492,12 @@ export function createApiClient(config: ApiClientConfig) {
       })
 
       return unwrapEntity<KontrakAddendum>(payload)
+    },
+
+    async deleteKontrakAddendum(addendumId: number | string) {
+      await requestApi(`/kontrak-addendums/${addendumId}`, {
+        method: 'DELETE',
+      })
     },
 
     /**
