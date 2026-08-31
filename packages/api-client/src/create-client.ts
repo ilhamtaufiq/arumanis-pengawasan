@@ -474,10 +474,12 @@ export function createApiClient(config: ApiClientConfig) {
       return unwrapEntity<{ numbers: string[] }>(payload)
     },
 
-    async uploadKontrakAddendum(addendumId: number | string, type: string, file: File) {
+    async uploadKontrakAddendum(addendumId: number | string, type: string, file: File, meta?: { nomor?: string | undefined; tanggal?: string | undefined }) {
       const formData = new FormData()
       formData.append('type', type)
       formData.append('file', file)
+      if (meta?.nomor != null) formData.append('nomor', meta.nomor)
+      if (meta?.tanggal != null) formData.append('tanggal', meta.tanggal)
       const payload = await requestApi<ApiEnvelope<KontrakAddendum>>(`/kontrak-addendums/${addendumId}/upload`, {
         method: 'POST',
         body: formData,

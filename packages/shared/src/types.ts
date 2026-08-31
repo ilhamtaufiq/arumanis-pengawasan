@@ -422,7 +422,14 @@ export type KontrakAddendumAttachment = {
   type: string
   document_type?: string | null
   label?: string | null
+  nomor?: string | null
+  tanggal?: string | null
   size: number
+}
+
+export type KontrakAddendumAttachmentNomor = {
+  nomor: string
+  tanggal?: string | null
 }
 
 export type KontrakAddendum = {
@@ -430,6 +437,7 @@ export type KontrakAddendum = {
   kontrak_id: number
   addendum_ke: number
   nomor_addendum: string | null
+  attachment_nomors?: Partial<Record<KontrakAddendumAttachmentType, KontrakAddendumAttachmentNomor>> | null
   tanggal_addendum: string
   jenis_addendum: KontrakAddendumJenis
   alasan: string | null

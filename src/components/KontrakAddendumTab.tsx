@@ -165,6 +165,9 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
   const [attachments, setAttachments] = useState(emptyAttachments())
   const [generatedNumbers, setGeneratedNumbers] = useState<string[]>([])
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [expandedNumbersId, setExpandedNumbersId] = useState<string | null>(null)
+  const [uploadTargetId, setUploadTargetId] = useState<number | null>(null)
+  const [uploadMeta, setUploadMeta] = useState<Record<string, { nomor?: string; tanggal?: string }>>({})
 
   const kontrakQuery = useQuery({
     queryKey: ['kontrak', 'detail', kontrakId],
@@ -273,8 +276,8 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
   const docRegisters = registersQuery.data ?? []
 
   const uploadMutation = useMutation({
-    mutationFn: ({ addendumId, type, file }: { addendumId: number; type: string; file: File }) =>
-      uploadKontrakAddendum(addendumId, type, file),
+    mutationFn: ({ addendumId, type, file, nomor, tanggal }: { addendumId: number; type: string; file: File; nomor?: string | undefined; tanggal?: string | undefined }) =>
+      uploadKontrakAddendum(addendumId, type, file, { nomor, tanggal }),
     onSuccess: () => {
       setActionMessage('Dokumen berhasil diunggah.')
       invalidate()
@@ -604,8 +607,39 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                     ? `addendum-${version.id}`
                     : 'utama'
 
+                // Nomor lampiran: dari media terupload, fallback ke attachment_nomors
+                // (generate nomor tanpa file — file menyusul).
+                const numberedAttachments: Array<{ key: string; label: string; nomor: string; tanggal: string | null | undefined }> = [
+                  ...(addendum?.attachments ?? [])
+                    .filter((attachment) => attachment.nomor)
+                    .map((attachment) => ({
+                      key: `media-${attachment.id}`,
+                      label:
+                        attachment.label ||
+                        (attachment.document_type
+                          ? KONTRAK_ADDENDUM_ATTACHMENT_TYPES[attachment.document_type as KontrakAddendumAttachmentType]
+                          : null) ||
+                        attachment.name,
+                      nomor: attachment.nomor as string,
+                      tanggal: attachment.tanggal,
+                    })),
+                  ...Object.entries(addendum?.attachment_nomors ?? {})
+                    .filter(([type, entry]) => entry?.nomor && !(addendum?.attachments ?? []).some((a) => a.document_type === type && a.nomor))
+                    .map(([type, entry]) => ({
+                      key: `nomors-${type}`,
+                      label: KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type as KontrakAddendumAttachmentType] ?? type,
+                      nomor: entry!.nomor,
+                      tanggal: entry!.tanggal,
+                    })),
+                ]
+
+                // Dokumen wajib yang belum diupload (file fisik).
+                const missingTypes = (Object.keys(KONTRAK_ADDENDUM_ATTACHMENT_TYPES) as KontrakAddendumAttachmentType[])
+                  .filter((type) => !(addendum?.attachments ?? []).some((a) => a.document_type === type))
+
                 return (
-                  <tr key={versionKey}>
+                  <>
+                    <tr key={versionKey}>
                     <td>{version.label}</td>
                     <td>{version.nomor || '-'}</td>
                     <td>{formatDate(version.tanggal)}</td>
@@ -616,6 +650,25 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                     </td>
                     <td>
                       <div className="detail-inline-controls">
+                        {numberedAttachments.length > 0 && (
+                          <button
+                            type="button"
+                            className="neo-chip"
+                            aria-expanded={expandedNumbersId === versionKey}
+                            title="Lihat nomor dokumen"
+                            onClick={() =>
+                              setExpandedNumbersId((current) => (current === versionKey ? null : versionKey))
+                            }
+                          >
+                            <ChevronDown
+                              size={12}
+                              style={{
+                                transform: expandedNumbersId === versionKey ? 'rotate(180deg)' : undefined,
+                              }}
+                            />
+                            <span>{numberedAttachments.length} nomor</span>
+                          </button>
+                        )}
                         {addendum && canSubmitAddendum(addendum) ? (
                           <Button
                             type="button"
@@ -643,6 +696,20 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                             Perbaiki
                           </Button>
                         )}
+                        {addendum && missingTypes.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="neutral"
+                            size="sm"
+                            aria-expanded={uploadTargetId === addendum.id}
+                            onClick={() =>
+                              setUploadTargetId((current) => (current === addendum.id ? null : addendum.id))
+                            }
+                          >
+                            <Upload size={14} />
+                            Lengkapi dokumen ({missingTypes.length})
+                          </Button>
+                        )}
                         {addendum && addendum.status !== 'disetujui' && (
                           <Button
                             type="button"
@@ -662,6 +729,88 @@ export function KontrakAddendumTab({ pekerjaanId, kontrakId }: KontrakAddendumTa
                       </div>
                     </td>
                   </tr>
+                  {expandedNumbersId === versionKey && numberedAttachments.length > 0 && (
+                    <tr key={`${versionKey}-numbers`}>
+                      <td colSpan={7}>
+                        <ul className="stack stack--compact hint-text">
+                          {numberedAttachments.map((attachment) => (
+                            <li key={attachment.key}>
+                              <strong>{attachment.label}:</strong> {attachment.nomor}
+                              {attachment.tanggal ? ` · ${formatDate(attachment.tanggal)}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                  {uploadTargetId === addendum?.id && missingTypes.length > 0 && (
+                    <tr key={`${versionKey}-uploads`}>
+                      <td colSpan={7}>
+                        <div className="stack stack--compact">
+                          <p className="hint-text">
+                            Unggah dokumen yang belum ada. Nomor & tanggal terisi otomatis dari generate nomor.
+                          </p>
+                          {missingTypes.map((type) => (
+                            <div key={type} className="attach-row">
+                              <div className="attach-row-head">
+                                <Label className="field-group-label">{KONTRAK_ADDENDUM_ATTACHMENT_TYPES[type]}</Label>
+                                {type === 'cco' ? <span className="hint-text">PDF, XLS, atau XLSX</span> : <span className="hint-text">PDF</span>}
+                              </div>
+                              <div className="attach-row-fields">
+                                <Input
+                                  type="file"
+                                  accept={type === 'cco' ? '.pdf,.xls,.xlsx' : '.pdf'}
+                                  className="attach-file"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0]
+                                    if (file) {
+                                      const nomorVal = uploadMeta[`${addendum!.id}:${type}`]?.nomor ?? addendum?.attachment_nomors?.[type]?.nomor
+                                      const tanggalVal = uploadMeta[`${addendum!.id}:${type}`]?.tanggal ?? addendum?.attachment_nomors?.[type]?.tanggal
+                                      uploadMutation.mutate({
+                                        addendumId: addendum!.id,
+                                        type,
+                                        file,
+                                        nomor: nomorVal || undefined,
+                                        tanggal: tanggalVal || undefined,
+                                      })
+                                      event.target.value = ''
+                                    }
+                                  }}
+                                />
+                                <Input
+                                  placeholder="Nomor dokumen"
+                                  value={uploadMeta[`${addendum!.id}:${type}`]?.nomor ?? addendum?.attachment_nomors?.[type]?.nomor ?? ''}
+                                  onChange={(event) =>
+                                    setUploadMeta((current) => ({
+                                      ...current,
+                                      [`${addendum!.id}:${type}`]: {
+                                        ...current[`${addendum!.id}:${type}`],
+                                        nomor: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                                <Input
+                                  type="date"
+                                  value={uploadMeta[`${addendum!.id}:${type}`]?.tanggal ?? addendum?.attachment_nomors?.[type]?.tanggal ?? ''}
+                                  onChange={(event) =>
+                                    setUploadMeta((current) => ({
+                                      ...current,
+                                      [`${addendum!.id}:${type}`]: {
+                                        ...current[`${addendum!.id}:${type}`],
+                                        tanggal: event.target.value,
+                                      },
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </>
                 )
               })}
             </tbody>
