@@ -4,6 +4,7 @@ import {
   getSsoTokenFromSearch,
   isSsoBootstrapPath,
   normalizeBearerToken,
+  resolveLoginRedirectTarget,
   resolveRootRedirectLocation,
   sanitizeLocationUrl,
   stripSsoTokenFromPath,
@@ -25,6 +26,26 @@ describe('sso-token helpers', () => {
   it('builds pengawas public path without sso token params', () => {
     expect(getPengawasPublicPath('/pekerjaan', '?token=abc&foo=1')).toBe('/pekerjaan?foo=1')
     expect(getPengawasPublicPath('/')).toBe('/')
+  })
+
+  it('keeps public path idempotent when base prefix already present', () => {
+    // window.location.pathname sudah mengandung base — jangan dobel prefix.
+    expect(getPengawasPublicPath('/pengawasan/pekerjaan')).toBe('/pengawasan/pekerjaan')
+  })
+
+  it('resolves login redirect target inside router basename', () => {
+    // Full public path dari issuer dikupas ke path relatif router.
+    expect(resolveLoginRedirectTarget('/pengawasan/pekerjaan/5', '/pengawasan')).toBe('/pekerjaan/5')
+    expect(resolveLoginRedirectTarget('/pengawasan', '/pengawasan')).toBe('/')
+    expect(resolveLoginRedirectTarget('/pekerjaan/5', '/pengawasan')).toBe('/pekerjaan/5')
+    expect(resolveLoginRedirectTarget('/', '/pengawasan')).toBe('/')
+    // Tolak open-redirect dan input aneh.
+    expect(resolveLoginRedirectTarget('https://evil.test/x', '/pengawasan')).toBe('/')
+    expect(resolveLoginRedirectTarget('//evil.test/x', '/pengawasan')).toBe('/')
+    expect(resolveLoginRedirectTarget('', '/pengawasan')).toBe('/')
+    expect(resolveLoginRedirectTarget(null, '/pengawasan')).toBe('/')
+    // Deploy root: tanpa pengupasan.
+    expect(resolveLoginRedirectTarget('/pekerjaan/5', '/')).toBe('/pekerjaan/5')
   })
 
   it('detects sso bootstrap paths', () => {

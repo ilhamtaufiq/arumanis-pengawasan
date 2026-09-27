@@ -136,23 +136,61 @@ export function normalizeBearerToken(value: string): string {
   return trimmed
 }
 
+export function getMainAppBaseUrl(): string {
+  const fromEnv = (import.meta.env.VITE_MAIN_APP_URL as string | undefined)?.trim().replace(/\/+$/, '')
+  if (fromEnv) return fromEnv
+  return window.location.origin
+}
+
 export function getMainAppDashboardUrl(): string {
-  return new URL('/dashboard', window.location.origin).toString()
+  return new URL('/dashboard', getMainAppBaseUrl()).toString()
 }
 
 export function getPengawasPublicPath(pathname: string, search = ''): string {
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '')
   const cleanPath = stripSsoTokenFromPath(`${pathname}${search}`)
 
-  if (base && base !== '/') {
-    return `${base}${cleanPath}` || base
+  if (!base || base === '/') {
+    return cleanPath || '/'
   }
 
-  return cleanPath || '/'
+  // Idempoten: pathname dari window.location sudah mengandung base,
+  // sedangkan pathname router sudah dikupas basename-nya.
+  if (cleanPath === base || cleanPath.startsWith(`${base}/`)) {
+    return cleanPath || base
+  }
+
+  return `${base}${cleanPath}` || base
+}
+
+/**
+ * Target navigasi pasca-login di dalam router (relatif terhadap basename).
+ * Menolak open-redirect (hanya path absolut lokal) dan mengupas prefix
+ * base publik bila issuer mengirim full public path
+ * (mis. /pengawasan/pekerjaan/5 -> /pekerjaan/5).
+ */
+export function resolveLoginRedirectTarget(
+  target: string | null | undefined,
+  base: string = (import.meta.env.BASE_URL || '/').replace(/\/$/, ''),
+): string {
+  if (!target) {
+    return '/'
+  }
+
+  if (!target.startsWith('/') || target.startsWith('//')) {
+    return '/'
+  }
+
+  if (base && base !== '/' && (target === base || target.startsWith(`${base}/`))) {
+    const stripped = target.slice(base.length) || '/'
+    return stripped.startsWith('/') ? stripped : `/${stripped}`
+  }
+
+  return target
 }
 
 export function getMainAppSignInUrl(redirectPath?: string): string {
-  const url = new URL('/sign-in', window.location.origin)
+  const url = new URL('/sign-in', getMainAppBaseUrl())
 
   if (redirectPath) {
     url.searchParams.set('redirect', redirectPath)

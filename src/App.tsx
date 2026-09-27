@@ -77,7 +77,11 @@ function ProtectedRoute() {
     retry: false,
   })
 
-  const needsAuthRedirect = !query.isLoading && (query.isError || !query.data)
+  // Saat cache me menyimpan error lama, mount langsung memicu refetch.
+  // Jangan redirect sebelum refetch itu selesai — kalau tidak, login ulang
+  // yang cookie-nya sudah valid akan mental balik ke sign-in (race bug).
+  const authResolving = query.isLoading || (query.isFetching && (query.isError || !query.data))
+  const needsAuthRedirect = !authResolving && (query.isError || !query.data)
   const hasSsoBootstrap = Boolean(
     getSsoTokenFromSearch(location.search) || getHandoffCodeFromSearch(location.search),
   )

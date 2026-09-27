@@ -4,7 +4,8 @@ import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { resolveRootRedirectLocation } from './src/lib/sso-token'
 
-const PUBLIC_BASE = '/pengawasan'
+const PUBLIC_BASE = (process.env.APP_PUBLIC_BASE_PATH ?? '/pengawasan').replace(/\/$/, '') || '/'
+const PUBLIC_BASE_PATH = PUBLIC_BASE === '/' ? '/' : `${PUBLIC_BASE}/`
 const appVersion = process.env.npm_package_version || '1.0.0'
 const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 const builtAt = new Date().toISOString()
@@ -31,14 +32,15 @@ function redirectRootToBase(): Plugin {
 }
 
 export default defineConfig({
-  base: `${PUBLIC_BASE}/`,
+  base: PUBLIC_BASE_PATH,
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __APP_BUILD_ID__: JSON.stringify(buildId),
   },
   plugins: [
     react(),
-    redirectRootToBase(),
+    // No root redirect when serving from domain root (PUBLIC_BASE '/').
+    ...(PUBLIC_BASE === '/' ? [] : [redirectRootToBase()]),
     {
       name: 'generate-version-json',
       transformIndexHtml(html) {
@@ -96,7 +98,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
-    open: `${PUBLIC_BASE}/`,
+    open: PUBLIC_BASE_PATH,
     proxy: {
       '/pengawasan/bff': {
         target: 'http://127.0.0.1:3001',

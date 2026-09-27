@@ -217,6 +217,31 @@ export function DashboardPage() {
         )}
       </div>
 
+      {perhatianList.length ? (
+        <Surface className="panel">
+          <SectionHeader title="Paket perlu perhatian" description="Paket berikut belum lengkap atau memiliki deviasi." />
+          <div className="summary-list">
+            {perhatianList.slice(0, 8).map((entry) => (
+              <div key={entry.item.id} className="summary-row summary-row--wrap">
+                <div className="summary-row-copy">
+                  <strong>{entry.item.nama_paket}</strong>
+                  <span>{formatPekerjaanLokasi(entry.item)}</span>
+                </div>
+                  <div className="dashboard-issues">
+                    {getEstimasiFisik(entry.item) <= 0 ? <Badge tone="warning">Fisik</Badge> : null}
+                    {getEstimasiKeuangan(entry.item) <= 0 ? <Badge tone="warning">Keuangan</Badge> : null}
+                    {Math.abs(entry.deviasi) > 0.01 ? (
+                      <Badge tone={entry.deviasi < 0 ? 'danger' : 'success'}>Deviasi {formatPercent(entry.deviasi)}</Badge>
+                    ) : null}
+                  {entry.fotoStatus === 'belum_ada_foto' ? <Badge tone="warning">Belum ada foto</Badge> : null}
+                  {entry.fotoStatus === 'belum_selesai' ? <Badge tone="danger">Belum Selesai</Badge> : null}
+                  </div>
+                </div>
+            ))}
+          </div>
+        </Surface>
+      ) : null}
+
       <Surface className="panel">
         <SectionHeader
           title="Pekerjaan yang diawas"
@@ -275,7 +300,12 @@ export function DashboardPage() {
                       </td>
                       <td data-label="Fisik">
                         {progressFisik > 0 ? (
-                          <Badge tone="success">{formatPercent(progressFisik)}</Badge>
+                          <div className="progress-inline">
+                            <div className="progress-track" title={`Fisik: ${formatPercent(progressFisik)}`}>
+                              <div className="progress-fill" style={{ width: `${Math.min(100, Math.max(0, progressFisik))}%` }} />
+                            </div>
+                            <Badge tone="success">{formatPercent(progressFisik)}</Badge>
+                          </div>
                         ) : (
                           <Badge tone="warning">Belum diisi</Badge>
                         )}
@@ -338,30 +368,7 @@ export function DashboardPage() {
         )}
       </Surface>
 
-      {perhatianList.length ? (
-        <Surface className="panel">
-          <SectionHeader title="Paket perlu perhatian" description="Paket berikut belum lengkap atau memiliki deviasi." />
-          <div className="summary-list">
-            {perhatianList.slice(0, 8).map((entry) => (
-              <div key={entry.item.id} className="summary-row summary-row--wrap">
-                <div className="summary-row-copy">
-                  <strong>{entry.item.nama_paket}</strong>
-                  <span>{formatPekerjaanLokasi(entry.item)}</span>
-                </div>
-                  <div className="dashboard-issues">
-                    {getEstimasiFisik(entry.item) <= 0 ? <Badge tone="warning">Fisik</Badge> : null}
-                    {getEstimasiKeuangan(entry.item) <= 0 ? <Badge tone="warning">Keuangan</Badge> : null}
-                    {Math.abs(entry.deviasi) > 0.01 ? (
-                      <Badge tone={entry.deviasi < 0 ? 'danger' : 'success'}>Deviasi {formatPercent(entry.deviasi)}</Badge>
-                    ) : null}
-                  {entry.fotoStatus === 'belum_ada_foto' ? <Badge tone="warning">Belum ada foto</Badge> : null}
-                  {entry.fotoStatus === 'belum_selesai' ? <Badge tone="danger">Belum Selesai</Badge> : null}
-                  </div>
-                </div>
-            ))}
-          </div>
-        </Surface>
-      ) : null}
+
     </div>
   )
 }

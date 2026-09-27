@@ -43,7 +43,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary>
-        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/pengawasan'}>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
           <VisitorAnalytics />
           <App />
           <AppUpdateOverlay />

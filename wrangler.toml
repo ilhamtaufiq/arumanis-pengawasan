@@ -1,0 +1,20 @@
+name = "pengawas-bff"
+main = "worker.ts"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[vars]
+# Domain root (Custom Domain pengawasan.arumanis.cianjur.space).
+APP_PUBLIC_BASE_PATH = "/"
+SESSION_COOKIE_NAME = "pengawas_session"
+SESSION_COOKIE_PATH = "/"
+SESSION_COOKIE_SECURE = "true"
+BUN_ENV = "production"
+# Set at deploy time: wrangler deploy --var APIAMIS_BASE_URL:https://apiamis.cianjur.space/api
+# or via `wrangler secret put` / dashboard vars.
+APIAMIS_BASE_URL = "https://apiamis.cianjur.space/api"

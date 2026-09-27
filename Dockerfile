@@ -22,7 +22,7 @@ WORKDIR /app
 ARG APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
 ARG VITE_UMAMI_SCRIPT_URL=https://umami-cvkpzrlvpd23hquu71dt6s05.cianjur.space/script.js
 ARG VITE_UMAMI_WEBSITE_ID=cb0064bf-1fd5-4b32-811b-14d8694d135c
-ARG VITE_UMAMI_DOMAINS=arumanis.cianjur.space
+ARG VITE_UMAMI_DOMAINS=arumanis.cianjur.space,pengawasan.arumanis.cianjur.space
 ARG VITE_REVERB_HOST=apiamis.cianjur.space
 ARG VITE_REVERB_PORT=443
 ARG VITE_REVERB_SCHEME=https
