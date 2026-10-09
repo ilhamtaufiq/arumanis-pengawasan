@@ -1,10 +1,22 @@
-import { syncAuthToken } from '@/lib/api'
-import { getMainAppDashboardUrl, normalizeBearerToken } from '@/lib/sso-token'
+import { ApiError, me, requestJson, unwrapEntity } from '@/lib/api'
+import type { AuthUser } from '@pengawas/shared'
+import { getMainAppDashboardUrl } from '@/lib/sso-token'
 
-const ACCESS_TOKEN_COOKIE = 'thisisjustarandomstring'
-const USER_DATA_COOKIE = 'auth_user_data'
-const IMPERSONATOR_COOKIE = 'auth_impersonator_data'
+/**
+ * Impersonasi: token TIDAK PERNAH disimpan di sisi frontend.
+ * APIAMIS men-set cookie httpOnly `arumanis_token` (target) dan `arumanis_impersonator` (admin).
+ * Frontend hanya menyimpan data tampilan (id, nama, email, role) untuk banner.
+ */
+
+/** Cookie data tampilan saja. Tidak boleh berisi token apa pun. */
+const DISPLAY_COOKIE = 'pengawas_impersonation_display'
 const DEFAULT_MAX_AGE = 60 * 60 * 24 * 7
+
+const IMPERSONATE_START_PATH = (userId: number) => `/auth/impersonate/${userId}`
+const IMPERSONATE_STOP_PATH = '/auth/impersonate/stop'
+
+/** Nama cookie lama yang menyimpan token di JavaScript. Dihapus agar tidak ada sisa token. */
+const LEGACY_TOKEN_COOKIES = ['thisisjustarandomstring', 'auth_impersonator_data', 'auth_user_data'] as const
 
 const COOKIE_PATH = (() => {
   try {
@@ -16,16 +28,20 @@ const COOKIE_PATH = (() => {
   }
 })()
 
-type ImpersonatorUser = {
+export type ImpersonationDisplayUser = {
   id: number
   name: string
   email: string
-  roles?: string[] | Array<{ name: string }>
+  role: string | null
 }
 
-type ImpersonatorState = {
-  user: ImpersonatorUser
-  token: string
+type ImpersonationDisplayState = {
+  impersonated: ImpersonationDisplayUser
+  impersonator: ImpersonationDisplayUser
+}
+
+function cookiePath(): string {
+  return COOKIE_PATH === '/' ? 'path=/' : `path=${COOKIE_PATH}`
 }
 
 function getCookie(name: string): string | undefined {
@@ -42,57 +58,104 @@ function getCookie(name: string): string | undefined {
 
 function setCookie(name: string, value: string, maxAge = DEFAULT_MAX_AGE) {
   if (typeof document === 'undefined') return
-  const pathPart = COOKIE_PATH === '/' ? 'path=/' : `path=${COOKIE_PATH}`
-  document.cookie = `${name}=${value}; ${pathPart}; max-age=${maxAge}`
+  document.cookie = `${name}=${encodeURIComponent(value)}; ${cookiePath()}; max-age=${maxAge}; SameSite=Lax`
 }
 
-function removeCookie(name: string) {
+function removeCookie(name: string, path = cookiePath()) {
   if (typeof document === 'undefined') return
-  const pathPart = COOKIE_PATH === '/' ? 'path=/' : `path=${COOKIE_PATH}`
-  document.cookie = `${name}=; ${pathPart}; max-age=0`
+  document.cookie = `${name}=; ${path}; max-age=0`
 }
 
-function parseJsonCookie<T>(name: string): T | null {
-  const raw = getCookie(name)
+/** Hapus cookie token lama (jika ada dari versi sebelumnya) di path yang mungkin dipakai. */
+function purgeLegacyTokenCookies() {
+  if (typeof document === 'undefined') return
+  for (const name of LEGACY_TOKEN_COOKIES) {
+    removeCookie(name, cookiePath())
+    removeCookie(name, 'path=/')
+  }
+}
+
+// Dijalankan sekali saat modul dimuat. Aman jika cookie tidak ada.
+purgeLegacyTokenCookies()
+
+function toDisplayUser(user: AuthUser): ImpersonationDisplayUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.roles?.[0]?.name ?? null,
+  }
+}
+
+function isDisplayUser(value: unknown): value is ImpersonationDisplayUser {
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  return typeof record.id === 'number' && typeof record.name === 'string' && typeof record.email === 'string'
+}
+
+function readDisplayState(): ImpersonationDisplayState | null {
+  const raw = getCookie(DISPLAY_COOKIE)
   if (!raw) return null
 
   try {
-    return JSON.parse(raw) as T
+    const parsed = JSON.parse(decodeURIComponent(raw)) as Partial<ImpersonationDisplayState>
+    if (!isDisplayUser(parsed.impersonated) || !isDisplayUser(parsed.impersonator)) return null
+    return parsed as ImpersonationDisplayState
   } catch {
     return null
   }
 }
 
-export function getImpersonatorState(): ImpersonatorState | null {
-  const state = parseJsonCookie<ImpersonatorState>(IMPERSONATOR_COOKIE)
-  if (!state?.user || !state.token) return null
-  return state
+/** Data admin asli (yang melakukan impersonasi), hanya untuk tampilan. */
+export function getImpersonatorState(): { user: ImpersonationDisplayUser } | null {
+  const state = readDisplayState()
+  if (!state) return null
+  return { user: state.impersonator }
 }
 
-export function getImpersonatedUser(): ImpersonatorUser | null {
-  return parseJsonCookie<ImpersonatorUser>(USER_DATA_COOKIE)
+/** Data pengguna yang sedang diimpersonasi, hanya untuk tampilan. */
+export function getImpersonatedUser(): ImpersonationDisplayUser | null {
+  return readDisplayState()?.impersonated ?? null
 }
 
 export function isImpersonating(): boolean {
   return getImpersonatorState() !== null
 }
 
-export async function stopImpersonating(): Promise<boolean> {
-  const impersonator = getImpersonatorState()
-  if (!impersonator) return false
+/**
+ * Mulai impersonasi. Backend men-set cookie httpOnly; frontend hanya menyimpan data tampilan.
+ */
+export async function startImpersonating(userId: number): Promise<void> {
+  // Ambil admin yang sedang login sebelum berpindah sesi, untuk ditampilkan di banner.
+  const admin = await me()
 
-  const adminToken = normalizeBearerToken(impersonator.token)
+  const payload = await requestJson<unknown>(IMPERSONATE_START_PATH(userId), { method: 'POST' })
+  const target = unwrapEntity<AuthUser>(payload)
+
+  const state: ImpersonationDisplayState = {
+    impersonated: toDisplayUser(target),
+    impersonator: toDisplayUser(admin),
+  }
+  setCookie(DISPLAY_COOKIE, JSON.stringify(state))
+}
+
+/**
+ * Berhenti impersonasi. Backend memulihkan token admin ke cookie httpOnly.
+ * Return false bila backend masih menganggap sesi impersonasi aktif (banner tetap tampil).
+ */
+export async function stopImpersonating(): Promise<boolean> {
+  if (!isImpersonating()) return false
 
   try {
-    await syncAuthToken(adminToken)
-  } catch {
-    // Continue restoring client cookies even if the APIAMIS sync fails.
+    await requestJson<unknown>(IMPERSONATE_STOP_PATH, { method: 'POST' })
+  } catch (error) {
+    // 4xx berarti backend tidak punya sesi impersonasi untuk dihentikan (mis. cookie sudah habis),
+    // jadi data tampilan dibersihkan agar banner tidak macet. Error lain (jaringan/5xx) tetap dipertahankan.
+    const isClientError = error instanceof ApiError && error.status >= 400 && error.status < 500
+    if (!isClientError) return false
   }
 
-  setCookie(USER_DATA_COOKIE, JSON.stringify(impersonator.user))
-  setCookie(ACCESS_TOKEN_COOKIE, JSON.stringify(adminToken))
-  removeCookie(IMPERSONATOR_COOKIE)
-
+  removeCookie(DISPLAY_COOKIE)
   window.location.replace(getMainAppDashboardUrl())
   return true
 }
