@@ -1,4 +1,5 @@
 import { createApiClient, createHttpTransport, type RequestOptions } from '@pengawas/api-client'
+import { APIAMIS_BASE_URL } from '@/lib/config'
 
 export {
   ApiError,
@@ -10,21 +11,18 @@ export {
   type RequestOptions,
 } from '@pengawas/api-client'
 
-const BASE = import.meta.env.BASE_URL
-
 const webApiConfig = {
-  apiPrefix: `${BASE}bff/api`,
-  bffPrefix: `${BASE}bff`,
+  apiPrefix: APIAMIS_BASE_URL,
   credentials: 'include' as RequestCredentials,
   logger: {
-    request(scope: 'api' | 'bff', url: string, method: string) {
-      console.log(`[pengawas ${scope}] request`, { url, method })
+    request(url: string, method: string) {
+      console.log('[pengawas api] request', { url, method })
     },
-    response(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
-      console.log(`[pengawas ${scope}] response`, { url, status, payload })
+    response(url: string, status: number, payload: unknown) {
+      console.log('[pengawas api] response', { url, status, payload })
     },
-    error(scope: 'api' | 'bff', url: string, status: number, payload: unknown) {
-      console.error(`[pengawas ${scope}] error`, { url, status, payload })
+    error(url: string, status: number, payload: unknown) {
+      console.error('[pengawas api] error', { url, status, payload })
     },
   },
 }
@@ -33,10 +31,6 @@ const transport = createHttpTransport(webApiConfig)
 
 export async function requestJson<T>(path: string, options: RequestOptions = {}) {
   return transport.requestApi<T>(path, options)
-}
-
-export async function requestBffJson<T>(path: string, options: RequestOptions = {}) {
-  return transport.requestBff<T>(path, options)
 }
 
 const client = createApiClient(webApiConfig)

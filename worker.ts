@@ -6,7 +6,7 @@ interface WorkerEnv extends AppEnv {
   ASSETS?: { fetch: (req: Request) => Promise<Response> }
 }
 
-const API_PREFIXES = ['/bff/', '/health', '/oauth-callback']
+const API_PREFIXES = ['/health', '/oauth-callback']
 const STATIC_EXTENSIONS = new Set([
   '.js', '.mjs', '.css', '.map', '.json', '.png', '.jpg', '.jpeg', '.gif', '.ico',
   '.svg', '.webp', '.woff', '.woff2', '.ttf', '.eot',
@@ -43,7 +43,7 @@ export default {
     const url = new URL(request.url)
     const base = (env.APP_PUBLIC_BASE_PATH ?? '/pengawasan').replace(/\/$/, '')
 
-    // API/BFF always goes to Hono (same behavior as Bun adapter).
+    // Health and OAuth redirect go to Hono (same behavior as Bun adapter).
     if (isApiPath(url.pathname, base)) {
       return app.fetch(request, env, undefined as never)
     }

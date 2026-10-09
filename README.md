@@ -126,11 +126,11 @@ Jangan hardcode URL API di source; pakai env.
 ## Struktur
 
 ```text
-server/index.ts          Hono BFF — auth, proxy, static
+server/index.ts          Static SPA + /health (tanpa proxy)
 src/
   pages/                 Dashboard, Pekerjaan, Tiket, …
   components/
-  lib/api.ts             Client ke BFF (bukan langsung APIAMIS)
+  lib/api.ts             Client langsung ke APIAMIS (VITE_APIAMIS_BASE_URL, credentials: include)
   hooks/
 apps/mobile/             Expo native (Android/iOS)
 packages/                shared + api-client (workspaces)
@@ -138,7 +138,7 @@ scripts/dev.ts
 tests/
 ```
 
-- API browser → `src/lib/api.ts` → `/bff/*` → APIAMIS  
+- API browser → `src/lib/api.ts` → APIAMIS langsung (cookie `arumanis_token` di-set APIAMIS)  
 - Token tidak di `localStorage` (web); mobile: SecureStore  
 
 ---

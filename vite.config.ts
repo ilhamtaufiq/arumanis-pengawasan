@@ -100,11 +100,6 @@ export default defineConfig({
     port: 3000,
     open: PUBLIC_BASE_PATH,
     proxy: {
-      '/pengawasan/bff': {
-        target: 'http://127.0.0.1:3001',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/pengawasan/, ''),
-      },
       '/health': {
         target: 'http://127.0.0.1:3001',
         changeOrigin: true,

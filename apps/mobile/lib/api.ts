@@ -16,7 +16,6 @@ function createMobileApiClient() {
   const apiBase = getApiBaseUrl()
   return createApiClient({
     apiPrefix: apiBase,
-    bffPrefix: apiBase,
     credentials: 'omit',
     getAuthHeader: async () => {
       const token = getSessionTokenSync() ?? (await ensureSessionToken())

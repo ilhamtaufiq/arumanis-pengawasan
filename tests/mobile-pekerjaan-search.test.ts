@@ -41,7 +41,6 @@ describe('API search param contract', () => {
     try {
       const client = createApiClient({
         apiPrefix: 'https://apiamis.example/api',
-        bffPrefix: 'https://apiamis.example/api',
         credentials: 'omit',
       })
       const res = await client.getPekerjaanList(

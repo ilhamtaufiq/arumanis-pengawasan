@@ -34,7 +34,6 @@ globalThis.fetch = async (input, init) => {
 
 const client = createApiClient({
   apiPrefix: base,
-  bffPrefix: base,
   credentials: 'omit',
   getAuthHeader: () => `Bearer ${token}`,
 })

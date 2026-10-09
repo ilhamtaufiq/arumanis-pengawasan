@@ -86,7 +86,7 @@ export async function stopImpersonating(): Promise<boolean> {
   try {
     await syncAuthToken(adminToken)
   } catch {
-    // Continue restoring client cookies even if BFF sync fails.
+    // Continue restoring client cookies even if the APIAMIS sync fails.
   }
 
   setCookie(USER_DATA_COOKIE, JSON.stringify(impersonator.user))
