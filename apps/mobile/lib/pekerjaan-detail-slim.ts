@@ -25,25 +25,32 @@ export function slimPekerjaanDetailForUi(detail: PekerjaanDetail): PekerjaanDeta
 
   const slimFotos: Foto[] = fotos.map((foto) => ({
     id: foto.id,
-    pekerjaan_id: foto.pekerjaan_id,
-    komponen_id: foto.komponen_id,
-    penerima_id: foto.penerima_id,
-    keterangan: foto.keterangan,
-    koordinat: foto.koordinat,
-    validasi_koordinat: foto.validasi_koordinat,
-    validasi_koordinat_message: foto.validasi_koordinat_message,
-    unit_index: foto.unit_index,
+    pekerjaan_id: foto.pekerjaan_id ?? null,
+    komponen_id: foto.komponen_id ?? null,
+    penerima_id: foto.penerima_id ?? null,
+    keterangan: foto.keterangan ?? null,
+    koordinat: foto.koordinat ?? null,
+    validasi_koordinat: foto.validasi_koordinat ?? null,
+    validasi_koordinat_message: foto.validasi_koordinat_message ?? null,
+    unit_index: foto.unit_index ?? null,
     // Buang URL penuh; thumb boleh tetap (atau null) — cegah OOM saat decode massal
     foto_url: null,
     foto_thumb_url: foto.foto_thumb_url || null,
     komponen: foto.komponen
-      ? { id: foto.komponen.id, komponen: foto.komponen.komponen }
+      ? {
+          ...(foto.komponen.id !== undefined ? { id: foto.komponen.id } : {}),
+          komponen: foto.komponen.komponen ?? null,
+        }
       : null,
     penerima: foto.penerima
-      ? { id: foto.penerima.id, nama: foto.penerima.nama, nik: foto.penerima.nik }
+      ? {
+          ...(foto.penerima.id !== undefined ? { id: foto.penerima.id } : {}),
+          nama: foto.penerima.nama ?? null,
+          nik: foto.penerima.nik ?? null,
+        }
       : null,
-    created_at: foto.created_at,
-    updated_at: foto.updated_at,
+    created_at: foto.created_at ?? null,
+    updated_at: foto.updated_at ?? null,
   }))
 
   return {

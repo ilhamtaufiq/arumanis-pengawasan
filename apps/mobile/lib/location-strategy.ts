@@ -1,7 +1,7 @@
 import {
   shouldPreferCellularLocation,
   type NetworkConnectivity,
-} from '@/lib/network-context-core'
+} from './network-context-core'
 
 export type KoordinatSource = 'gps' | 'network' | 'last_known'
 

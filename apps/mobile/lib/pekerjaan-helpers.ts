@@ -100,10 +100,10 @@ export function slotsForGroup(
   outputId: number,
   penerimaId: number | null = null,
 ): Array<{ slot: string; foto?: Foto }> {
-  return FOTO_SLOTS.map((slot) => ({
-    slot,
-    foto: lookup.get(fotoMatrixKey(outputId, penerimaId, slot)),
-  }))
+  return FOTO_SLOTS.map((slot) => {
+    const foto = lookup.get(fotoMatrixKey(outputId, penerimaId, slot))
+    return foto ? { slot, foto } : { slot }
+  })
 }
 
 export function countFilledSlots(

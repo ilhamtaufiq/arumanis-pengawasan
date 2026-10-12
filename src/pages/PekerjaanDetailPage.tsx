@@ -94,7 +94,7 @@ type UploadTarget = {
   penerima?: Penerima | undefined
   /** Ganti foto existing (update file), bukan create baru */
   replaceFotoId?: number
-  existingUnitIndex?: number | null
+  existingUnitIndex?: number | null | undefined
 }
 
 type MetricTone = 'neutral' | 'warning' | 'danger' | 'success' | 'info'
