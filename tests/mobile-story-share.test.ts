@@ -24,10 +24,12 @@ describe('buildStoryShareMeta', () => {
     expect(meta.locationLine).toContain('Ciranjang')
     expect(meta.outputLine).toBe('SR')
     expect(meta.slotLine).toBe('50%')
-    expect(meta.penerimaLine).toBe('Warga A')
+    // Penerima dan catatan tampil di baris keterangan, bukan di penerimaLine.
+    expect(meta.penerimaLine).toBeNull()
+    expect(meta.keteranganLine).toBe('Warga A · Unit 1')
     expect(meta.koordinatLine).toBe('-6.8,107.1')
     expect(meta.brandLine).toContain('TA 2026')
-    expect(meta.badge).toBe('DOKUMENTASI LAPANGAN')
+    expect(meta.badge).toBe('SLOT 50%')
   })
 
   test('falls back when location empty', () => {
