@@ -10,6 +10,9 @@ export type NetworkStateLike = {
   type: string
   isConnected: boolean | null
   isInternetReachable: boolean | null
+  /** Ada di state NetInfo; tidak dipakai untuk menilai konektivitas. */
+  isWifiEnabled?: boolean | null
+  details?: unknown
 }
 
 function readOnlineState(state: NetworkStateLike): boolean {

@@ -20,6 +20,7 @@ FROM oven/bun:1.2.17-alpine AS build
 WORKDIR /app
 
 ARG APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
+ARG VITE_APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
 ARG VITE_UMAMI_SCRIPT_URL=https://umami-cvkpzrlvpd23hquu71dt6s05.cianjur.space/script.js
 ARG VITE_UMAMI_WEBSITE_ID=cb0064bf-1fd5-4b32-811b-14d8694d135c
 ARG VITE_UMAMI_DOMAINS=arumanis.cianjur.space,pengawasan.arumanis.cianjur.space
@@ -35,7 +36,8 @@ COPY --from=deps /app/node_modules ./node_modules
 # Full source for Vite build (workspace packages resolve via node_modules links)
 COPY . .
 
-RUN VITE_UMAMI_SCRIPT_URL="$VITE_UMAMI_SCRIPT_URL" \
+RUN VITE_APIAMIS_BASE_URL="$VITE_APIAMIS_BASE_URL" \
+    VITE_UMAMI_SCRIPT_URL="$VITE_UMAMI_SCRIPT_URL" \
     VITE_UMAMI_WEBSITE_ID="$VITE_UMAMI_WEBSITE_ID" \
     VITE_UMAMI_DOMAINS="$VITE_UMAMI_DOMAINS" \
     VITE_REVERB_APP_KEY="$VITE_REVERB_APP_KEY" \
@@ -52,9 +54,6 @@ ENV NODE_ENV=production
 ENV BUN_ENV=production
 ENV PORT=3000
 ENV APP_PUBLIC_BASE_PATH=/pengawasan
-ENV SESSION_COOKIE_NAME=pengawas_session
-ENV SESSION_COOKIE_PATH=/pengawasan
-ENV SESSION_COOKIE_SECURE=true
 ENV APIAMIS_BASE_URL=https://apiamis.cianjur.space/api
 
 COPY --from=deps /app/node_modules ./node_modules

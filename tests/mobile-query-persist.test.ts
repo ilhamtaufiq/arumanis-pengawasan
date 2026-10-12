@@ -7,8 +7,9 @@ describe('shouldPersistQueryKey', () => {
     expect(shouldPersistQueryKey(queryKeys.auth.me())).toBe(true)
   })
 
-  test('persists pekerjaan list and detail', () => {
-    expect(shouldPersistQueryKey(queryKeys.pekerjaan.list({ page: 1 }))).toBe(true)
+  test('persists pekerjaan detail but not the list', () => {
+    // Daftar selalu dari server (paginasi/pencarian), lihat komentar di query-persist.ts.
+    expect(shouldPersistQueryKey(queryKeys.pekerjaan.list({ page: 1 }))).toBe(false)
     expect(shouldPersistQueryKey(queryKeys.pekerjaan.detail(12))).toBe(true)
   })
 

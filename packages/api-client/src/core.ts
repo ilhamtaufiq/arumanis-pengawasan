@@ -19,16 +19,16 @@ export type RequestOptions = Omit<RequestInit, 'body'> & {
 }
 
 export type ApiLogger = {
-  request?: (scope: 'api' | 'bff', url: string, method: string) => void
-  response?: (scope: 'api' | 'bff', url: string, status: number, payload: unknown) => void
-  error?: (scope: 'api' | 'bff', url: string, status: number, payload: unknown) => void
+  request?: (url: string, method: string) => void
+  response?: (url: string, status: number, payload: unknown) => void
+  error?: (url: string, status: number, payload: unknown) => void
 }
 
 export type GetAuthHeader = () => string | null | undefined | Promise<string | null | undefined>
 
 export type ApiClientConfig = {
+  /** Base URL APIAMIS, mis. https://apiamis.cianjur.space/api (tanpa slash di akhir). */
   apiPrefix: string
-  bffPrefix: string
   credentials?: RequestCredentials
   getAuthHeader?: GetAuthHeader
   logger?: ApiLogger
@@ -225,7 +225,7 @@ export function getPaginationMeta(payload: unknown) {
 export function createHttpTransport(config: ApiClientConfig) {
   const credentials = config.credentials ?? 'include'
 
-  async function request(url: string, scope: 'api' | 'bff', options: RequestOptions = {}) {
+  async function request(url: string, options: RequestOptions = {}) {
     const { body: rawBody, ...rest } = options
     const init: RequestInit = {
       credentials,
@@ -238,14 +238,14 @@ export function createHttpTransport(config: ApiClientConfig) {
       init.body = body
     }
 
-    config.logger?.request?.(scope, url, init.method ?? 'GET')
+    config.logger?.request?.(url, init.method ?? 'GET')
     const response = await fetch(url, init)
     const payload = await readPayload(response)
-    config.logger?.response?.(scope, url, response.status, summarizePayload(payload))
+    config.logger?.response?.(url, response.status, summarizePayload(payload))
 
     if (!response.ok) {
       const message = extractMessage(payload) || response.statusText || 'Request failed'
-      config.logger?.error?.(scope, url, response.status, summarizePayload(payload))
+      config.logger?.error?.(url, response.status, summarizePayload(payload))
       throw new ApiError(message, response.status, payload)
     }
 
@@ -254,8 +254,6 @@ export function createHttpTransport(config: ApiClientConfig) {
 
   return {
     requestApi: <T>(path: string, options?: RequestOptions) =>
-      request(`${config.apiPrefix}${path}`, 'api', options) as Promise<T>,
-    requestBff: <T>(path: string, options?: RequestOptions) =>
-      request(`${config.bffPrefix}${path}`, 'bff', options) as Promise<T>,
+      request(`${config.apiPrefix}${path}`, options) as Promise<T>,
   }
 }

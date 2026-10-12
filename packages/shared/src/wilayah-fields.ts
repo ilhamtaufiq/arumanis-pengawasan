@@ -38,7 +38,7 @@ export function getDesaName(desa: DesaLike): string {
 export function formatLokasiWilayah(
   desa?: DesaLike,
   kecamatan?: KecamatanLike,
-  options?: { separator?: string; order?: 'desa-kec' | 'kec-desa' },
+  options?: { separator?: string | undefined; order?: 'desa-kec' | 'kec-desa' | undefined },
 ): string {
   const sep = options?.separator ?? ' · '
   const order = options?.order ?? 'kec-desa'

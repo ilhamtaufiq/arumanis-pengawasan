@@ -1,5 +1,6 @@
 import Echo from 'laravel-echo'
 import Pusher from 'pusher-js'
+import { APIAMIS_BASE_URL } from '@/lib/config'
 
 type EchoInstance = Echo<'reverb'>
 
@@ -11,8 +12,7 @@ declare global {
 
 let echoInstance: EchoInstance | null = null
 
-const BASE = import.meta.env.BASE_URL
-const AUTH_ENDPOINT = `${BASE}bff/broadcasting/auth`
+const AUTH_ENDPOINT = `${APIAMIS_BASE_URL}/broadcasting/auth`
 
 export function isEchoEnabled(): boolean {
   return Boolean(import.meta.env.VITE_REVERB_APP_KEY?.trim())

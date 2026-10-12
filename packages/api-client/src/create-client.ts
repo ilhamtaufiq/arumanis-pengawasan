@@ -53,13 +53,13 @@ function unwrapProgressEstimasiResponse(payload: unknown): PekerjaanProgressEsti
 }
 
 export function createApiClient(config: ApiClientConfig) {
-  const { requestApi, requestBff } = createHttpTransport(config)
+  const { requestApi } = createHttpTransport(config)
 
   return {
     getPaginationMeta,
 
     async login(input: { email: string; password: string }) {
-      const payload = await requestBff<ApiEnvelope<{ user: AuthUser }>>('/auth/login', {
+      const payload = await requestApi<ApiEnvelope<{ user: AuthUser }>>('/auth/login', {
         method: 'POST',
         body: input,
       })
@@ -68,15 +68,15 @@ export function createApiClient(config: ApiClientConfig) {
     },
 
     async syncAuthToken(token: string) {
-      return requestBff('/auth/sync-token', {
+      return requestApi('/auth/sync-token', {
         method: 'POST',
         body: { token },
       })
     },
 
     async exchangeHandoffCode(code: string) {
-      const payload = await requestBff<ApiEnvelope<{ user: AuthUser }> | { user: AuthUser }>(
-        '/auth/exchange-handoff',
+      const payload = await requestApi<ApiEnvelope<{ user: AuthUser }> | { user: AuthUser }>(
+        '/auth/handoff/exchange',
         {
           method: 'POST',
           body: { code },
@@ -87,11 +87,11 @@ export function createApiClient(config: ApiClientConfig) {
     },
 
     async logout() {
-      return requestBff('/auth/logout', { method: 'POST' })
+      return requestApi('/auth/logout', { method: 'POST' })
     },
 
     async me() {
-      const payload = await requestBff<ApiEnvelope<AuthUser> | AuthUser>('/auth/me')
+      const payload = await requestApi<ApiEnvelope<AuthUser> | AuthUser>('/auth/me')
       return unwrapEntity<AuthUser>(payload)
     },
 
